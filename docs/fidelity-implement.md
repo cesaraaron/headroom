@@ -2531,3 +2531,24 @@ floor (threshold `0.01`), and the baseline re-blesses `noise_floor_db`.
 - **D6 — the built-in latency is now visible.** The amp box title shows the cab
   convolver's fixed block latency plus the limiter's lookahead (≈4.2 ms at 48 kHz).
   Device buffering sits on top and is not known here.
+
+### Output follow-up — the limiter no longer hard-clips, and the master output moved pre-limiter
+
+**The limiter hiss.** A report of "hiss on transients, output hitting red" traced to
+the master limiter's safety clamp. The gain computer followed the *instantaneous*
+sample, so within each cycle the gain dipped at the peak and lagged it; the output
+overshot and the clamp hard-clipped those peaks **at base rate** — aliasing, heard as
+hiss (measured: the clamp bit 8.6% of samples on a hot signal). Fixed with a
+**peak-hold envelope detector** (instant attack, 40 ms release): the gain follows the
+envelope, not the waveform, so it stays smooth across a cycle and the clamp never
+fires. `the_clamp_never_fires_on_a_hot_signal` gates it (was 8230 hits, now 0). A
+`MARGIN` below the ceiling keeps the residual lag clear of the clamp too.
+
+**Master output moved before the limiter.** The knob was *after* the limiter, so on a
+hot rig it only made things quieter *after* the compression — it could not reduce the
+limiter's work. It now sits **before** the limiter (the drive into it): backing it off
+gives the limiter headroom and cleans up a hot rig without touching the amp's drive;
+turning it up is caught cleanly. (The limiter itself is unchanged in intent.)
+
+Baseline re-blessed (the clamp removal re-voices the presets, mixed ±1–2 dB); 502
+tests both profiles.

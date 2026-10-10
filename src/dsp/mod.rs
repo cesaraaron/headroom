@@ -618,10 +618,10 @@ pub const DEFAULT_MASTER_OUTPUT: f32 = 0.5;
 /// The master-output knob's full span in dB, symmetric about unity so the control
 /// is a monitor level rather than a one-way boost.
 ///
-/// The knob sits *after* the master [`Limiter`](limiter::Limiter), so it is a
-/// genuine output gain: it scales the already-limited program and cannot re-saturate
-/// the rig. Pushing it above unity into the device ceiling is caught by the final
-/// output stage, exactly as winding up a real master would be.
+/// The knob sits *before* the master [`Limiter`](limiter::Limiter), so it is the
+/// **drive into the limiter**: backing it off gives the limiter headroom (less gain
+/// reduction, and on a hot rig a cleaner top) without touching the amp's own drive,
+/// and turning it up is caught cleanly by the limiter rather than clipping.
 pub const MASTER_OUTPUT_RANGE_DB: f32 = 6.0;
 
 /// Map the normalized master-output knob to a linear gain.
@@ -2420,12 +2420,12 @@ fn master_bus(
 ) -> (f32, f32) {
     let (l, r) = widen(l, r, width);
     let (l, r) = (dc.l.process(l), dc.r.process(r));
-    // The limiter turns peaks down cleanly and lifts the program to a
-    // consumer-loud ceiling. The master output knob sits *after* it, so it is a
-    // genuine output gain — turning it up cannot re-saturate the rig, it only
-    // scales the already-limited signal.
-    let (l, r) = limiter.process(l, r);
-    (l * output, r * output)
+    // The master output sits *before* the limiter, so it is the drive into it:
+    // backing it off gives the limiter headroom (less gain reduction and, on a hot
+    // rig, a cleaner top), and turning it up is caught cleanly by the limiter. This
+    // is the control that lets a hot rig be tamed without losing the amp's drive.
+    let (l, r) = (l * output, r * output);
+    limiter.process(l, r)
 }
 
 /// Mid/side stereo widener. `width` 1.0 = unchanged, > 1.0 spreads the sides.
@@ -3639,20 +3639,20 @@ mod tests {
             p.master_output.store(out, Relaxed);
             DspChain::new(sr, p)
         };
-        // Sweep the knob: the limiter's output stays at its ceiling; the knob scales it.
+        // Sweep the knob: it drives the limiter, and the limiter holds the ceiling
+        // at every position (the knob is *before* it now).
         for step in 0..=20 {
             let out = step as f32 / 20.0;
             let mut c = chain(out);
             let mut peak = 0.0f32;
-            for n in 0..4000 {
+            for n in 0..8000 {
                 let x = (2.0 * PI * 110.0 * n as f32 / sr).sin() * 0.5;
                 let (l, r) = c.process(x);
                 peak = peak.max(l.abs()).max(r.abs());
             }
-            let bound = limiter::CEILING * master_output_gain(out) + 1e-3;
             assert!(
-                peak <= bound,
-                "master at {out:.2} passed the limiter ceiling: {peak:.4} > {bound:.4}"
+                peak <= limiter::CEILING + 1e-3,
+                "master at {out:.2} passed the limiter ceiling: {peak:.4}"
             );
         }
         // And with the signal low enough to stay clear of the knee, the boost is the

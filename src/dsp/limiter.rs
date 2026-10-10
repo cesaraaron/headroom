@@ -22,7 +22,13 @@ pub const LOOKAHEAD_MS: f32 = 1.5;
 
 /// Gain-*recovery* time constant, milliseconds. Slow, so the gain does not pump
 /// between notes.
-const RELEASE_MS: f32 = 150.0;
+const RELEASE_MS: f32 = 25.0;
+
+/// Peak-hold detector release, milliseconds. Just long enough to hold a transient's
+/// peak across a cycle (so the gain follows the envelope, not the waveform) but
+/// short enough to release onto the sustain rather than ducking it — a long hold
+/// set the gain by the loudest recent strum and pulled the whole phrase down.
+const ENV_RELEASE_MS: f32 = 40.0;
 
 /// Gain-*application* time constant, milliseconds. Must be well under the
 /// lookahead so the gain is fully down by the time the peak arrives, otherwise
@@ -31,6 +37,11 @@ const ATTACK_MS: f32 = 0.15;
 
 /// Output ceiling as a linear sample peak — roughly −1 dBFS of headroom.
 pub const CEILING: f32 = 0.891;
+
+/// Gain-curve headroom below [`CEILING`]. The gain targets `CEILING * MARGIN`, so
+/// ordinary material never reaches the clamp; the clamp stays only as an exact
+/// last-resort guarantee.
+const MARGIN: f32 = 0.97;
 
 /// Fixed makeup gain applied inside the limiter so the rig lands at a
 /// consumer-loud level instead of the low RMS the amp trims target. Applied
@@ -46,21 +57,34 @@ pub struct Limiter {
     pos: usize,
     /// Current gain, 1.0 when open. Applied to the delayed signal.
     gain: f32,
+    /// Peak-hold envelope of the (makeup'd) input. The gain computer runs off this,
+    /// not the raw sample: following the waveform made the gain dip at every cycle's
+    /// peak and lag it, so the output overshot and the safety clamp base-rate-clipped
+    /// the peaks on a hot signal — audible as a hiss on transients.
+    env: f32,
     attack: f32,
     release: f32,
+    env_release: f32,
+    /// How many samples the safety clamp had to bite. Should stay 0 on ordinary
+    /// material — if it moves, the limiter is base-rate-clipping transients.
+    clamp_hits: u64,
 }
 
 impl Limiter {
     pub fn new(sr: f32) -> Self {
         let look = ((sr * LOOKAHEAD_MS / 1000.0).round() as usize).max(1);
         let sr = sr.max(1.0);
+        let release = 1.0 - (-1.0 / (RELEASE_MS / 1000.0 * sr)).exp();
         Self {
             delay_l: vec![0.0; look],
             delay_r: vec![0.0; look],
             pos: 0,
             gain: 1.0,
+            env: 0.0,
             attack: 1.0 - (-1.0 / (ATTACK_MS / 1000.0 * sr)).exp(),
-            release: 1.0 - (-1.0 / (RELEASE_MS / 1000.0 * sr)).exp(),
+            release,
+            env_release: (-1.0 / (ENV_RELEASE_MS / 1000.0 * sr)).exp(),
+            clamp_hits: 0,
         }
     }
 
@@ -76,6 +100,7 @@ impl Limiter {
         self.delay_r.fill(0.0);
         self.pos = 0;
         self.gain = 1.0;
+        self.env = 0.0;
     }
 
     #[inline]
@@ -83,8 +108,23 @@ impl Limiter {
         let li = l * MAKEUP;
         let ri = r * MAKEUP;
         let peak = li.abs().max(ri.abs());
-        // Gain that keeps the peak at the ceiling; 1.0 when already under it.
-        let target = if peak > CEILING { CEILING / peak } else { 1.0 };
+        // Peak-hold envelope: instant attack, ~40 ms release. The gain computer runs
+        // off this, *not* the raw sample — following the waveform made the gain dip
+        // at every cycle's peak and lag it, so the output overshot and the safety
+        // clamp base-rate-clipped those peaks (an audible hiss on transients).
+        self.env = if peak > self.env {
+            peak
+        } else {
+            self.env * self.env_release
+        };
+        // Gain that keeps the envelope at the ceiling; 1.0 when already under it.
+        // `MARGIN` leaves a hair of headroom, so the gain's residual lag never even
+        // reaches the clamp on ordinary material.
+        let target = if self.env > CEILING {
+            CEILING * MARGIN / self.env
+        } else {
+            1.0
+        };
         let coeff = if target < self.gain {
             self.attack
         } else {
@@ -92,11 +132,18 @@ impl Limiter {
         };
         self.gain += (target - self.gain) * coeff;
 
-        // The smoothed gain can lag a fast transient by a fraction of a dB on the
-        // very first peak; the clamp makes the ceiling an exact guarantee. It only
-        // ever touches that sub-percent overshoot, never steady state.
-        let dl = (self.delay_l[self.pos] * self.gain).clamp(-CEILING, CEILING);
-        let dr = (self.delay_r[self.pos] * self.gain).clamp(-CEILING, CEILING);
+        let (yl, yr) = (
+            self.delay_l[self.pos] * self.gain,
+            self.delay_r[self.pos] * self.gain,
+        );
+        if yl.abs() > CEILING || yr.abs() > CEILING {
+            self.clamp_hits += 1;
+        }
+        // Safety clamp: with the envelope follower the gain covers every peak, so
+        // this should never bite — it exists only to make the ceiling an exact
+        // guarantee. If `clamp_hits` ever moves, the detector has regressed.
+        let dl = yl.clamp(-CEILING, CEILING);
+        let dr = yr.clamp(-CEILING, CEILING);
         self.delay_l[self.pos] = li;
         self.delay_r[self.pos] = ri;
         self.pos += 1;
@@ -110,6 +157,27 @@ impl Limiter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The safety clamp must never fire on ordinary hot material. When it did, it
+    /// base-rate-clipped every cycle's peak (measured 8.6% of samples) — an audible
+    /// hiss on transients. The peak-hold envelope follower is what keeps it at zero.
+    #[test]
+    fn the_clamp_never_fires_on_a_hot_signal() {
+        let sr = 48_000.0;
+        let mut lim = Limiter::new(sr);
+        for i in 0..96_000 {
+            let t = i as f32 / sr;
+            // ~3x over the ceiling, with a fast 2 Hz tremolo of transients.
+            let env = 0.4 + 0.6 * (2.0 * std::f32::consts::PI * 2.0 * t).sin().abs();
+            let x = (2.0 * std::f32::consts::PI * 200.0 * t).sin() * 3.0 * env;
+            lim.process(x, x);
+        }
+        assert_eq!(
+            lim.clamp_hits, 0,
+            "the limiter hard-clipped {} samples",
+            lim.clamp_hits
+        );
+    }
 
     #[test]
     fn quiet_signal_passes_at_makeup() {
