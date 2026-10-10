@@ -2515,3 +2515,19 @@ The recording tap is before the chain, so takes stay clean. `HUM_LEVEL` is the s
 knob. `silent_input_hums_and_the_gate_nulls_it` pins that the floor is present with the
 gate off and nulled with it on; the export preroll onset detector triggers above the
 floor (threshold `0.01`), and the baseline re-blesses `noise_floor_db`.
+
+### F4 / F6 / D6 — output polish
+
+- **F4 — the widener is now power-normalised when widening.** Scaling the side by
+  `width` raised side power by `width²` (+2.3 dB at 1.3) and pushed peaks into the
+  limiter. For `width > 1` the pair is scaled by `√(2/(1 + width²))` (the equal-power
+  factor), so widening no longer changes the level; `width ≤ 1` is untouched. The mid
+  therefore scales with the factor at wide settings rather than being preserved — the
+  one trade-off, and it is the point of the fix. Zero baseline effect: every bundled
+  preset uses `width = 1.0`.
+- **F6 — the export clamps to ±1.** The file is 32-bit float, so >1.0 samples are
+  legal but hard-clip on a 16-bit bounce; the master output knob can lift the render
+  past full scale, so clamp it.
+- **D6 — the built-in latency is now visible.** The amp box title shows the cab
+  convolver's fixed block latency plus the limiter's lookahead (≈4.2 ms at 48 kHz).
+  Device buffering sits on top and is not known here.

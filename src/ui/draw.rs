@@ -46,6 +46,10 @@ pub(super) fn draw(
     // (chain, amp, timeline, rig). Layout runs directly on the full area.
     let inner = area;
 
+    // Engine sample rate, for the built-in latency readout on the amp box. Device
+    // buffering sits on top of this and is not known here.
+    let sr = timeline.map_or(48_000.0, |(_, ui)| ui.sample_rate());
+
     // Build the vertical layout from the visible panels. Rows are tracked by index
     // so a hidden panel simply contributes no constraint and no render call.
     let show_timeline = panels.timeline && timeline.is_some();
@@ -96,7 +100,7 @@ pub(super) fn draw(
     );
     i += 1;
     if panels.amp {
-        render_amp_panel(f, rows[i], params, focus, ext_cab, ext_amp);
+        render_amp_panel(f, rows[i], params, focus, ext_cab, ext_amp, sr);
         i += 1;
     }
     if show_timeline {
@@ -467,6 +471,7 @@ fn render_amp_panel(
     focus: Option<usize>,
     ext_cab: Option<&str>,
     ext_amp: Option<&str>,
+    sr: f32,
 ) {
     let amp_active = focus.is_some_and(|i| (AMP_START..AMP_END).contains(&i));
     let mic_active = focus.is_some_and(|i| (MIC_START..MIC_END).contains(&i));
@@ -495,6 +500,7 @@ fn render_amp_panel(
         ext_amp,
         amp_box_active,
         dim(amp_box_active),
+        sr,
     );
     render_cab_box(
         f,
@@ -507,6 +513,12 @@ fn render_amp_panel(
     );
 }
 
+/// Built-in monitoring latency, in ms: the cab convolver's fixed block latency plus
+/// the master limiter's lookahead. Device buffering sits on top and is not known here.
+fn builtin_latency_ms(sr: f32) -> f32 {
+    crate::dsp::conv::latency() as f32 / sr.max(1.0) * 1000.0 + crate::dsp::limiter::LOOKAHEAD_MS
+}
+
 /// Left box: amp tone-stack knobs, blank bottom margin, grille strip.
 #[allow(clippy::too_many_arguments)]
 fn render_amp_box(
@@ -517,6 +529,7 @@ fn render_amp_box(
     ext_amp: Option<&str>,
     box_active: bool,
     dim: Modifier,
+    sr: f32,
 ) {
     // The amp box reflects the active amp: a loaded AU's name (with the tone-stack
     // knobs inert) or the built-in amp model.
@@ -539,7 +552,11 @@ fn render_amp_box(
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(dim),
             ),
-            Span::styled(" ├", Style::default().fg(border_color)),
+            Span::styled(
+                format!("  {:.1} ms ", builtin_latency_ms(sr)),
+                Style::default().fg(DIM).add_modifier(dim),
+            ),
+            Span::styled("├", Style::default().fg(border_color)),
         ]))
         .style(panel_style());
     let inner = block.inner(area);

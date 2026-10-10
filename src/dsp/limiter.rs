@@ -18,7 +18,7 @@
 
 /// Lookahead window, milliseconds. Long enough to open the gain before a
 /// transient reaches the output, short enough to be inaudible as latency.
-const LOOKAHEAD_MS: f32 = 1.5;
+pub const LOOKAHEAD_MS: f32 = 1.5;
 
 /// Gain-*recovery* time constant, milliseconds. Slow, so the gain does not pump
 /// between notes.

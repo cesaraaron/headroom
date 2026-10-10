@@ -2429,13 +2429,23 @@ fn master_bus(
 }
 
 /// Mid/side stereo widener. `width` 1.0 = unchanged, > 1.0 spreads the sides.
-/// The mono (mid) component is preserved exactly, so the center stays solid and
-/// the result folds down to mono cleanly.
+///
+/// **Power-normalised when widening.** Scaling the side by `width` raises side
+/// *power* by `width²` (+2.3 dB at 1.3), which also makes peaks hotter into the
+/// limiter. For `width > 1` the pair is scaled by `√(2 / (1 + width²))`, the
+/// equal-power factor for a mid/side signal, so widening does not change the level.
+/// `width ≤ 1` (narrowing, and the neutral default) is left as a plain mid/side mix
+/// so the mono fold and the boot rig are untouched.
 #[inline]
 fn widen(l: f32, r: f32, width: f32) -> (f32, f32) {
     let mid = (l + r) * 0.5;
     let side = (l - r) * 0.5 * width;
-    (mid + side, mid - side)
+    let norm = if width > 1.0 {
+        (2.0 / (1.0 + width * width)).sqrt()
+    } else {
+        1.0
+    };
+    ((mid + side) * norm, (mid - side) * norm)
 }
 
 /// The master bus's pair of first-order DC blockers.
@@ -3450,13 +3460,26 @@ mod tests {
             limiter::MAKEUP
         );
 
+        // Widening is power-normalised: the side spreads, but the pair is scaled by
+        // the equal-power factor so the total level is unchanged (the mid therefore
+        // scales with it rather than staying put).
         let (wl, wr) = widen(0.5, -0.2, 1.3);
+        let norm = (2.0 / (1.0 + 1.3f32 * 1.3)).sqrt();
         let mid_in = 0.5 * (0.5 + -0.2);
-        let mid_out = 0.5 * (wl + wr);
-        assert!((mid_in - mid_out).abs() < 1e-6, "widener changed the mid");
+        let side_in = 0.5 * (0.5 - -0.2);
         assert!(
-            (wl - wr).abs() > (0.5 - -0.2f32).abs(),
-            "widener did not spread sides"
+            ((0.5 * (wl + wr)) - mid_in * norm).abs() < 1e-6,
+            "widener mid not scaled by the power factor"
+        );
+        assert!(
+            (0.5 * (wl - wr)) > side_in,
+            "widener did not spread the sides"
+        );
+        // Width 1.0 is exactly neutral (no normalisation kicks in).
+        let (nl, nr) = widen(0.5, -0.2, 1.0);
+        assert!(
+            (nl - 0.5).abs() < 1e-6 && (nr + 0.2).abs() < 1e-6,
+            "width 1.0 must be untouched"
         );
 
         // A hard AC drive (a constant would just be removed by the DC blocker)

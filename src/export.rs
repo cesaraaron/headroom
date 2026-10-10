@@ -365,12 +365,15 @@ fn render_with_chain(
 
         chain.process_block(&mono[..n], &mut left[..n], &mut right[..n]);
 
-        // Write only the frames inside the window.
+        // Write only the frames inside the window. Clamp to ±1: the file is 32-bit
+        // float, so out-of-range samples are legal but hard-clip on any 16-bit
+        // bounce. The chain limiter normally keeps the render under 1.0, but the
+        // master output knob can lift it past full scale.
         let lo = written.max(win_start);
         let hi = (written + n).min(win_end);
         for i in lo..hi {
-            writer.write_sample(left[i - written])?;
-            writer.write_sample(right[i - written])?;
+            writer.write_sample(left[i - written].clamp(-1.0, 1.0))?;
+            writer.write_sample(right[i - written].clamp(-1.0, 1.0))?;
         }
 
         // The whole-session render stops once the effect tail goes silent; a

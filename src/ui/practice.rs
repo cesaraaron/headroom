@@ -1063,6 +1063,11 @@ impl PracticeUi {
         self.recording_id.is_some()
     }
 
+    /// The engine's sample rate, for latency readouts.
+    pub(super) fn sample_rate(&self) -> f32 {
+        self.sample_rate
+    }
+
     pub(super) fn set_message(&mut self, msg: String) {
         self.note(msg);
     }
