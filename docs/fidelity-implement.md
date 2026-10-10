@@ -2491,19 +2491,27 @@ A silent input produced **bit-exact zero** out of all nine models. Only five had
 supply ripple at all, and that modulates the *signal* (ghost notes) — none of them
 hummed in silence, which the one thing every real amp does (the Vox most of all).
 
-`AmpBank` now injects a quiet **hum + noise floor** at the amp input, so the gain
-stages amplify it exactly as a real amp does (a cranked model hums more than a clean
-one, for free):
+`DspChain` injects a quiet **hum floor at the chain input**, before the ordered
+stages, so the gain stages amplify it exactly as a real amp does (a cranked model hums
+more than a clean one, for free) — and, crucially, so the **noise gate** (the first
+stage by default) can null it. The hum is the mains fundamental plus its 2nd/3rd
+harmonics, generated from one rotating unit phasor via Chebyshev
+(`sin2θ = 2sc`, `sin3θ = 3s − 4s³`) — no per-sample transcendentals — at the **mains
+frequency of the amp's grid**: 50 Hz for the British models (Marshall/Vox/Hiwatt/
+Plexi), 60 Hz for the American ones (Fender/Mesa/Supro/Tweed/Randall).
 
-- **Hum:** the mains fundamental (60 Hz) plus 2nd/3rd harmonics, generated from one
-  rotating unit phasor via Chebyshev (`sin2θ = 2sc`, `sin3θ = 3s − 4s³`) — no
-  per-sample transcendentals.
-- **Noise:** a cheap xorshift broadband floor.
+**Design notes, after a first cut was rejected.** The first version injected a hum +
+broadband-noise floor *inside `AmpBank`*, which is **after** the gate — so it could not
+be gated, and the broadband component read as white hiss with the guitar unplugged.
+This version fixes both:
 
-Both are linear-level constants (`HUM_LEVEL`, `NOISE_LEVEL`); the high-gain models
-amplify them to a **−53 dBFS** floor, the clean ones to **−66 dB**, and the noise gate
-sweeps it up. `amp_hums_on_a_silent_input` pins that the floor is present but quiet.
+- **At the chain input, not the amp.** The gate nulls it; the default threshold
+  (~−64 dB) sits above `HUM_LEVEL` (peak ≈ −69 dB), so enabling the gate is enough.
+- **Hum only** — the broadband noise was the unmusical part; the mains hum is what the
+  records actually have.
+- **Per-amp mains frequency**, matching the grid the amp was built for.
 
-Two knock-ons: the export preroll test's onset detector now triggers above the floor
-(threshold `0.01`, not `1e-6`), and the baseline re-blesses the `noise_floor_db`
-metric (from −210 dB).
+The recording tap is before the chain, so takes stay clean. `HUM_LEVEL` is the single
+knob. `silent_input_hums_and_the_gate_nulls_it` pins that the floor is present with the
+gate off and nulled with it on; the export preroll onset detector triggers above the
+floor (threshold `0.01`), and the baseline re-blesses `noise_floor_db`.

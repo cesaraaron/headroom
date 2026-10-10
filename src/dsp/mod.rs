@@ -87,6 +87,16 @@ impl AmpModel {
         }
     }
 
+    /// Mains frequency the amp's hum runs at — 50 Hz for the British models
+    /// (Marshall/Vox/Hiwatt/Plexi), 60 Hz for the American ones. Real recordings
+    /// hum at the grid the amp was built for.
+    pub fn mains_hz(self) -> f32 {
+        match self {
+            Self::Marshall | Self::Vox | Self::Hiwatt | Self::Plexi => 50.0,
+            Self::Mesa | Self::Randall | Self::Fender | Self::Supro | Self::Tweed => 60.0,
+        }
+    }
+
     pub fn next(self) -> Self {
         match self {
             Self::Marshall => Self::Mesa,
@@ -1576,6 +1586,68 @@ const DECLICK_SECS: f32 = 0.004;
 /// cover. Still far below the ~20 ms where a fade starts to read as a swell.
 pub(crate) const BYPASS_DECLICK_SECS: f32 = 0.006;
 
+/// Hum level injected at the **chain input** (linear). Kept below the noise gate's
+/// default threshold (~−64 dB) so enabling the gate nulls it without touching the
+/// threshold; the gain stages still amplify it to an audible floor when ungated.
+const HUM_LEVEL: f32 = 0.0002;
+
+/// A quiet mains-hum floor, injected at the **chain input** so the gain stages
+/// amplify it the way a real amp does *and* the noise gate (the first stage) can null
+/// it when the guitar is quiet.
+///
+/// Without this, a silent input produced **bit-exact zero** from every model, and no
+/// model hummed in silence — the one thing every real amp does. The hum is the mains
+/// fundamental plus its 2nd/3rd harmonics, generated from one rotating unit phasor
+/// (Chebyshev, so no per-sample transcendentals). The mains frequency follows the amp
+/// (50 Hz UK, 60 Hz US), matching the grid the recording would have been made on.
+pub(crate) struct HumNoise {
+    c: f32,
+    s: f32,
+    sr: f32,
+    mains_hz: f32,
+    cos_w: f32,
+    sin_w: f32,
+}
+
+impl HumNoise {
+    pub(crate) fn new(sr: f32) -> Self {
+        let mut h = Self {
+            c: 1.0,
+            s: 0.0,
+            sr: sr.max(1.0),
+            mains_hz: 0.0,
+            cos_w: 1.0,
+            sin_w: 0.0,
+        };
+        h.set_mains(60.0);
+        h
+    }
+
+    /// Re-tune the hum to a new mains frequency. The phasor keeps its phase, so a
+    /// model switch cannot click.
+    pub(crate) fn set_mains(&mut self, hz: f32) {
+        if (hz - self.mains_hz).abs() > 0.1 {
+            self.mains_hz = hz;
+            let w = std::f32::consts::TAU * hz / self.sr;
+            self.cos_w = w.cos();
+            self.sin_w = w.sin();
+        }
+    }
+
+    #[inline]
+    pub(crate) fn next(&mut self) -> f32 {
+        let (c, s) = (
+            self.c * self.cos_w - self.s * self.sin_w,
+            self.s * self.cos_w + self.c * self.sin_w,
+        );
+        self.c = c;
+        self.s = s;
+        // Chebyshev: sin2θ = 2sc, sin3θ = 3s − 4s³.
+        let hum = s + 0.5 * (2.0 * s * c) + 0.25 * (3.0 * s - 4.0 * s * s * s);
+        hum * HUM_LEVEL
+    }
+}
+
 pub struct DspChain {
     ng: NoiseGate,
     pitch: Pitch,
@@ -1633,6 +1705,8 @@ pub struct DspChain {
     /// Master-bus lookahead limiter. Replaces the old memoryless clip so peaks
     /// are turned down cleanly instead of distorted.
     master_limiter: Limiter,
+    /// Mains-hum floor injected at the chain input (see [`HumNoise`]).
+    hum: HumNoise,
     /// Per-stage bypass crossfade position, 0 = fully bypassed and 1 = fully
     /// engaged. See [`Self::run_ordered_stage`].
     bypass_ramp: [f32; CHAIN_LEN],
@@ -1678,6 +1752,7 @@ impl DspChain {
             declick_step: 1.0 / (DECLICK_SECS * sr).max(1.0),
             master_dc: MasterDc::new(sr),
             master_limiter: Limiter::new(sr),
+            hum: HumNoise::new(sr),
             bypass_ramp: [0.0; CHAIN_LEN],
             bypass_step: 1.0 / (BYPASS_DECLICK_SECS * sr).max(1.0),
         }
@@ -1755,7 +1830,10 @@ impl DspChain {
     /// block, not once per sample.
     #[inline]
     fn process_core(&mut self, sample: f32, route: &BlockRoute) -> (f32, f32) {
-        self.run_full(sample, route)
+        // Inject the hum floor at the chain input so the gate (first stage by
+        // default) sees it, and every stage amplifies it like a real amp.
+        let x = sample + self.hum.next();
+        self.run_full(x, route)
     }
 
     /// Snapshot everything routing-related for one block/call. `allow_ext_amp` is
@@ -1764,6 +1842,9 @@ impl DspChain {
     #[inline]
     fn route_for_block(&mut self, allow_ext_amp: bool) -> BlockRoute {
         let order = self.snapshot_order();
+        // The hum follows the amp's grid (50 Hz UK / 60 Hz US).
+        self.hum
+            .set_mains(AmpModel::from_u8(self.params.amp_model.load(Relaxed)).mains_hz());
         let p = &self.params;
         let active = p.amp_external_active.load(Relaxed);
         let amp_only = p.amp_external_amp_only.load(Relaxed);
@@ -2222,6 +2303,8 @@ impl DspChain {
             // Ordered stages before the amp (mono), duplicated to stereo for the
             // block-based plugin.
             for ((&x, l), r) in input.iter().zip(out_l.iter_mut()).zip(out_r.iter_mut()) {
+                // Same hum injection as the built-in path (`process_core`).
+                let x = x + self.hum.next();
                 let pre = self
                     .run_range(Sig::Mono(x), &route.order[..amp_idx], &route)
                     .into_mono();
@@ -2561,6 +2644,37 @@ mod tests {
         assert!(
             channel_diff > 1.0,
             "output is effectively mono: {channel_diff}"
+        );
+    }
+
+    /// C5 — the chain injects a mains-hum floor on a silent input (no more bit-exact
+    /// zero), and the noise gate nulls it when enabled, because the hum sits below the
+    /// gate's default threshold.
+    #[test]
+    fn silent_input_hums_and_the_gate_nulls_it() {
+        let sr = 48_000.0;
+        let rms =
+            |v: &[f32]| (v.iter().map(|&x| (x * x) as f64).sum::<f64>() / v.len() as f64).sqrt();
+
+        // Gate off (default): the hum floor is present but quiet.
+        let mut chain = DspChain::new(sr, Arc::new(Params::new()));
+        let out: Vec<f32> = (0..48_000).map(|_| chain.process(0.0).0).collect();
+        let floor = rms(&out[24_000..]);
+        assert!(
+            floor > 1e-6,
+            "silent input produced no hum floor (rms {floor:.2e})"
+        );
+        assert!(floor < 0.05, "the hum floor is too loud (rms {floor:.4})");
+
+        // Gate on at its default threshold: the hum is below it and is nulled.
+        let p = Arc::new(Params::new());
+        p.ng_enabled.store(true, Relaxed);
+        let mut chain = DspChain::new(sr, p);
+        let out: Vec<f32> = (0..96_000).map(|_| chain.process(0.0).0).collect();
+        let gated = rms(&out[48_000..]);
+        assert!(
+            gated < floor * 0.02,
+            "gate did not null the hum: {gated:.2e} vs floor {floor:.2e}"
         );
     }
 
