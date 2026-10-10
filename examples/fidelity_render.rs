@@ -43,6 +43,8 @@ const PRESET_WIDTH: f32 = -1.0;
 
 struct Args {
     presets: Vec<String>,
+    /// Render a saved session's rig (its `[rig]` section) instead of bundled presets.
+    project: Option<PathBuf>,
     di_dir: Option<PathBuf>,
     sr: f32,
     out: PathBuf,
@@ -58,6 +60,7 @@ fn parse_args() -> Result<Args> {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut args = Args {
         presets: Vec::new(),
+        project: None,
         di_dir: None,
         sr: 48_000.0,
         out: PathBuf::new(),
@@ -87,6 +90,7 @@ fn parse_args() -> Result<Args> {
                 };
             }
             "--synth" => {}
+            "--project" => args.project = Some(PathBuf::from(next(&mut i)?)),
             "--di" => args.di_dir = Some(PathBuf::from(next(&mut i)?)),
             "--sr" => args.sr = next(&mut i)?.parse().context("--sr")?,
             "--out" => args.out = PathBuf::from(next(&mut i)?),
@@ -124,8 +128,15 @@ fn parse_args() -> Result<Args> {
 
 // ── Presets and DI sources ─────────────────────────────────────────────────────
 
-/// `(stem, preset)` for the selected bundled presets.
+/// `(stem, preset)` for the selected bundled presets, or the saved session's rig
+/// when `--project` is given.
 fn load_presets(args: &Args) -> Result<Vec<(String, Preset)>> {
+    if let Some(dir) = &args.project {
+        let manifest = rusty_riff::project::read_manifest(dir)
+            .with_context(|| format!("reading project {}", dir.display()))?;
+        let stem = manifest.name.to_lowercase().replace(' ', "_");
+        return Ok(vec![(stem, manifest.rig)]);
+    }
     let mut out = Vec::new();
     for entry in std::fs::read_dir("presets").context("reading presets/")? {
         let path = entry?.path();

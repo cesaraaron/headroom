@@ -134,7 +134,7 @@ impl TweedCab {
         ];
         let mut inner = BlendedCab::new(sr, irs, CabLayout::Single);
         // Per-cab level trim (see `BlendedCab::set_level`).
-        inner.set_level(1.82);
+        inner.set_level(1.567);
         Self { inner }
     }
 

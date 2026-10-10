@@ -135,7 +135,7 @@ impl VoxCab {
         ];
         let mut inner = BlendedCab::new(sr, irs, CabLayout::TwoByTwelve);
         // Per-cab level trim (see `BlendedCab::set_level`).
-        inner.set_level(1.679);
+        inner.set_level(1.365);
         Self { inner }
     }
 

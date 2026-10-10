@@ -163,7 +163,7 @@ impl WemCab {
         ];
         let mut inner = BlendedCab::new(sr, irs, CabLayout::FourByTwelve);
         // Per-cab level trim (see `BlendedCab::set_level`).
-        inner.set_level(0.955);
+        inner.set_level(1.259);
         Self { inner }
     }
 

@@ -143,7 +143,7 @@ impl SuproCab {
         ];
         let mut inner = BlendedCab::new(sr, irs, CabLayout::Single);
         // Per-cab level trim (see `BlendedCab::set_level`).
-        inner.set_level(1.216);
+        inner.set_level(1.161);
         Self { inner }
     }
 

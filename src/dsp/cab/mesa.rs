@@ -173,7 +173,7 @@ impl MesaCab {
         ];
         let mut inner = BlendedCab::new(sr, irs, CabLayout::FourByTwelve);
         // Per-cab level trim (see `BlendedCab::set_level`).
-        inner.set_level(0.708);
+        inner.set_level(0.785);
         Self { inner }
     }
 

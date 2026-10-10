@@ -4657,6 +4657,66 @@ mod tests {
         );
     }
 
+    /// D3 — every cabinet must be perceptually level-matched on the mid-band, so
+    /// switching cabinets is level-neutral. Measured with one fixed amp through each
+    /// cab (the amps' own output trims are matched separately).
+    #[test]
+    fn cabs_are_loudness_matched() {
+        let sr = 48_000.0;
+        // Deterministic chug DI: low-E bursts, enough for a level comparison.
+        let mut di = vec![0.0f32; (sr * 2.0) as usize];
+        for k in 0..6 {
+            let start = (sr * 0.3) as usize * k;
+            for i in 0..(sr * 0.22) as usize {
+                let t = i as f32 / sr;
+                let env = (-t * 9.0).exp();
+                di[start + i] += 0.6 * env * (2.0 * PI * 82.41 * t).sin().signum() * 0.5;
+            }
+        }
+
+        let mut amp = amp::AmpBank::new(sr);
+        let knobs = amp::standard_knobs(AmpModel::Marshall, 0.93, 0.5, 0.5, 0.65, 0.5, 0.65);
+        let mono: Vec<f32> = di
+            .iter()
+            .map(|&x| {
+                amp.process(
+                    AmpModel::Marshall,
+                    x,
+                    &knobs,
+                    CabModel::Marshall.speaker_load(),
+                )
+            })
+            .collect();
+
+        let mid_rms = |out: &[f32]| -> f64 {
+            let mut hp = crate::dsp::biquad::Biquad::highpass(sr, 300.0, 0.707);
+            let mut lp = crate::dsp::biquad::Biquad::lowpass(sr, 5000.0, 0.707);
+            let mid: Vec<f32> = out.iter().map(|&x| lp.process(hp.process(x))).collect();
+            (mid.iter().map(|&x| (x * x) as f64).sum::<f64>() / mid.len() as f64).sqrt()
+        };
+
+        let mut lo = f64::INFINITY;
+        let mut hi = 0.0f64;
+        for cm in CabModel::ALL {
+            let mut cab = cab::CabBank::new(sr);
+            let with_cab: Vec<f32> = mono
+                .iter()
+                .map(|&a| {
+                    let (l, r) = cab.process(cm, a, 0.5, 0.15, 0.15);
+                    0.5 * (l + r)
+                })
+                .collect();
+            let lv = mid_rms(&with_cab);
+            lo = lo.min(lv);
+            hi = hi.max(lv);
+        }
+        assert!(
+            hi / lo < 1.3,
+            "cabinets not level-matched: mid-band spread {hi:.5}/{lo:.5} = {:.3}x",
+            hi / lo
+        );
+    }
+
     /// Every amp model should be stable (no NaN/blowup) at full gain.
     #[test]
     fn all_amps_stable_at_max_gain() {

@@ -136,7 +136,7 @@ impl FenderCab {
         ];
         let mut inner = BlendedCab::new(sr, irs, CabLayout::TwoByTwelve);
         // Per-cab level trim (see `BlendedCab::set_level`).
-        inner.set_level(1.549);
+        inner.set_level(1.396);
         Self { inner }
     }
 
