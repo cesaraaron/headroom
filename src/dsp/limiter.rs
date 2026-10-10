@@ -36,7 +36,7 @@ pub const CEILING: f32 = 0.891;
 /// consumer-loud level instead of the low RMS the amp trims target. Applied
 /// *before* the ceiling, so it lifts quiet material and is absorbed by the
 /// limiter on loud material rather than clipping at the converter.
-pub const MAKEUP: f32 = 1.413; // +3.0 dB
+pub const MAKEUP: f32 = 1.189; // +1.5 dB
 
 /// A stereo-linked lookahead limiter. Real-time safe: all buffers are
 /// preallocated by [`Limiter::new`], and `process` neither allocates nor blocks.

@@ -161,7 +161,15 @@ const DOPPLER_BASE: f32 = 2.0;
 /// operating point to where the amps actually play — the stages stay subtle at
 /// default knobs and engage solidly when cranked — and the output is scaled
 /// back down, so small-signal level through the cab is unchanged.
-const SPKR_SENS: f32 = 3.5;
+///
+/// Lowered from 3.5 to 2.75: at 3.5 the `cone_breakup` `tanh` was near-square on a
+/// driven amp (peak ~0.5 maps to ~1.75), so a hot rig heard the *speaker* clip
+/// rather than the amp/pedals — the "hit a speaker past what it can take" sound.
+/// 2.75 maps the same peak to ~1.4, keeping the drive coming from the amp and the
+/// cab-growl for genuine extremes only. It cannot go much lower: the cab's
+/// compression is what pulls the hottest amps down, so a lighter drive re-exposes
+/// the Marshall/Mesa imbalance the chord test guards (`power_chord_..._level_matched`).
+const SPKR_SENS: f32 = 2.75;
 
 /// The driver nonlinearities a fixed IR can't hold, applied to the mono drive
 /// before the mic picks the sound up: displacement-driven motor droop, stateless
@@ -220,8 +228,8 @@ impl SpeakerDrive {
     /// **Runs at 4x.** Every mechanism in this stage is either a hard nonlinearity
     /// or a time-varying one, and at base rate they all fold back:
     ///
-    /// - `cone_breakup` is a `tanh` fed from `SPKR_SENS = 3.5`, so a hot amp drives
-    ///   it to ~4 and it behaves as a near-hard clipper. Its harmonics alias
+    /// - `cone_breakup` is a `tanh` fed from `SPKR_SENS`, so a hot amp drives it
+    ///   well past the knee and it behaves as a near-hard clipper. Its harmonics alias
     ///   straight down: measured, a 7 kHz tone folds to 1 kHz at **0.43** of the
     ///   fundamental — an audible pitched artifact out of a bright amp.
     /// - Motor droop and thermal compression are `1/(1+k·d²)` and `1/(1+k·over)`,
