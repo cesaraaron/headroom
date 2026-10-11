@@ -74,6 +74,16 @@ impl Phaser {
         }
     }
 
+    /// Cut the circulating phase: zero the all-pass state and the feedback
+    /// memory. Keeps the LFO phase and rate cache (the sweep continues
+    /// smoothly) and the mix smoother. Called on chain-order change.
+    pub(crate) fn clear_buffers(&mut self) {
+        self.z_l = [0.0; N_STAGES];
+        self.z_r = [0.0; N_STAGES];
+        self.fb_l = 0.0;
+        self.fb_r = 0.0;
+    }
+
     /// Run one channel's all-pass cascade with feedback, returning the wet (all-pass)
     /// output. The dry/wet blend happens in `process`; the returned value is what
     /// feeds the regeneration loop.

@@ -58,6 +58,14 @@ impl CombFilter {
         self.damp1 = damp;
         self.damp2 = 1.0 - damp;
     }
+
+    /// Zero the recirculating audio (delay line + damping filter memory),
+    /// keeping the tuning (feedback/damping coefficients).
+    fn clear(&mut self) {
+        self.buf.fill(0.0);
+        self.pos = 0;
+        self.filterstore = 0.0;
+    }
 }
 
 // ── Allpass filter ───────────────────────────────────────────────────────────
@@ -82,6 +90,12 @@ impl AllpassFilter {
         self.buf[self.pos] = input + bufout * ALLPASS_FEEDBACK;
         self.pos = (self.pos + 1) % self.buf.len();
         output
+    }
+
+    /// Zero the recirculating audio, keeping nothing but the size.
+    fn clear(&mut self) {
+        self.buf.fill(0.0);
+        self.pos = 0;
     }
 }
 
@@ -117,6 +131,16 @@ impl Channel {
     fn set_params(&mut self, room: f32, damp: f32) {
         for c in &mut self.combs {
             c.set_params(room, damp);
+        }
+    }
+
+    /// Zero every recirculating delay line in the tank.
+    fn clear(&mut self) {
+        for c in &mut self.combs {
+            c.clear();
+        }
+        for ap in &mut self.allpasses {
+            ap.clear();
         }
     }
 }
@@ -165,6 +189,17 @@ impl Reverb {
         self.right.set_params(room_size, damp_scaled);
         self.last_room = room;
         self.last_damp = damp;
+    }
+
+    /// Cut the tail: zero the tanks and the predelay line. Keeps the tuning
+    /// (`last_room`/`last_damp`), the LFO phase (the sweep continues smoothly),
+    /// and the mix smoother — only recirculating audio is cleared. Called when
+    /// the chain order changes (a re-patch cuts tails; see `DspChain`).
+    pub(crate) fn clear_buffers(&mut self) {
+        self.left.clear();
+        self.right.clear();
+        self.pre_buf.fill(0.0);
+        self.pre_pos = 0;
     }
 
     /// `room` 0–1, `damp` 0–1, `mix` 0–1 (dry/wet). Stereo in, stereo out.

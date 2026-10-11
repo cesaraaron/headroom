@@ -2226,7 +2226,20 @@ impl DspChain {
     /// the control/UI thread.
     #[inline]
     fn snapshot_order(&mut self) -> [u8; CHAIN_LEN] {
-        if let Some(o) = self.params.try_chain_slots() {
+        // A re-patch cuts tails: when a newly published order differs, zero
+        // the feedback loops' recirculating audio (reverb tanks, delay lines,
+        // flanger combs, phaser all-passes) before it can ring into the new
+        // regime. Kept: amp sag (explicitly protected), LFO phases (sweeps
+        // continue smoothly), followers and biquads (they settle on their
+        // own). `None` = a writer mid-publish: hold the old order, clear
+        // nothing. Take chains inherit this through the shared code.
+        if let Some(o) = self.params.try_chain_slots()
+            && o != self.last_order
+        {
+            self.reverb.clear_buffers();
+            self.delay.clear_buffers();
+            self.flanger.clear_buffers();
+            self.phaser.clear_buffers();
             self.last_order = o;
         }
         self.last_order
@@ -2908,6 +2921,159 @@ mod tests {
                  more than a position change should"
             );
         }
+    }
+
+    /// Swap two stages' slots, preserving everything else.
+    fn swap_stages(mut order: [u8; CHAIN_LEN], a: ChainStage, b: ChainStage) -> [u8; CHAIN_LEN] {
+        let ia = order
+            .iter()
+            .position(|&x| x == a as u8)
+            .expect("stage present");
+        let ib = order
+            .iter()
+            .position(|&x| x == b as u8)
+            .expect("stage present");
+        order.swap(ia, ib);
+        order
+    }
+
+    /// Ring the reverb with a loud blip, then let it wash on silence.
+    fn ring_reverb(chain: &mut DspChain, sr: f32) {
+        for n in 0..(sr as usize / 10) {
+            let x = (2.0 * PI * 220.0 * n as f32 / sr).sin() * 0.8;
+            chain.process(x);
+        }
+    }
+
+    /// Mean square over `n` silent samples — the tail energy floor probe.
+    fn tail_energy(chain: &mut DspChain, n: usize) -> f64 {
+        let mut acc = 0.0f64;
+        for _ in 0..n {
+            let (l, r) = chain.process(0.0);
+            acc += ((l * l + r * r) * 0.5) as f64;
+        }
+        acc / n as f64
+    }
+
+    /// A reorder must cut a ringing feedback tail like a physical re-patch:
+    /// after swapping two post-amp rack stages, the wash collapses instead of
+    /// ringing on in its old regime.
+    #[test]
+    fn reordered_reverb_tail_does_not_survive() {
+        let sr = 48_000.0;
+        let rig = || {
+            let p = Arc::new(Params::new());
+            p.rev_enabled.store(true, Relaxed);
+            p.rev_room.store(0.9, Relaxed);
+            p.rev_mix.store(0.8, Relaxed);
+            p
+        };
+        let params = rig();
+        let mut chain = DspChain::new(sr, Arc::clone(&params));
+        ring_reverb(&mut chain, sr);
+        let ringing = tail_energy(&mut chain, 2400);
+        // Reorder two post-amp rack stages (legal everywhere: no refusal,
+        // no sanitize rewrite) and keep listening on silence.
+        let order = swap_stages(params.chain_slots(), ChainStage::Delay, ChainStage::Reverb);
+        params.set_chain_order(&order);
+        let cut = tail_energy(&mut chain, 2400);
+        // Control: the same tail left alone keeps washing.
+        let mut control = DspChain::new(sr, rig());
+        ring_reverb(&mut control, sr);
+        let _ = tail_energy(&mut control, 2400);
+        let control_tail = tail_energy(&mut control, 2400);
+        assert!(
+            ringing > control_tail * 0.5,
+            "tail never rang: {ringing:.2e} vs control {control_tail:.2e}"
+        );
+        assert!(
+            cut < control_tail * 0.1,
+            "reverb tail survived the reorder: {cut:.2e} vs ringing {control_tail:.2e}"
+        );
+    }
+
+    /// Amp sag is explicitly protected across model switches — and across
+    /// reorders too. A hot settled rig reordered must continue from its sag,
+    /// not jump toward a fresh chain's output.
+    #[test]
+    fn amp_sag_survives_reorder() {
+        let sr = 48_000.0;
+        let params = Arc::new(Params::new());
+        let mut chain = DspChain::new(sr, Arc::clone(&params));
+        for n in 0..(sr as usize * 2) {
+            let x = (2.0 * PI * 110.0 * n as f32 / sr).sin() * 0.8;
+            chain.process(x);
+        }
+        let x = 0.5;
+        let (pl, _) = chain.process(x);
+        // Control: a fresh chain at the same sample has no sag built up.
+        let mut fresh = DspChain::new(sr, Arc::clone(&params));
+        let (fl, _) = fresh.process(x);
+        assert!(
+            (pl - fl).abs() > 1e-4,
+            "sag never engaged: settled and fresh agree at {pl}"
+        );
+        // Reorder two post-amp rack stages; the next sample must continue the
+        // sagged regime, not jump toward the fresh one.
+        let order = swap_stages(params.chain_slots(), ChainStage::Delay, ChainStage::Reverb);
+        params.set_chain_order(&order);
+        let (ql, _) = chain.process(x);
+        assert!(
+            (ql - pl).abs() < (fl - pl).abs() * 0.5,
+            "reorder cleared the sag: {pl} -> {ql} (fresh would be {fl})"
+        );
+    }
+
+    /// Cutting the tail must not itself click: across the clearing block the
+    /// output stays finite and introduces no transient bigger than the tail it
+    /// cut.
+    #[test]
+    fn cleared_tail_does_not_click() {
+        let sr = 48_000.0;
+        let params = Arc::new(Params::new());
+        params.rev_enabled.store(true, Relaxed);
+        params.rev_room.store(0.7, Relaxed);
+        params.rev_mix.store(0.7, Relaxed);
+        let mut chain = DspChain::new(sr, Arc::clone(&params));
+        ring_reverb(&mut chain, sr);
+        let mut peak_before = 0.0f32;
+        for _ in 0..480 {
+            let (l, r) = chain.process(0.0);
+            peak_before = peak_before.max(l.abs()).max(r.abs());
+        }
+        let order = swap_stages(params.chain_slots(), ChainStage::Delay, ChainStage::Reverb);
+        params.set_chain_order(&order);
+        let mut worst_step = 0.0f32;
+        let mut prev = 0.0f32;
+        for _ in 0..480 {
+            let (l, r) = chain.process(0.0);
+            assert!(l.is_finite() && r.is_finite(), "non-finite after reorder");
+            worst_step = worst_step.max((l - prev).abs());
+            prev = l;
+        }
+        assert!(
+            worst_step <= peak_before.max(1e-6) * 2.0,
+            "reorder click: step {worst_step:.4} over tail peak {peak_before:.4}"
+        );
+    }
+
+    /// An authored mono-collapsing order applies unchanged through the funnel:
+    /// `sanitize_chain_order` deliberately does not rewrite stereo-before-amp,
+    /// so a preset that collapses its chain to mono keeps doing so.
+    #[test]
+    fn authored_mono_collapse_applies() {
+        let params = Arc::new(Params::new());
+        let mut v = ChainStage::default_order().to_vec();
+        let from = v
+            .iter()
+            .position(|&x| x == ChainStage::Reverb as u8)
+            .unwrap();
+        let id = v.remove(from);
+        let amp_at = v.iter().position(|&x| x == ChainStage::Amp as u8).unwrap();
+        v.insert(amp_at - 1, id);
+        let order: [u8; CHAIN_LEN] = v.try_into().unwrap();
+        params.set_chain_order(&order);
+        assert_eq!(params.chain_slots(), order);
     }
 
     /// `stereo_stages_follow_the_amp` is the boundary the UI refuses moves at.

@@ -56,6 +56,15 @@ impl Flanger {
         super::read_cubic(buf, write, delay)
     }
 
+    /// Cut the circulating comb: zero the delay lines. Keeps the LFO phase
+    /// (the sweep continues smoothly) and the mix smoother. Called on
+    /// chain-order change.
+    pub(crate) fn clear_buffers(&mut self) {
+        self.buf_l.fill(0.0);
+        self.buf_r.fill(0.0);
+        self.write = 0;
+    }
+
     /// `kind` < 0.5 = the generic stereo flanger; ≥ 0.5 = **Electric Mistress**
     /// (EHX): a *mono* pedal with a shorter sweep throw, and its signature
     /// **Filter Matrix** — with DEPTH at zero the sweep freezes into a static comb.

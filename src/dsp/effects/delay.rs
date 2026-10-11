@@ -97,6 +97,18 @@ impl Delay {
         (sl, sr)
     }
 
+    /// Cut the repeats: zero the delay lines and the feedback-path
+    /// oversampler histories. Keeps the tape transport phases (wow/flutter
+    /// keep drifting), the damping/band-limit biquads (they settle on their
+    /// own), and the mix smoother. Called on chain-order change.
+    pub(crate) fn clear_buffers(&mut self) {
+        self.buf_l.fill(0.0);
+        self.buf_r.fill(0.0);
+        self.write = 0;
+        self.sat_os_l.reset();
+        self.sat_os_r.reset();
+    }
+
     /// `time`, `feedback`, `mix` 0–1; `kind` 0 = digital ping-pong, 0.5 = Echorec
     /// drum echo, 1 = tape. The thresholds keep `0.0`/`1.0` exactly as before.
     #[inline]
