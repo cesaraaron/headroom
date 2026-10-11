@@ -25,6 +25,7 @@
 //! — bindings are edited in the config file.
 
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::Ordering::Relaxed;
 
 use midir::{Ignore, MidiInput};
@@ -63,26 +64,71 @@ pub enum MidiTarget {
 }
 
 impl MidiTarget {
-    /// Parse a config target name.
+    /// Every target, in bind-screen order.
+    pub const ALL: [Self; 15] = [
+        Self::WahPosition,
+        Self::WahMode,
+        Self::DelayTime,
+        Self::DelayFeedback,
+        Self::DelayMix,
+        Self::ReverbMix,
+        Self::BoostGain,
+        Self::CompSustain,
+        Self::TsDrive,
+        Self::DsDrive,
+        Self::ChorusMix,
+        Self::FlangerMix,
+        Self::PhaserMix,
+        Self::MasterWidth,
+        Self::MasterOutput,
+    ];
+
+    /// The config token for this target — the inverse of [`Self::parse`].
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::WahPosition => "wah_position",
+            Self::WahMode => "wah_mode",
+            Self::DelayTime => "delay_time",
+            Self::DelayFeedback => "delay_feedback",
+            Self::DelayMix => "delay_mix",
+            Self::ReverbMix => "reverb_mix",
+            Self::BoostGain => "boost_gain",
+            Self::CompSustain => "comp_sustain",
+            Self::TsDrive => "ts_drive",
+            Self::DsDrive => "ds_drive",
+            Self::ChorusMix => "chorus_mix",
+            Self::FlangerMix => "flanger_mix",
+            Self::PhaserMix => "phaser_mix",
+            Self::MasterWidth => "master_width",
+            Self::MasterOutput => "master_output",
+        }
+    }
+
+    /// A human label for the bind screen.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::WahPosition => "Wah position",
+            Self::WahMode => "Wah mode (manual)",
+            Self::DelayTime => "Delay time",
+            Self::DelayFeedback => "Delay feedback",
+            Self::DelayMix => "Delay mix",
+            Self::ReverbMix => "Reverb mix",
+            Self::BoostGain => "Clean boost",
+            Self::CompSustain => "Comp sustain",
+            Self::TsDrive => "TS-808 drive",
+            Self::DsDrive => "DS-1 drive",
+            Self::ChorusMix => "Chorus mix",
+            Self::FlangerMix => "Flanger mix",
+            Self::PhaserMix => "Phaser mix",
+            Self::MasterWidth => "Master width",
+            Self::MasterOutput => "Master output",
+        }
+    }
+
+    /// Parse a config target name. Derived from [`Self::name`] so the two can
+    /// never drift apart.
     fn parse(s: &str) -> Option<Self> {
-        Some(match s {
-            "wah_position" => Self::WahPosition,
-            "wah_mode" => Self::WahMode,
-            "delay_time" => Self::DelayTime,
-            "delay_feedback" => Self::DelayFeedback,
-            "delay_mix" => Self::DelayMix,
-            "reverb_mix" => Self::ReverbMix,
-            "boost_gain" => Self::BoostGain,
-            "comp_sustain" => Self::CompSustain,
-            "ts_drive" => Self::TsDrive,
-            "ds_drive" => Self::DsDrive,
-            "chorus_mix" => Self::ChorusMix,
-            "flanger_mix" => Self::FlangerMix,
-            "phaser_mix" => Self::PhaserMix,
-            "master_width" => Self::MasterWidth,
-            "master_output" => Self::MasterOutput,
-            _ => return None,
-        })
+        Self::ALL.into_iter().find(|t| t.name() == s)
     }
 
     /// Store the mapped value (0–1) into the target parameter.
@@ -111,6 +157,102 @@ impl MidiTarget {
             p.wah_mode.store(1.0, Relaxed);
         }
     }
+}
+
+/// Live MIDI binding state, shared between the `midir` callback and the UI.
+///
+/// The binding table sits behind a `Mutex` because the bind screen changes it at
+/// runtime; the callback only `try_lock`s it (never blocking the MIDI thread) and
+/// skips a CC if the UI happens to hold the lock — a dropped CC during a bind is
+/// inaudible.
+pub struct MidiState {
+    bindings: Mutex<Vec<(u8, MidiTarget)>>,
+    enabled: bool,
+    clock: bool,
+}
+
+impl MidiState {
+    /// Parse a config body. A missing file's default is applied by
+    /// [`default_midi_state`], not here, so a file the user has emptied stays
+    /// empty.
+    pub fn from_conf(text: &str) -> Self {
+        let (enabled, bindings, clock) = parse_midi_conf(text);
+        Self {
+            bindings: Mutex::new(bindings),
+            enabled,
+            clock,
+        }
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn clock(&self) -> bool {
+        self.clock
+    }
+
+    /// A snapshot of the table for the bind screen.
+    pub fn bindings(&self) -> Vec<(u8, MidiTarget)> {
+        self.lock().clone()
+    }
+
+    /// Bind `cc` to `target`: one CC per target and one target per CC, so any
+    /// previous owner on either side is dropped first.
+    pub fn bind(&self, cc: u8, target: MidiTarget) {
+        let mut b = self.lock();
+        b.retain(|&(c, t)| c != cc && t != target);
+        b.push((cc, target));
+        b.sort_by_key(|&(c, _)| c);
+    }
+
+    pub fn unbind(&self, target: MidiTarget) {
+        self.lock().retain(|&(_, t)| t != target);
+    }
+
+    /// Rewrite `~/.config/rusty-riff/midi.conf` from the current table, via a
+    /// temp file + rename so a crash mid-write cannot truncate it.
+    pub fn write_conf(&self) -> std::io::Result<()> {
+        let Some(path) = midi_config_path() else {
+            return Ok(());
+        };
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let tmp = path.with_extension("conf.tmp");
+        std::fs::write(&tmp, render_conf(self.enabled, self.clock, &self.lock()))?;
+        std::fs::rename(&tmp, &path)
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Vec<(u8, MidiTarget)>> {
+        self.bindings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+/// The default when `midi.conf` is missing: enabled, wah treadle on CC 11.
+fn default_midi_state() -> MidiState {
+    MidiState {
+        bindings: Mutex::new(vec![(DEFAULT_CC, MidiTarget::WahPosition)]),
+        enabled: true,
+        clock: false,
+    }
+}
+
+/// Serialise `midi.conf`: `enabled`, `clock`, then one `<cc> = <target>` line per
+/// binding (sorted by CC for a stable file).
+fn render_conf(enabled: bool, clock: bool, bindings: &[(u8, MidiTarget)]) -> String {
+    let mut out = format!("enabled = {enabled}\nclock = {clock}\n");
+    for &(cc, target) in bindings {
+        out.push_str(&format!("{cc} = {}\n", target.name()));
+    }
+    out
+}
+
+/// `~/.config/rusty-riff/midi.conf`.
+fn midi_config_path() -> Option<std::path::PathBuf> {
+    dirs::home_dir().map(|h| h.join(".config").join("rusty-riff").join("midi.conf"))
 }
 
 /// A MIDI **system real-time** message we act on. Real-time bytes are single-byte
@@ -284,28 +426,29 @@ fn parse_midi_conf(text: &str) -> (bool, Vec<(u8, MidiTarget)>, bool) {
             }
         }
     }
-    if bindings.is_empty() {
-        bindings.push((DEFAULT_CC, MidiTarget::WahPosition));
-    }
     (enabled, bindings, clock)
 }
 
-fn midi_config() -> (bool, Vec<(u8, MidiTarget)>, bool) {
-    let text = dirs::home_dir()
-        .map(|h| h.join(".config").join("rusty-riff").join("midi.conf"))
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .unwrap_or_default();
-    parse_midi_conf(&text)
+/// Load `midi.conf`. A **missing** file gets the legacy default (enabled, wah on
+/// CC 11); a file that exists but lists nothing stays empty, so a table the bind
+/// screen has emptied is not silently re-seeded.
+fn midi_config() -> MidiState {
+    match midi_config_path().and_then(|p| std::fs::read_to_string(p).ok()) {
+        Some(text) => MidiState::from_conf(&text),
+        None => default_midi_state(),
+    }
 }
 
 /// Connect to the first available MIDI input and drive the bound targets. Returns
 /// `None` (silently) if MIDI is disabled, no input exists, or the connection
 /// fails — the app must run fine without a controller.
 pub fn start(params: Arc<Params>) -> Option<MidiHandle> {
-    let (enabled, bindings, clock) = midi_config();
-    if !enabled || bindings.is_empty() {
+    let state = midi_config();
+    if !state.enabled() || state.bindings().is_empty() {
         return None;
     }
+    let bindings = state.bindings();
+    let clock = state.clock();
 
     let mut input = MidiInput::new("rusty-riff").ok()?;
     input.ignore(Ignore::None);
@@ -439,14 +582,72 @@ mod tests {
 
     #[test]
     fn midi_conf_defaults_to_wah_on_cc11() {
-        assert_eq!(
-            parse_midi_conf(""),
-            (true, vec![(11, MidiTarget::WahPosition)], false)
-        );
+        // A *missing* file yields the legacy default; the parser itself no longer
+        // seeds, so a file that exists but lists nothing stays empty (see
+        // `an_emptied_table_is_not_reseeded`).
+        let d = default_midi_state();
+        assert!(d.enabled());
+        assert!(!d.clock());
+        assert_eq!(d.bindings(), vec![(11, MidiTarget::WahPosition)]);
+        assert_eq!(parse_midi_conf(""), (true, Vec::new(), false));
         assert!(
             !parse_midi_conf("enabled = false\n").0,
             "enabled flag ignored"
         );
+    }
+
+    #[test]
+    fn target_name_round_trips() {
+        for t in MidiTarget::ALL {
+            assert_eq!(MidiTarget::parse(t.name()), Some(t), "{}", t.name());
+            assert!(!t.label().is_empty(), "{} has no label", t.name());
+        }
+        assert_eq!(MidiTarget::ALL.len(), 15);
+    }
+
+    #[test]
+    fn bind_clears_colliding_cc_and_target() {
+        let s = MidiState::from_conf("");
+        s.bind(20, MidiTarget::DelayMix);
+        assert_eq!(s.bindings(), vec![(20, MidiTarget::DelayMix)]);
+        // Re-binding the same CC to another target drops the old target.
+        s.bind(20, MidiTarget::ReverbMix);
+        assert_eq!(s.bindings(), vec![(20, MidiTarget::ReverbMix)]);
+        // Binding the same target to another CC drops the old CC.
+        s.bind(21, MidiTarget::ReverbMix);
+        assert_eq!(s.bindings(), vec![(21, MidiTarget::ReverbMix)]);
+    }
+
+    #[test]
+    fn unbind_removes_only_that_target() {
+        let s = MidiState::from_conf("11 = wah_position\n20 = delay_mix\n");
+        s.unbind(MidiTarget::WahPosition);
+        assert_eq!(s.bindings(), vec![(20, MidiTarget::DelayMix)]);
+        s.unbind(MidiTarget::TsDrive); // not bound: no-op
+        assert_eq!(s.bindings(), vec![(20, MidiTarget::DelayMix)]);
+    }
+
+    #[test]
+    fn conf_round_trips() {
+        let s = MidiState::from_conf(
+            "enabled = false\nclock = true\n11 = wah_position\n20 = delay_mix\n",
+        );
+        assert!(!s.enabled());
+        assert!(s.clock());
+        let text = render_conf(s.enabled(), s.clock(), &s.bindings());
+        let back = MidiState::from_conf(&text);
+        assert_eq!(back.enabled(), s.enabled());
+        assert_eq!(back.clock(), s.clock());
+        assert_eq!(back.bindings(), s.bindings());
+    }
+
+    #[test]
+    fn an_emptied_table_is_not_reseeded() {
+        // The screen rewrites the file when the user unbinds everything; coming
+        // back up it must stay unbound rather than resurrect CC 11 → wah.
+        let text = render_conf(true, false, &[]);
+        assert!(!text.trim().is_empty(), "the writer must emit a real file");
+        assert!(MidiState::from_conf(&text).bindings().is_empty());
     }
 
     #[test]
