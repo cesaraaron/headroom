@@ -1464,6 +1464,11 @@ pub struct Levels {
     /// 0–1 "the output ceiling is (or recently was) engaging". Decays rather
     /// than latches, so the indicator fades instead of sticking.
     pub limiting: Arc<AtomicF32>,
+    /// Stereo-linked gain reduction the **live** master limiter has applied
+    /// since the last read, in dB (≤ 0.0; 0.0 when open). The meter row
+    /// follows the live path — take playback moves only the peak tick — so
+    /// the take bus is intentionally not included here.
+    pub gr_db: Arc<AtomicF32>,
 }
 
 impl Default for Levels {
@@ -1479,6 +1484,7 @@ impl Levels {
             output: Arc::new(AtomicF32::new(0.0)),
             output_peak: Arc::new(AtomicF32::new(0.0)),
             limiting: Arc::new(AtomicF32::new(0.0)),
+            gr_db: Arc::new(AtomicF32::new(0.0)),
         }
     }
 }
@@ -2245,6 +2251,13 @@ impl DspChain {
             &mut self.master_dc,
             &mut self.master_limiter,
         )
+    }
+
+    /// Gain reduction the live master limiter has applied since the last take,
+    /// in dB — powers the OUT-row readout. The take bus is intentionally not
+    /// included (see [`Levels::gr_db`]).
+    pub fn take_gr_db(&mut self) -> f32 {
+        self.master_limiter.take_gr_db()
     }
 
     /// Process a block of mono input samples into stereo output buffers.

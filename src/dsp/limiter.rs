@@ -16,6 +16,7 @@
 //! of the two), so a hard-panned peak cannot shift the stereo image — which the
 //! old per-channel clip did.
 
+use crate::dsp::effects::lin_to_db;
 use crate::dsp::oversample::Oversampler4;
 
 /// Lookahead window, milliseconds. Long enough to open the gain before a
@@ -105,6 +106,9 @@ pub struct Limiter {
     /// are turned down instead of base-rate-clipped. Preallocated here.
     corner_l: Oversampler4,
     corner_r: Oversampler4,
+    /// Minimum applied `gain` since the last [`take_gr_db`](Self::take_gr_db).
+    /// Plain field on the audio thread; the take resets it.
+    min_gain: f32,
 }
 
 impl Limiter {
@@ -144,6 +148,7 @@ impl Limiter {
             clamp_hits: 0,
             corner_l: Oversampler4::new(sr),
             corner_r: Oversampler4::new(sr),
+            min_gain: 1.0,
         }
     }
 
@@ -152,6 +157,17 @@ impl Limiter {
     /// exactly the corner's delay).
     pub fn latency(&self) -> usize {
         self.delay_l.len() + OS_CORNER_DELAY
+    }
+
+    /// Gain reduction applied since the last take, in dB (≤ 0.0; exactly 0.0
+    /// when the limiter never engaged — `lin_to_db` floors tiny gains instead
+    /// of going `-inf`, so this is always finite). Resets the latch: call once
+    /// per block/callback. Audio-thread-safe by construction (plain field,
+    /// same thread that runs `process`).
+    pub fn take_gr_db(&mut self) -> f32 {
+        let gr = lin_to_db(self.min_gain);
+        self.min_gain = 1.0;
+        gr
     }
 
     /// Clear the lookahead and open the gain. Used when the limiter is
@@ -166,6 +182,7 @@ impl Limiter {
         self.det_r.reset();
         self.corner_l.reset();
         self.corner_r.reset();
+        self.min_gain = 1.0;
     }
 
     #[inline]
@@ -204,6 +221,9 @@ impl Limiter {
             self.release
         };
         self.gain += (target - self.gain) * coeff;
+        if self.gain < self.min_gain {
+            self.min_gain = self.gain;
+        }
 
         // Oversampled corner: clamp the gained signal per high-rate sample and
         // decimate back, so an over between base-rate samples is turned down
@@ -427,5 +447,68 @@ mod tests {
     fn limiter_latency_totals_unchanged() {
         assert_eq!(Limiter::new(48_000.0).latency(), 72);
         assert_eq!(Limiter::new(44_100.0).latency(), 66);
+    }
+
+    /// Silence must read exactly 0.0 dB — finite, never negative, never NaN.
+    /// The gain never leaves 1.0, so the block minimum is exactly 1.0.
+    #[test]
+    fn gr_readout_is_zero_on_silence() {
+        let mut lim = Limiter::new(48_000.0);
+        for _ in 0..48_000 {
+            lim.process(0.0, 0.0);
+        }
+        let gr = lim.take_gr_db();
+        assert!(gr.is_finite(), "GR readout is not finite: {gr}");
+        assert_eq!(gr, 0.0, "silent GR must read 0.0 dB, got {gr}");
+    }
+
+    /// The readout must equal the actual applied gain: a settled hot tone
+    /// converges to `CEILING·MARGIN/env`, and a hard-panned peak reduces both
+    /// channels identically (stereo-linked — one value, no image shift).
+    #[test]
+    fn gr_readout_matches_applied_gain() {
+        let sr = 48_000.0;
+        let drive = |p: &mut Limiter, l: f32, r: f32| {
+            for n in 0..(sr as usize * 2) {
+                let x = (2.0 * std::f32::consts::PI * 220.0 * n as f32 / sr).sin() * 0.8;
+                p.process(x * l, x * r);
+            }
+        };
+        let mut both = Limiter::new(sr);
+        drive(&mut both, 1.0, 1.0);
+        let gr = both.take_gr_db();
+        // env ≈ 0.8·MAKEUP; gain converges to CEILING·MARGIN/env.
+        let expect = 20.0 * (CEILING * MARGIN / (0.8 * MAKEUP)).log10();
+        assert!(
+            (gr - expect).abs() < 0.05,
+            "GR {gr:.3} dB != applied gain {expect:.3} dB"
+        );
+        // Panned either way: identical reduction, silent side stays silent.
+        for (l, r) in [(1.0, 0.0), (0.0, 1.0)] {
+            let mut lim = Limiter::new(sr);
+            drive(&mut lim, l, r);
+            let gr_pan = lim.take_gr_db();
+            assert!(
+                (gr_pan - expect).abs() < 0.05,
+                "panned GR {gr_pan:.3} dB != {expect:.3} dB"
+            );
+        }
+    }
+
+    /// Reducing, then `reset()`, must reopen the readout: the latched minimum
+    /// belongs to the old regime, not the new silence.
+    #[test]
+    fn reset_reopens_gain_and_readout() {
+        let sr = 48_000.0;
+        let mut lim = Limiter::new(sr);
+        for _ in 0..1000 {
+            lim.process(1.0, 1.0);
+        }
+        assert!(lim.take_gr_db() < -0.5, "hot signal did not reduce");
+        lim.reset();
+        for _ in 0..100 {
+            lim.process(0.0, 0.0);
+        }
+        assert_eq!(lim.take_gr_db(), 0.0, "reset did not reopen the readout");
     }
 }

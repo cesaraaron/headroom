@@ -1002,6 +1002,9 @@ impl InputState {
         self.levels.input.store(self.in_env, Relaxed);
         self.levels.output.store(self.out_env, Relaxed);
         self.levels.output_peak.store(self.out_peak.peak(), Relaxed);
+        // Live-master gain reduction since the last callback (take resets the
+        // latch, so this covers exactly this callback's chunks).
+        self.levels.gr_db.store(self.chain.take_gr_db(), Relaxed);
         // Fade rather than latch, so the indicator releases on its own. The
         // per-sample loop sets it to 1.0 whenever the ceiling engaged during
         // this callback, so this only ever decays.

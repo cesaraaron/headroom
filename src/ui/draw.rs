@@ -310,6 +310,7 @@ fn render_header(
         levels.output.load(Relaxed),
         Some(levels.output_peak.load(Relaxed)),
         Some(levels.limiting.load(Relaxed)),
+        Some(levels.gr_db.load(Relaxed)),
     );
 }
 
@@ -417,7 +418,7 @@ fn in_label(cal: &InputCalibration) -> String {
 /// so this is the transparency stand-in) and the label is un-bolded. Same fill
 /// math and green/amber/red thresholds as always — just quieter.
 fn render_vu_row(f: &mut Frame, area: Rect, label: &str, level: f32) {
-    render_vu_row_detail(f, area, label, level, None, None);
+    render_vu_row_detail(f, area, label, level, None, None, None);
 }
 
 /// As [`render_vu_row`], plus two output-only overlays: a **true peak** tick
@@ -436,15 +437,18 @@ fn render_vu_row_detail(
     level: f32,
     peak: Option<f32>,
     limiting: Option<f32>,
+    gr_db: Option<f32>,
 ) {
     /// Dim factor for meter chrome: hush the bars without losing the hues.
     const METER_DIM: f32 = 0.45;
     let db = amp_to_db(level);
     let fill = ((db + 60.0) / 60.0).clamp(0.0, 1.0) as f64;
 
-    // Reserve a 4-cell slot for the `LIM` badge next to the OUT bar.
+    // Reserve a 4-cell slot for the `LIM` badge next to the OUT bar, plus a
+    // fixed-width slot for the GR readout beside it.
     let badge_w: usize = if limiting.is_some() { 4 } else { 0 };
-    let bar_width = (area.width as usize).saturating_sub(label.len() + 2 + 10 + badge_w);
+    let gr_w: usize = if gr_db.is_some() { 6 } else { 0 };
+    let bar_width = (area.width as usize).saturating_sub(label.len() + 2 + 10 + badge_w + gr_w);
     let filled = (fill * bar_width as f64) as usize;
 
     let green_end = (bar_width as f64 * 0.72) as usize;
@@ -507,6 +511,17 @@ fn render_vu_row_detail(
             shade(DIM, METER_DIM)
         });
         spans.push(Span::styled("LIM", style));
+    }
+    if let Some(db) = gr_db {
+        // Stereo-linked gain reduction in dB, fixed width (`0.0` when the
+        // limiter is open). Warns whenever it reads anything at all — the
+        // badge already carries the hot/cold scale.
+        let style = Style::default().fg(if db < -0.05 {
+            WARN
+        } else {
+            shade(DIM, METER_DIM)
+        });
+        spans.push(Span::styled(format!("{db:>5.1}"), style));
     }
     f.render_widget(Paragraph::new(Line::from(spans)), area);
 }
