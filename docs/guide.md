@@ -137,7 +137,7 @@ A preset is a snapshot of the whole rig. Press `P` to open the browser:
 | Key | Action |
 | --- | --- |
 | `↑` / `↓`, `Enter` | Navigate / apply (audio stays uninterrupted) |
-| `/` | Search: type to filter by name, description, or tag (`Backspace`; `Esc` clears) |
+| `/` | Search: type to filter by name (`Backspace`; `Esc` clears) |
 | `S` | Save the current rig as a preset |
 | `E` / `I` | Export / import a preset file |
 | `F` | Favorite the selected preset |

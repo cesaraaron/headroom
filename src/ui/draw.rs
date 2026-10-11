@@ -1674,7 +1674,7 @@ pub(super) fn render_help_modal(f: &mut Frame) {
         head("Preset browser"),
         row(
             "  /",
-            "  search: type to filter name / description (Backspace; Esc clears)",
+            "  search: type to filter by name (Backspace; Esc clears)",
         ),
         row("  ↑/↓  Enter", "  navigate / apply (audio uninterrupted)"),
         row("  S / E / I", "  save / export / import"),

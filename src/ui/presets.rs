@@ -190,15 +190,11 @@ pub(super) fn render_preset_modal(
     );
 }
 
-/// Whether `p` matches `filter` (case-insensitively) over its name or
-/// description. An empty filter matches everything.
+/// Whether `p` matches `filter` (case-insensitively) over its **name** only. An
+/// empty filter matches everything. The description and tags are deliberately not
+/// searched, so the filter behaves exactly like the session browser's.
 fn preset_matches(p: &Preset, filter: &str) -> bool {
-    let needle = filter.to_lowercase();
-    p.name.to_lowercase().contains(&needle)
-        || p.description
-            .as_deref()
-            .is_some_and(|d| d.to_lowercase().contains(&needle))
-        || p.tags.iter().any(|t| t.to_lowercase().contains(&needle))
+    p.name.to_lowercase().contains(&filter.to_lowercase())
 }
 
 /// Indices into `presets` visible under `filter`, in list order.
@@ -502,21 +498,23 @@ mod tests {
     use super::*;
     use crate::dsp::Params;
 
-    /// The browser filter must match a preset's name, description, or tags,
-    /// case-insensitively.
+    /// The browser filter matches a preset's **name** only, case-insensitively.
     #[test]
-    fn filter_matches_name_description_and_tags() {
+    fn filter_matches_the_name_only() {
         let params = Params::new();
         let mut p =
             Preset::from_params("My Lead".to_string(), Some("singing".to_string()), &params);
         p.tags = vec!["blues".to_string(), "gibson".to_string()];
         assert!(preset_matches(&p, "lead"), "name not matched");
-        assert!(preset_matches(&p, "singing"), "description not matched");
-        assert!(preset_matches(&p, "BLUES"), "tag not matched (case)");
-        assert!(preset_matches(&p, "gib"), "tag substring not matched");
+        assert!(preset_matches(&p, "LEAD"), "name not matched (case)");
+        assert!(preset_matches(&p, "y le"), "name substring not matched");
+        assert!(
+            !preset_matches(&p, "singing"),
+            "the description must not match"
+        );
+        assert!(!preset_matches(&p, "blues"), "tags must not match");
         assert!(!preset_matches(&p, "strat"));
-        assert_eq!(filter_indices(std::slice::from_ref(&p), "blues"), vec![0]);
-        assert!(filter_indices(std::slice::from_ref(&p), "zzz").is_empty());
         assert_eq!(filter_indices(std::slice::from_ref(&p), ""), vec![0]);
+        assert!(filter_indices(std::slice::from_ref(&p), "blues").is_empty());
     }
 }

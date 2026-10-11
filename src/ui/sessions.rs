@@ -129,7 +129,9 @@ impl SessionBrowser {
         self.cursor = self.cursor.min(n.saturating_sub(1));
     }
 
-    /// Indices into `rows` visible under the active filter, in list order.
+    /// Indices into `rows` visible under the active filter, in list order. The
+    /// filter matches the row's **name** only, so it behaves exactly like the
+    /// preset browser's.
     fn visible_rows(&self) -> Vec<usize> {
         if self.filter.is_empty() {
             return (0..self.rows.len()).collect();
@@ -138,10 +140,7 @@ impl SessionBrowser {
         self.rows
             .iter()
             .enumerate()
-            .filter(|(_, r)| {
-                r.label.to_lowercase().contains(&needle)
-                    || r.detail.to_lowercase().contains(&needle)
-            })
+            .filter(|(_, r)| r.label.to_lowercase().contains(&needle))
             .map(|(i, _)| i)
             .collect()
     }
@@ -510,8 +509,10 @@ mod tests {
         }
     }
 
+    /// The filter matches a session's **name** only; the detail line (track
+    /// count etc.) is not searched.
     #[test]
-    fn session_filter_matches_label_and_detail() {
+    fn session_filter_matches_the_name_only() {
         let mut b = SessionBrowser::new();
         b.rows = vec![row("Rock", "3 tracks"), row("Jazz", "5 tracks")];
         assert_eq!(b.visible_rows(), vec![0, 1]);
@@ -521,11 +522,21 @@ mod tests {
         assert_eq!(b.selected_row().map(|r| r.label.as_str()), Some("Jazz"));
 
         b.filter = "3 tracks".into();
-        assert_eq!(b.visible_rows(), vec![0]);
+        assert!(b.visible_rows().is_empty(), "the detail must not match");
 
         b.filter = "zzz".into();
         assert!(b.visible_rows().is_empty());
         assert!(b.selected_row().is_none());
+    }
+
+    /// `s` saves the **current** session, whatever row the cursor is on.
+    #[test]
+    fn save_targets_the_current_session_not_the_cursor_row() {
+        let mut b = SessionBrowser::new();
+        b.rows = vec![row("Rock", "3 tracks"), row("Jazz", "5 tracks")];
+        b.cursor = 1;
+        assert!(matches!(b.handle_key(KeyCode::Char('s')), Action::Save));
+        assert!(matches!(b.handle_key(KeyCode::Char('S')), Action::Save));
     }
 
     fn take(dir: &str, stem: &str) -> RecoveryTake {

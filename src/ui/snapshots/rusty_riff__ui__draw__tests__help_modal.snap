@@ -41,7 +41,7 @@ expression: text
                                       ║Panels                                                                                     ║                                       
                                       ║  B  import a track (MP3/WAV/FLAC); / search · L library                                   ║                                       
                                       ║Preset browser                                                                             ║                                       
-                                      ║  /  search: type to filter name / description (Backspace; Esc clears)                     ║                                       
+                                      ║  /  search: type to filter by name (Backspace; Esc clears)                                ║                                       
                                       ║  ↑/↓  Enter  navigate / apply (audio uninterrupted)                                       ║                                       
                                       ║  S / E / I  save / export / import                                                        ║                                       
                                       ║  F  favorite the selected preset                                                          ║                                       
