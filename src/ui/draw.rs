@@ -122,6 +122,7 @@ pub(super) fn draw(
                 focus == Some(PRACTICE_TILE),
                 blink,
                 recording,
+                &mut hits,
             );
         }
         i += 1;

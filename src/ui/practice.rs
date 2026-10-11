@@ -40,6 +40,10 @@ use crate::recording::{
 };
 use crate::session::{AssetRef, Session, TrackId, TrackKind, TrackLifecycle};
 
+use super::hit::{HitMap, HitTarget, TimelineAxis};
+#[cfg(test)]
+use super::hit::hit_test;
+
 /// Default track-row height, in terminal lines. Tall enough to read the
 /// waveform envelope; `Tab` zooms a row beyond this.
 const ROW_HEIGHT: usize = 3;
@@ -769,6 +773,22 @@ impl PracticeUi {
         // still let the playhead move so the first import lands where you put it.
         let next = (cur + delta * i64::from(direction)).max(0);
         practice.request_seek(next as usize);
+    }
+
+    /// Click-to-select: put the pane cursor on the given row, exactly as `↑`/`↓`
+    /// landing on it would. A stale id (the track was removed) is ignored.
+    pub(super) fn select_track(&mut self, id: TrackId) {
+        if self.session.track(id).is_some() {
+            self.selection = Selection::Track(id);
+            self.session.select(id);
+        }
+    }
+
+    /// Click-to-seek: latch the playhead to an absolute frame, the same path the
+    /// `←`/`→` keys use, clamped into the visible span.
+    pub(super) fn seek_frame(&self, frame: usize, practice: &Practice) {
+        let span = self.span_frames(practice);
+        practice.request_seek(frame.min(span.saturating_sub(1)));
     }
 
     pub(super) fn cycle_seek_step(&mut self, direction: i32) {
@@ -1731,6 +1751,7 @@ impl PracticeUi {
 
     /// Render the timeline pane. `focused` is true while the pane owns focus;
     /// `recording` drives the transport REC lamp.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn render(
         &self,
         f: &mut Frame,
@@ -1739,6 +1760,7 @@ impl PracticeUi {
         focused: bool,
         blink: bool,
         recording: bool,
+        hits: &mut HitMap,
     ) {
         if area.height < 2 || area.width < 4 {
             return;
@@ -1787,9 +1809,35 @@ impl PracticeUi {
         self.render_transport(f, rows[0], practice, blink, recording);
         if show_ruler {
             self.render_ruler(f, rows[1], practice);
+            // Clicking the ruler seeks, using the same column→frame axis as the rows.
+            let axis = self.seek_axis(rows[1], practice);
+            if axis.wave_w > 0 && rows[1].height > 0 {
+                hits.push((
+                    Rect {
+                        x: axis.x0,
+                        y: rows[1].y,
+                        width: axis.wave_w as u16,
+                        height: 1,
+                    },
+                    HitTarget::TimelineSeek(axis),
+                ));
+            }
         }
-        self.render_tracks(f, tracks_row, practice, focused);
+        self.render_tracks(f, tracks_row, practice, focused, hits);
         self.render_hint(f, hint_row, focused);
+    }
+
+    /// The column↔frame mapping of the pane's waveform region, for click-to-seek.
+    /// The ruler and every track row share one axis: `view` is pane-wide, and the
+    /// waveform always begins after the fixed left [`GUTTER`].
+    fn seek_axis(&self, area: Rect, practice: &Practice) -> TimelineAxis {
+        let (start, len) = self.view(practice);
+        TimelineAxis {
+            x0: area.x + GUTTER as u16,
+            start,
+            len,
+            wave_w: (area.width as usize).saturating_sub(GUTTER),
+        }
     }
 
     /// The time axis under the transport: `m:ss` tick labels at a spacing that
@@ -1967,7 +2015,14 @@ impl PracticeUi {
         f.render_widget(Paragraph::new(Line::from(transport)), area);
     }
 
-    fn render_tracks(&self, f: &mut Frame, area: Rect, practice: &Practice, focused: bool) {
+    fn render_tracks(
+        &self,
+        f: &mut Frame,
+        area: Rect,
+        practice: &Practice,
+        focused: bool,
+        hits: &mut HitMap,
+    ) {
         let tracks = self.session.tracks();
         if tracks.is_empty() {
             // Even with nothing to draw, keep the gutter divider and the
@@ -2022,6 +2077,19 @@ impl PracticeUi {
                 };
                 f.render_widget(Paragraph::new(hint).alignment(Alignment::Center), mid);
             }
+            // Even an empty pane is clickable: a click in the waveform seeks.
+            let axis = self.seek_axis(area, practice);
+            if axis.wave_w > 0 && area.height > 0 {
+                hits.push((
+                    Rect {
+                        x: axis.x0,
+                        y: area.y,
+                        width: axis.wave_w as u16,
+                        height: area.height,
+                    },
+                    HitTarget::TimelineSeek(axis),
+                ));
+            }
             return;
         }
         let selected_idx = match self.selection {
@@ -2061,6 +2129,7 @@ impl PracticeUi {
         };
 
         let live_guard = self.live_peaks.as_ref().and_then(|m| m.try_lock().ok());
+        let axis = self.seek_axis(area, practice);
         let mut y = area.y;
         for (i, row_h) in rows {
             let row_h = row_h.min(area.bottom().saturating_sub(y) as usize);
@@ -2079,6 +2148,20 @@ impl PracticeUi {
                 width: area.width,
                 height: row_h as u16,
             };
+            // The whole row selects the track; the waveform region is recorded
+            // after it so a click on the audio seeks instead.
+            hits.push((rect, HitTarget::TimelineTrack(track.id)));
+            if axis.wave_w > 0 {
+                hits.push((
+                    Rect {
+                        x: axis.x0,
+                        y,
+                        width: axis.wave_w as u16,
+                        height: row_h as u16,
+                    },
+                    HitTarget::TimelineSeek(axis),
+                ));
+            }
             let lines = self.track_lines(
                 track,
                 focused_row,
@@ -3454,6 +3537,92 @@ mod tests {
         assert_eq!(ui.row_zoom, RowZoom::Normal);
     }
 
+    #[test]
+    fn select_track_selects_the_row() {
+        let mut ui = PracticeUi::new();
+        for id in 1..=2u64 {
+            ui.session.push(
+                id,
+                format!("t{id}"),
+                TrackKind::Import,
+                None,
+                0,
+                48_000,
+                TrackLifecycle::Ready,
+            );
+        }
+        assert_eq!(ui.session.selected(), Some(1));
+        ui.select_track(2);
+        assert_eq!(ui.session.selected(), Some(2));
+        assert_eq!(ui.selection, Selection::Track(2));
+        // Selecting an id that no longer exists is a no-op.
+        ui.select_track(99);
+        assert_eq!(ui.session.selected(), Some(2));
+    }
+
+    #[test]
+    fn seek_frame_moves_the_playhead() {
+        let ui = PracticeUi::new();
+        let practice = Practice::new();
+        // The same latch the ←/→ keys drive: an absolute seek, not a step.
+        ui.seek_frame(9_600, &practice);
+        assert_eq!(practice.snapshot().seek, Some(9_600));
+    }
+
+    #[test]
+    fn timeline_records_a_seek_axis() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut ui = PracticeUi::new();
+        let practice = Practice::new();
+        ui.session.push(
+            1,
+            "a".into(),
+            TrackKind::Import,
+            None,
+            0,
+            48_000,
+            TrackLifecycle::Ready,
+        );
+        ui.session.track_mut(1).expect("track").peaks = vec![(-0.5, 0.5); 64];
+
+        let mut term = Terminal::new(TestBackend::new(90, 12)).expect("test backend");
+        let mut hits: HitMap = HitMap::new();
+        term.draw(|f| {
+            let area = f.area();
+            ui.render(f, area, &practice, true, false, false, &mut hits);
+        })
+        .expect("draw");
+
+        // The waveform region carries the seek axis; its left column is the
+        // plot's left edge and maps to the start of the visible window.
+        let (seek_rect, axis) = hits
+            .iter()
+            .find_map(|(r, t)| match t {
+                HitTarget::TimelineSeek(ax) => Some((*r, *ax)),
+                _ => None,
+            })
+            .expect("a TimelineSeek region");
+        assert_eq!(axis.x0, seek_rect.x);
+        let (view_start, _) = ui.view(&practice);
+        assert_eq!(axis.frame_at(axis.x0), view_start);
+
+        // Inside a row, the plot wins over the row rect; the gutter selects the row.
+        let row = hits
+            .iter()
+            .find_map(|(r, t)| matches!(t, HitTarget::TimelineTrack(1)).then_some(*r))
+            .expect("a TimelineTrack(1) region");
+        assert!(matches!(
+            hit_test(&hits, seek_rect.x + 1, seek_rect.y),
+            Some(HitTarget::TimelineSeek(_))
+        ));
+        assert_eq!(
+            hit_test(&hits, row.x, row.y),
+            Some(&HitTarget::TimelineTrack(1))
+        );
+    }
+
     fn screen_text(term: &ratatui::Terminal<ratatui::backend::TestBackend>) -> String {
         let buf = term.backend().buffer();
         let mut out = String::new();
@@ -3496,7 +3665,7 @@ mod tests {
             ui.row_zoom = zoom;
             term.draw(|f| {
                 let area = f.area();
-                ui.render(f, area, &practice, true, false, false);
+                ui.render(f, area, &practice, true, false, false, &mut HitMap::new());
             })
             .expect("draw");
             let text = screen_text(&term);
@@ -3536,7 +3705,7 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(90, 12)).expect("test backend");
         term.draw(|f| {
             let area = f.area();
-            ui.render(f, area, &practice, true, false, false);
+            ui.render(f, area, &practice, true, false, false, &mut HitMap::new());
         })
         .expect("draw");
         let text = screen_text(&term);
@@ -3678,7 +3847,7 @@ mod tests {
         let render = |ui: &PracticeUi, term: &mut Terminal<TestBackend>| {
             term.draw(|f| {
                 let area = f.area();
-                ui.render(f, area, &practice, true, false, false);
+                ui.render(f, area, &practice, true, false, false, &mut HitMap::new());
             })
             .expect("draw");
             screen_text(term)
@@ -3793,7 +3962,7 @@ mod tests {
         let render = |ui: &PracticeUi, term: &mut Terminal<TestBackend>| {
             term.draw(|f| {
                 let area = f.area();
-                ui.render(f, area, &practice, true, false, false);
+                ui.render(f, area, &practice, true, false, false, &mut HitMap::new());
             })
             .expect("draw");
             screen_text(term)
@@ -3895,7 +4064,7 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(90, 16)).expect("test backend");
         term.draw(|f| {
             let area = f.area();
-            ui.render(f, area, &practice, true, false, false);
+            ui.render(f, area, &practice, true, false, false, &mut HitMap::new());
         })
         .expect("draw");
         let text = screen_text(&term);
