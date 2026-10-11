@@ -435,11 +435,14 @@ mod tests {
     /// compensated by shortening the lookahead line, so `latency()` reports
     /// the same totals as before (72 @ 48 kHz, 66 @ 44.1 kHz) and export
     /// onset accounting needs no change. Characterization: passes before and
-    /// after; guards the shrink decision.
+    /// after; guards the shrink decision. Four points pin the scaling
+    /// (lookahead rounds per rate, corner delay is rate-independent).
     #[test]
     fn limiter_latency_totals_unchanged() {
         assert_eq!(Limiter::new(48_000.0).latency(), 72);
         assert_eq!(Limiter::new(44_100.0).latency(), 66);
+        assert_eq!(Limiter::new(32_000.0).latency(), 48);
+        assert_eq!(Limiter::new(96_000.0).latency(), 144);
     }
 
     /// Silence must read exactly 0.0 dB — finite, never negative, never NaN.
@@ -503,5 +506,89 @@ mod tests {
             lim.process(0.0, 0.0);
         }
         assert_eq!(lim.take_gr_db(), 0.0, "reset did not reopen the readout");
+    }
+
+    /// Near-ideal 4× reconstructor for TRUE-peak measurement (test apparatus
+    /// only): 65-tap windowed sinc, Kaiser β=9, cutoff 0.95×Nyquist — much
+    /// sharper than the runtime prototype, so Gibbs overshoot on sharp
+    /// base-rate corners is visible instead of smeared.
+    fn sharp_4x_peak(samples: &[f32]) -> f32 {
+        fn i0(x: f64) -> f64 {
+            let mut sum = 1.0;
+            let mut term = 1.0;
+            for k in 1..30 {
+                term *= x * x / (4.0 * k as f64 * k as f64);
+                sum += term;
+            }
+            sum
+        }
+        const HALF: i32 = 32;
+        const FC: f64 = 0.95 * 0.5;
+        let beta = 9.0;
+        let i0_beta = i0(beta);
+        // Kernel per quarter-phase: h_p[j] for j in -32..=32.
+        let kernel = |f: f64, j: i32| {
+            let x = j as f64 - f;
+            let sinc = if x.abs() < 1e-9 {
+                2.0 * FC
+            } else {
+                (2.0 * std::f64::consts::PI * FC * x).sin() / (std::f64::consts::PI * x)
+            };
+            let r = (x / HALF as f64).clamp(-1.0, 1.0);
+            sinc * i0(beta * (1.0 - r * r).max(0.0).sqrt()) / i0_beta
+        };
+        let n = samples.len();
+        let mut peak = 0.0f64;
+        for i in 64..(n - 64) {
+            for p in 0..4 {
+                let f = p as f64 / 4.0;
+                let mut acc = 0.0f64;
+                for j in -HALF..=HALF {
+                    acc += samples[(i as i32 + j) as usize] as f64 * kernel(f, j);
+                }
+                peak = peak.max(acc.abs());
+            }
+        }
+        peak as f32
+    }
+
+    /// The oversampled corner must hold the TRUE peak (not just base samples):
+    /// a steady ±0.864 square has single-sample edges pre-fix whose Gibbs
+    /// overshoot the ceiling, and decimator-softened edges post-fix that do
+    /// not. The apparatus self-checks first: a synthetic hard square must read
+    /// ≥3% over (else the apparatus is blind and the test fails loudly
+    /// instead of passing vacuously).
+    #[test]
+    fn oversampled_corner_holds_true_peak() {
+        // Apparatus self-check on a synthetic hard square.
+        let synth: Vec<f32> = (0..2000)
+            .map(|i| {
+                if (i / 120) % 2 == 0 {
+                    0.86427
+                } else {
+                    -0.86427
+                }
+            })
+            .collect();
+        let synth_peak = sharp_4x_peak(&synth);
+        assert!(
+            synth_peak >= 0.86427 * 1.03,
+            "apparatus blind to Gibbs overshoot: {synth_peak:.4}"
+        );
+        // Limiter output on a 200 Hz ±1.0 square (gain settles to ~0.727,
+        // output ≈ the synthetic square, edges softened by decimation).
+        let sr = 48_000.0;
+        let mut lim = Limiter::new(sr);
+        let mut out = Vec::with_capacity(4000);
+        for i in 0..4000 {
+            let x = if (i / 120) % 2 == 0 { 1.0 } else { -1.0 };
+            let (l, _) = lim.process(x, x);
+            out.push(l);
+        }
+        let lim_peak = sharp_4x_peak(&out);
+        assert!(
+            lim_peak <= CEILING + 0.01,
+            "true peak {lim_peak:.4} escapes the ceiling {CEILING}"
+        );
     }
 }
