@@ -1,4 +1,4 @@
-use super::db_to_lin;
+use super::{db_to_lin, param_changed};
 
 /// Downward gate that mutes the signal once it drops below the threshold —
 /// silences amp hiss and hum between notes without chopping sustain.
@@ -22,6 +22,11 @@ pub struct NoiseGate {
     open_coeff: f32,
     /// Gain-ramp coefficient for the gate *closing*, once the hold has expired.
     close_coeff: f32,
+    /// Last threshold knob position; the linear threshold below is recomputed
+    /// only when this moves (per-sample `powf` for a knob-rate value).
+    last_threshold: f32,
+    /// Cached `db_to_lin((threshold - 1.0) * 80.0)`.
+    threshold_lin: f32,
 }
 
 /// Release knob travel → hold time. The 10 ms floor keeps a low setting from
@@ -60,6 +65,8 @@ impl NoiseGate {
             release_coeff: smoother(10.0, sr),
             open_coeff: smoother(OPEN_MS, sr),
             close_coeff: smoother(CLOSE_MS, sr),
+            last_threshold: -1.0,
+            threshold_lin: 1.0,
         }
     }
 
@@ -73,8 +80,13 @@ impl NoiseGate {
         };
         self.envelope = coeff * self.envelope + (1.0 - coeff) * abs;
 
-        // threshold 0.0–1.0 maps to -80 dB–0 dB
-        let threshold_lin = db_to_lin((threshold - 1.0) * 80.0);
+        // threshold 0.0–1.0 maps to -80 dB–0 dB. Cached: the knob moves at
+        // control rate, so recompute the `powf` only when it does.
+        if param_changed(threshold, self.last_threshold) {
+            self.threshold_lin = db_to_lin((threshold - 1.0) * 80.0);
+            self.last_threshold = threshold;
+        }
+        let threshold_lin = self.threshold_lin;
 
         // Hold: while the signal is above the threshold the timer is reloaded
         // and the gate is open. Below it, the timer counts down; the gate only
@@ -219,6 +231,57 @@ mod tests {
         assert!(
             fast > 5.0 && slow < 800.0,
             "hold time out of the intended range: {fast:.1}..{slow:.1} ms"
+        );
+    }
+
+    /// The cached linear threshold must track the knob: computed on first use
+    /// and recomputed if and only if the knob moved. A stale cache gates the
+    /// wrong signal, so the invalidation contract is pinned directly.
+    #[test]
+    fn threshold_change_takes_effect_without_stale_cache() {
+        let mut ng = NoiseGate::new(SR);
+        assert_eq!(
+            ng.last_threshold, -1.0,
+            "cache must start invalid so first use computes it"
+        );
+        let loud = |n: usize| (2.0 * PI * 220.0 * n as f32 / SR).sin() * 0.5;
+
+        // Threshold 0.0 = −80 dB: populates the cache and passes a loud tone.
+        for n in 0..1000 {
+            ng.process(loud(n), 0.0, 0.3);
+        }
+        assert_eq!(ng.last_threshold, 0.0, "first process must populate cache");
+        assert!(
+            (ng.threshold_lin - db_to_lin(-80.0)).abs() < 1e-9,
+            "cached threshold wrong: {}",
+            ng.threshold_lin
+        );
+        let mut sum = 0.0f64;
+        for n in 1000..13000 {
+            let y = ng.process(loud(n), 0.0, 0.3);
+            assert!(y.is_finite());
+            sum += (y * y) as f64;
+        }
+        let pass_rms = (sum / 12000.0).sqrt();
+        assert!(pass_rms > 0.1, "gate closed on loud signal: {pass_rms}");
+
+        // Threshold 1.0 = 0 dB: the cache must follow and gate the same tone.
+        // Hold (~157 ms at release 0.3) plus the 5 ms close ramp must expire
+        // before measuring.
+        for n in 13000..61000 {
+            let y = ng.process(loud(n), 1.0, 0.3);
+            assert!(y.is_finite());
+        }
+        assert_eq!(ng.last_threshold, 1.0, "cache must follow the knob");
+        let mut sum = 0.0f64;
+        for n in 61000..73000 {
+            let y = ng.process(loud(n), 1.0, 0.3);
+            sum += (y * y) as f64;
+        }
+        let gated_rms = (sum / 12000.0).sqrt();
+        assert!(
+            gated_rms < pass_rms * 0.1,
+            "stale threshold: gated {gated_rms:.4} vs pass {pass_rms:.4}"
         );
     }
 }
