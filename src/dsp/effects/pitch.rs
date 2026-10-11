@@ -28,6 +28,10 @@ pub struct Pitch {
     phase: f32,
     tone: OnePoleLp,
     last_tone: f32,
+    /// Cached transpose ratio + the knob position it was computed from. The
+    /// `exp2` maps a knob-rate value, so it is recomputed only on change.
+    last_pitch: f32,
+    ratio: f32,
     /// Wet/dry, smoothed. A MIDI CC sweep of the whammy's mix would otherwise be
     /// an audio-rate staircase.
     mix: SmoothedGain,
@@ -47,7 +51,9 @@ impl Pitch {
             write: 0,
             phase: 0.0,
             tone: OnePoleLp::new(),
-            last_tone: -1.0, // force first update
+            last_tone: -1.0,  // force first update
+            last_pitch: -1.0, // force first update
+            ratio: 1.0,
             // `DEFAULT_PITCH_MIX`.
             mix: SmoothedGain::new(0.50, sr),
             sr,
@@ -69,6 +75,17 @@ impl Pitch {
         super::read_cubic(buf, write, delay)
     }
 
+    /// Raised-cosine grain windows for tap phase `phase` in [0, 1).
+    ///
+    /// The second tap sits half a grain away (`phase + 0.5 mod 1`), so
+    /// `cos(θ+π) = −cosθ` and its window is exactly `1 − win_a`: one `cos`
+    /// instead of two, with a unity-sum crossfade by construction.
+    #[inline]
+    fn grain_windows(phase: f32) -> (f32, f32) {
+        let win_a = 0.5 - 0.5 * (phase * TAU).cos();
+        (win_a, 1.0 - win_a)
+    }
+
     /// `pitch` 0–1 (0.5 = unison), `mix` 0–1, `tone` 0–1.
     #[inline]
     pub fn process(&mut self, x: f32, pitch: f32, mix: f32, tone: f32) -> f32 {
@@ -80,8 +97,14 @@ impl Pitch {
         self.buf[self.write] = x;
 
         // Map the knob to a transpose ratio: ±12 semitones around unison.
-        let semis = (pitch.clamp(0.0, 1.0) - 0.5) * 24.0;
-        let ratio = (semis / 12.0).exp2();
+        // Cached: a knob-rate `exp2`, recomputed only when the knob moves.
+        if param_changed(pitch, self.last_pitch) {
+            let clamped = pitch.clamp(0.0, 1.0);
+            let semis = (clamped - 0.5) * 24.0;
+            self.ratio = (semis / 12.0).exp2();
+            self.last_pitch = pitch;
+        }
+        let ratio = self.ratio;
 
         // The read taps must advance `ratio` samples per output sample while the
         // write head advances one, so the tap *delay* drifts by `(1 − ratio)` per
@@ -96,11 +119,9 @@ impl Pitch {
         let wet = {
             let tap_a = self.phase * GRAIN;
             let tap_b = phase_b * GRAIN;
-            // Raised-cosine grain windows: each fades to zero at its wrap point
-            // (phase 0/1) and peaks mid-grain; being half a grain apart, their sum
-            // is unity, so the two taps crossfade at constant gain.
-            let win_a = 0.5 - 0.5 * (self.phase * TAU).cos();
-            let win_b = 0.5 - 0.5 * (phase_b * TAU).cos();
+            // Raised-cosine grain windows (single `cos`; the taps are half a
+            // grain apart so their gains sum to unity — see `grain_windows`).
+            let (win_a, win_b) = Self::grain_windows(self.phase);
             win_a * Self::read(&self.buf, self.write, tap_a)
                 + win_b * Self::read(&self.buf, self.write, tap_b)
         };
@@ -223,5 +244,68 @@ mod tests {
             energy(0.9) > energy(0.1) * 1.5,
             "tone knob did not control wet brightness"
         );
+    }
+
+    /// The cached transpose ratio must track the knob: computed on first use and
+    /// recomputed when the knob moves. A stale ratio plays the wrong interval.
+    #[test]
+    fn pitch_ratio_cache_tracks_the_knob() {
+        let mut p = Pitch::new(SR);
+        assert_eq!(p.last_pitch, -1.0, "cache must start invalid");
+        for n in 0..100 {
+            let x = (2.0 * PI * 440.0 * n as f32 / SR).sin() * 0.5;
+            p.process(x, 0.5, 1.0, 0.7);
+        }
+        assert_eq!(p.last_pitch, 0.5, "first process must populate cache");
+        assert!(
+            (p.ratio - 1.0).abs() < 1e-6,
+            "unison ratio must be 1, got {}",
+            p.ratio
+        );
+        for n in 100..200 {
+            let x = (2.0 * PI * 440.0 * n as f32 / SR).sin() * 0.5;
+            p.process(x, 1.0, 1.0, 0.7);
+        }
+        assert_eq!(p.last_pitch, 1.0, "cache must follow the knob");
+        assert!(
+            (p.ratio - 2.0).abs() < 1e-6,
+            "octave-up ratio must be 2, got {}",
+            p.ratio
+        );
+    }
+
+    /// The two grain windows must sum to unity at every phase (constant-gain
+    /// crossfade) and match the direct two-cosine form — the identity the
+    /// single-cosine fold relies on.
+    #[test]
+    fn grain_windows_sum_to_unity() {
+        let (a0, b0) = Pitch::grain_windows(0.0);
+        assert!(
+            (a0 - 0.0).abs() < 1e-6,
+            "phase 0: win_a must be 0, got {a0}"
+        );
+        assert!(
+            (b0 - 1.0).abs() < 1e-6,
+            "phase 0: win_b must be 1, got {b0}"
+        );
+        for i in 0..=64 {
+            let ph = i as f32 / 64.0;
+            let (wa, wb) = Pitch::grain_windows(ph);
+            assert!(
+                (wa + wb - 1.0).abs() < 1e-6,
+                "windows not unity at phase {ph}: {wa} + {wb}"
+            );
+            assert!(wa >= -1e-6 && wb >= -1e-6, "window negative at {ph}");
+            let direct_a = 0.5 - 0.5 * (ph * TAU).cos();
+            let pb = {
+                let q = ph + 0.5;
+                q - q.floor()
+            };
+            let direct_b = 0.5 - 0.5 * (pb * TAU).cos();
+            assert!(
+                (wa - direct_a).abs() < 1e-6 && (wb - direct_b).abs() < 1e-6,
+                "fold diverged from direct form at {ph}"
+            );
+        }
     }
 }
