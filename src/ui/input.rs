@@ -9,6 +9,7 @@ use super::config::{
     ADD_TILE, AMP_END, AMP_START, CHAIN_TILE, KNOBS, MIC_END, MIC_START, PEDALS, PRACTICE_TILE,
     Panels, pedal_of,
 };
+use super::hit::HitTarget;
 
 /// A knob is reachable only if it belongs to the amp (only the active model's
 /// first `amp_count` controls) or to a pedal currently on the board.
@@ -227,6 +228,47 @@ fn focus_after_hide(
 pub(super) fn focus_practice_timeline(panels: &mut Panels, focus: &mut Option<usize>) {
     panels.timeline = true;
     *focus = Some(PRACTICE_TILE);
+}
+
+/// Apply a resolved mouse target to the focus state, using the same semantics as
+/// the keyboard: a panel is **shown** (never hidden, unlike the number keys) and
+/// entered at `panel_entry`; a knob/tile is focused; the ribbon cursor moves onto
+/// a stage or onto the master cell. Every applied target is remembered so a later
+/// `Tab` returns to it, exactly as if the keyboard had visited it. Timeline
+/// targets carry a track/seek the event loop owns, so they are ignored here.
+pub(super) fn apply_hit(
+    target: &HitTarget,
+    focus: &mut Option<usize>,
+    chain_cursor: &mut ChainStage,
+    header_on_master: &mut bool,
+    panels: &mut Panels,
+    panel_mem: &mut PanelMemory,
+    board: &[bool],
+    order: &[u8; CHAIN_LEN],
+) {
+    let next = match target {
+        HitTarget::Panel(n) => {
+            set_panel_visible(panels, *n, true);
+            *header_on_master = false;
+            panel_entry(*n, board, order)
+        }
+        HitTarget::Knob(i) => {
+            *header_on_master = false;
+            Some(*i)
+        }
+        HitTarget::ChainStage(stage) => {
+            *chain_cursor = *stage;
+            *header_on_master = false;
+            Some(CHAIN_TILE)
+        }
+        HitTarget::MasterCell => {
+            *header_on_master = true;
+            Some(CHAIN_TILE)
+        }
+        HitTarget::TimelineTrack(_) | HitTarget::TimelineSeek(_) => return,
+    };
+    *focus = next;
+    panel_mem.remember(*focus);
 }
 
 // `Tab` / `Shift-Tab` cycle the visible panels (see `cycle_panel`).
@@ -1351,5 +1393,119 @@ mod tests {
         b[3] = false;
         assert!(!toggle_stage(&p, &b, ChainStage::Comp));
         assert_eq!(flag.load(Relaxed), !before);
+    }
+
+    // ── apply_hit: a mouse click resolved to a focus change ────────────────────
+
+    /// Build the mutable focus state `apply_hit` mutates, for the tests below.
+    fn hit_state(on_master: bool) -> (Option<usize>, ChainStage, bool, Panels, PanelMemory) {
+        (
+            Some(CHAIN_TILE),
+            ChainStage::Amp,
+            on_master,
+            Panels {
+                amp: false,
+                rig: true,
+                timeline: true,
+            },
+            PanelMemory::new(),
+        )
+    }
+
+    #[test]
+    fn apply_hit_panel_shows_and_focuses() {
+        let b = board(true);
+        let o = order();
+        let (mut focus, mut cursor, mut on_master, mut panels, mut mem) = hit_state(false);
+        apply_hit(
+            &HitTarget::Panel(2),
+            &mut focus,
+            &mut cursor,
+            &mut on_master,
+            &mut panels,
+            &mut mem,
+            &b,
+            &o,
+        );
+        assert!(panels.amp, "clicking a hidden panel must show it");
+        assert_eq!(focus, Some(AMP_START));
+    }
+
+    #[test]
+    fn apply_hit_knob_focuses_it() {
+        let b = board(true);
+        let o = order();
+        let (mut focus, mut cursor, mut on_master, mut panels, mut mem) = hit_state(false);
+        apply_hit(
+            &HitTarget::Knob(ADD_TILE),
+            &mut focus,
+            &mut cursor,
+            &mut on_master,
+            &mut panels,
+            &mut mem,
+            &b,
+            &o,
+        );
+        assert_eq!(focus, Some(ADD_TILE));
+    }
+
+    #[test]
+    fn apply_hit_chain_stage_moves_the_cursor() {
+        let b = board(true);
+        let o = order();
+        let (mut focus, mut cursor, mut on_master, mut panels, mut mem) = hit_state(true);
+        apply_hit(
+            &HitTarget::ChainStage(ChainStage::Cab),
+            &mut focus,
+            &mut cursor,
+            &mut on_master,
+            &mut panels,
+            &mut mem,
+            &b,
+            &o,
+        );
+        assert_eq!(cursor, ChainStage::Cab);
+        assert_eq!(focus, Some(CHAIN_TILE));
+        assert!(!on_master);
+    }
+
+    #[test]
+    fn apply_hit_master_selects_the_cell() {
+        let b = board(true);
+        let o = order();
+        let (mut focus, mut cursor, mut on_master, mut panels, mut mem) = hit_state(false);
+        apply_hit(
+            &HitTarget::MasterCell,
+            &mut focus,
+            &mut cursor,
+            &mut on_master,
+            &mut panels,
+            &mut mem,
+            &b,
+            &o,
+        );
+        assert_eq!(focus, Some(CHAIN_TILE));
+        assert!(on_master);
+    }
+
+    #[test]
+    fn apply_hit_remembers_for_tab() {
+        let b = board(true);
+        let o = order();
+        let (mut focus, mut cursor, mut on_master, mut panels, mut mem) = hit_state(false);
+        let clicked = PEDALS[1].start;
+        apply_hit(
+            &HitTarget::Knob(clicked),
+            &mut focus,
+            &mut cursor,
+            &mut on_master,
+            &mut panels,
+            &mut mem,
+            &b,
+            &o,
+        );
+        assert_eq!(focus, Some(clicked));
+        // Tabbing back into the pedalboard lands on the clicked knob, not the entry.
+        assert_eq!(mem.recall(4, &b, AMP_KNOBS), Some(clicked));
     }
 }
