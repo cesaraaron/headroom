@@ -1,0 +1,29 @@
+---
+source: src/ui/midi.rs
+expression: armed
+---
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                  ╔ M I D I ══════════════════════════ Arturia KeyStep ╗                  
+                  ║ ↑↓ · Enter bind · D unbind · R reconnect · Esc     ║                  
+                  ║   Wah position          CC 11                      ║                  
+                  ║   Wah mode (manual)     —                          ║                  
+                  ║   Delay time            —                          ║                  
+                  ║   Delay feedback        —                          ║                  
+                  ║ ▶ Delay mix             move the control…          ║                  
+                  ║   Reverb mix            —                          ║                  
+                  ║   Clean boost           —                          ║                  
+                  ║   Comp sustain          —                          ║                  
+                  ║   TS-808 drive          —                          ║                  
+                  ║   DS-1 drive            —                          ║                  
+                  ║   Chorus mix            —                          ║                  
+                  ║   Flanger mix           —                          ║                  
+                  ║   Phaser mix            —                          ║                  
+                  ║   Master width          —                          ║                  
+                  ║   Master output         —                          ║                  
+                  ║                                                    ║                  
+                  ║                                                    ║                  
+                  ║       bound to ~/.config/rusty-riff/midi.conf      ║                  
+                  ╚════════════════════════════════════════════════════╝
