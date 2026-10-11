@@ -1582,7 +1582,7 @@ pub(super) fn render_export_progress(f: &mut Frame, percent: u32) {
     f.render_widget(Paragraph::new(text), inner);
 }
 
-pub(super) fn render_help_modal(f: &mut Frame) {
+pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
     // Modal-local description gray: brighter than the shared `DIM` (which is
     // near-invisible on black at this size) but still a step below `CHROME`
     // so the key → description hierarchy survives.
@@ -1728,9 +1728,15 @@ pub(super) fn render_help_modal(f: &mut Frame) {
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(inner);
-    f.render_widget(Paragraph::new(lines), rows[0]);
+    // The reference is longer than a short terminal, so it scrolls: clamp the
+    // offset to the last full screen and let `↑`/`↓`/`PgUp`/`PgDn` move it.
+    let visible = rows[0].height as usize;
+    *scroll = (*scroll).min(lines.len().saturating_sub(visible) as u16);
+    f.render_widget(Paragraph::new(lines).scroll((*scroll, 0)), rows[0]);
     f.render_widget(
         Paragraph::new(Line::from(vec![
+            Span::styled("↑/↓  PgUp/PgDn", Style::default().fg(AMBER)),
+            Span::styled(" scroll  ·  ", Style::default().fg(HELP_DESC)),
             Span::styled("Esc / K", Style::default().fg(AMBER)),
             Span::styled(" close", Style::default().fg(HELP_DESC)),
         ]))
@@ -1807,6 +1813,9 @@ pub(super) fn render_add_pedal_modal(f: &mut Frame, available: &[usize], cursor:
                 ])
             })
             .collect();
+        let visible = rows[0].height as usize;
+        let offset = super::viewport(available.len(), visible, cursor);
+        let lines: Vec<Line> = lines.into_iter().skip(offset).take(visible).collect();
         f.render_widget(Paragraph::new(lines), rows[0]);
     }
 
@@ -2340,6 +2349,101 @@ mod tests {
         })
         .expect("draw");
         screen_text(&term)
+    }
+
+    /// The add-pedal list scrolls to keep the cursor's pedal on screen, so the
+    /// last pedal stays reachable on a short terminal.
+    #[test]
+    fn add_pedal_modal_scrolls_to_the_cursor() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let available: Vec<usize> = (0..PEDALS.len()).collect();
+        let cursor = available.len() - 1;
+        let mut term = Terminal::new(TestBackend::new(60, 12)).expect("test backend");
+        term.draw(|f| render_add_pedal_modal(f, &available, cursor))
+            .expect("draw");
+        let text = screen_text(&term);
+        assert!(
+            text.contains(PEDALS[cursor].name),
+            "the cursor's pedal must be visible: {text}"
+        );
+        assert!(
+            !text.contains(PEDALS[0].name),
+            "the list must have scrolled the first pedal away: {text}"
+        );
+    }
+
+    /// The `K` reference is taller than a short terminal; scrolling reaches the
+    /// tail, and the offset is clamped so it cannot run past the end.
+    #[test]
+    fn help_modal_scrolls_to_the_tail() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut term = Terminal::new(TestBackend::new(80, 24)).expect("test backend");
+
+        let mut scroll = 0u16;
+        term.draw(|f| render_help_modal(f, &mut scroll))
+            .expect("draw");
+        assert!(
+            screen_text(&term).contains("Panels & chain"),
+            "the top of the reference must be shown first"
+        );
+
+        let mut scroll = u16::MAX;
+        term.draw(|f| render_help_modal(f, &mut scroll))
+            .expect("draw");
+        let text = screen_text(&term);
+        assert!(
+            text.contains("remove selected track"),
+            "the tail must be reachable: {text}"
+        );
+        assert!(text.contains("Esc / K"), "the footer stays visible");
+    }
+
+    /// Small (but realistic) terminals render the whole board without panicking
+    /// and keep the always-present chain ribbon — the tripwire for a layout that
+    /// assumes a big screen.
+    #[test]
+    fn the_board_fits_a_small_terminal() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        for (w, h) in [(80u16, 24u16), (60, 20)] {
+            let params = Params::new();
+            let board = board_all(true);
+            let levels = Levels::new();
+            let mut term = Terminal::new(TestBackend::new(w, h)).expect("test backend");
+            term.draw(|f| {
+                draw(
+                    f,
+                    &params,
+                    &levels,
+                    &InputCalibration::default(),
+                    None,
+                    &board,
+                    false,
+                    false,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Panels::all_visible(),
+                    ChainStage::Amp,
+                    false,
+                    None,
+                    None,
+                    None,
+                );
+            })
+            .expect("draw");
+            let text = screen_text(&term);
+            assert!(
+                text.contains("[ ] move") && text.contains("──▶"),
+                "{w}x{h}: the chain ribbon did not render: {text}"
+            );
+        }
     }
 
     fn board_all(on: bool) -> Vec<bool> {
@@ -2973,7 +3077,7 @@ mod tests {
         let params = Params::new();
         let board = default_board(&params);
         let text = render_with(&params, &board, None, |f| {
-            render_help_modal(f);
+            render_help_modal(f, &mut 0);
         });
         insta::assert_snapshot!("help_modal", text);
     }

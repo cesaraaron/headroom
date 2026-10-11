@@ -75,6 +75,19 @@ fn mouse_blocked(overlays: &[bool]) -> bool {
     overlays.iter().any(|open| *open)
 }
 
+/// The first visible row of a list scrolled so `cursor` stays in view, for a
+/// viewport `visible` rows tall. Clamped so the window never runs past the end
+/// (the last screen shows the final `visible` rows).
+fn viewport(total: usize, visible: usize, cursor: usize) -> usize {
+    if visible == 0 || total <= visible {
+        return 0;
+    }
+    cursor
+        .min(total - 1)
+        .saturating_sub(visible - 1)
+        .min(total - visible)
+}
+
 /// Route a resolved click to the state the keyboard would have reached. A
 /// timeline target first moves focus onto the timeline pane (so a row click
 /// highlights the row and later keys drive the pane), then selects the row or
@@ -469,6 +482,9 @@ pub fn run(
     let mut cal_ui = calibration::CalibrationUi::new();
     // Keybinding cheat-sheet modal, toggled with K.
     let mut help_open = false;
+    // Scroll offset for the (tall) `K` reference, so a short terminal can reach
+    // the whole thing. Clamped inside the renderer.
+    let mut help_scroll: u16 = 0;
     // Which top-level panels are shown (session-only; toggled with 1/2/3). The
     // app opens with only the timeline (plus the always-visible ribbon).
     let mut panels = Panels::timeline_only();
@@ -916,7 +932,7 @@ pub fn run(
                     cal_ui.render(f, &calibration);
                 }
                 if help_open {
-                    render_help_modal(f);
+                    render_help_modal(f, &mut help_scroll);
                 }
                 if midi_ui.open {
                     render_midi(
@@ -1383,7 +1399,13 @@ pub fn run(
                     match key.code {
                         KeyCode::Esc | KeyCode::Char('k') | KeyCode::Char('K') => {
                             help_open = false;
+                            help_scroll = 0;
                         }
+                        KeyCode::Up => help_scroll = help_scroll.saturating_sub(1),
+                        KeyCode::Down => help_scroll = help_scroll.saturating_add(1),
+                        KeyCode::PageUp => help_scroll = help_scroll.saturating_sub(8),
+                        KeyCode::PageDown => help_scroll = help_scroll.saturating_add(8),
+                        KeyCode::Home => help_scroll = 0,
                         _ => {}
                     }
                 } else if tuner_open {
@@ -1901,6 +1923,8 @@ pub fn run(
                         }
                         KeyCode::Char('k') | KeyCode::Char('K') => {
                             help_open = true;
+                            // Always open the reference at the top.
+                            help_scroll = 0;
                         }
                         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             if session_dirty {
@@ -2214,6 +2238,24 @@ mod tests {
             assert!(mouse_blocked(&flags), "overlay {i} must block the mouse");
         }
         assert!(mouse_blocked(&[true, true, true, true]));
+    }
+
+    /// The list viewport must keep the cursor on screen and never scroll past the
+    /// end, so a short terminal can still reach every row.
+    #[test]
+    fn viewport_keeps_the_cursor_visible() {
+        // Everything fits: no scroll.
+        assert_eq!(viewport(5, 10, 3), 0);
+        // The cursor is inside the first window.
+        assert_eq!(viewport(15, 5, 0), 0);
+        assert_eq!(viewport(15, 5, 4), 0);
+        // Moving past the bottom edge scrolls by exactly one.
+        assert_eq!(viewport(15, 5, 5), 1);
+        // The last cursor pins the window to the final full screen.
+        assert_eq!(viewport(15, 5, 14), 10);
+        // Degenerate cases.
+        assert_eq!(viewport(15, 0, 3), 0);
+        assert_eq!(viewport(0, 5, 0), 0);
     }
 
     /// A click on the timeline must leave focus exactly where the keyboard would:

@@ -188,6 +188,9 @@ pub(super) fn render_midi(f: &mut Frame, ui: &MidiUi, state: &MidiState, port: O
             ])
         })
         .collect();
+    let visible = rows[1].height as usize;
+    let offset = super::viewport(MidiTarget::ALL.len(), visible, ui.cursor);
+    let lines: Vec<Line> = lines.into_iter().skip(offset).take(visible).collect();
     f.render_widget(Paragraph::new(lines), rows[1]);
 
     f.render_widget(
@@ -330,5 +333,29 @@ mod tests {
         let armed = screen_text(&term);
         assert!(armed.contains("move the control"), "learn prompt: {armed}");
         insta::assert_snapshot!("midi_modal", armed);
+    }
+
+    /// On a short terminal the target list scrolls to keep the cursor's row on
+    /// screen, so every target stays reachable.
+    #[test]
+    fn the_modal_scrolls_to_keep_the_cursor_visible() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let s = state("");
+        let mut ui = MidiUi::new();
+        ui.open = true;
+        ui.cursor = MidiTarget::ALL.len() - 1;
+        let mut term = Terminal::new(TestBackend::new(90, 12)).expect("test backend");
+        term.draw(|f| render_midi(f, &ui, &s, None)).expect("draw");
+        let text = screen_text(&term);
+        assert!(
+            text.contains(ui.cursor_target().label()),
+            "the cursor's target must be visible: {text}"
+        );
+        assert!(
+            !text.contains(MidiTarget::ALL[0].label()),
+            "the list must have scrolled the first target away: {text}"
+        );
     }
 }
