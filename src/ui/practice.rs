@@ -873,9 +873,17 @@ impl PracticeUi {
         let pos = practice.position() as u64;
         practice.loop_start.store(pos, Relaxed);
         if practice.loop_end.load(Relaxed) <= pos {
+            // Open the region to the end of the timeline — the last-ending track —
+            // so the default loop spans the whole take instead of a token second.
+            // With nothing ahead of the playhead, fall back to a one-second
+            // region so the loop is still usable.
+            let extent = self
+                .session
+                .ticks_to_frames(self.session.extent_ticks(), self.sample_rate)
+                as u64;
             practice
                 .loop_end
-                .store(pos + self.sample_rate as u64, Relaxed);
+                .store(extent.max(pos + self.sample_rate as u64), Relaxed);
         }
         practice.loop_enabled.store(true, Relaxed);
     }
@@ -3567,6 +3575,44 @@ mod tests {
         // The same latch the ←/→ keys drive: an absolute seek, not a step.
         ui.seek_frame(9_600, &practice);
         assert_eq!(practice.snapshot().seek, Some(9_600));
+    }
+
+    #[test]
+    fn opening_a_loop_runs_to_the_end_of_the_longest_track() {
+        let mut ui = PracticeUi::new();
+        let practice = Practice::new();
+        // Four seconds of audio on the timeline; the playhead one second in.
+        ui.session.push(
+            1,
+            "t".into(),
+            TrackKind::Import,
+            None,
+            0,
+            4 * 48_000,
+            TrackLifecycle::Ready,
+        );
+        practice.store_position(48_000);
+
+        ui.set_loop_start(&practice);
+
+        assert_eq!(practice.loop_start.load(Relaxed), 48_000);
+        assert_eq!(
+            practice.loop_end.load(Relaxed),
+            4 * 48_000,
+            "`[` must open the loop to the end of the longest track, not a token second"
+        );
+        assert!(practice.loop_enabled.load(Relaxed));
+    }
+
+    #[test]
+    fn opening_a_loop_past_the_end_keeps_a_one_second_region() {
+        let ui = PracticeUi::new();
+        let practice = Practice::new();
+        // Nothing ahead of the playhead: still open a usable, non-empty region.
+        practice.store_position(10 * 48_000);
+        ui.set_loop_start(&practice);
+        assert_eq!(practice.loop_start.load(Relaxed), 10 * 48_000);
+        assert_eq!(practice.loop_end.load(Relaxed), 11 * 48_000);
     }
 
     #[test]
