@@ -3,6 +3,7 @@ mod amp_plugins;
 mod calibration;
 mod config;
 mod draw;
+mod hit;
 mod input;
 mod ir_browser;
 mod metronome;
