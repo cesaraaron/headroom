@@ -112,8 +112,14 @@ mod tests {
         let a = axis();
         let lo = a.frame_at(a.x0.saturating_sub(3));
         let hi = a.frame_at(a.x0 + 200);
-        assert!((a.start..a.start + a.len).contains(&lo), "lo out of range: {lo}");
-        assert!((a.start..a.start + a.len).contains(&hi), "hi out of range: {hi}");
+        assert!(
+            (a.start..a.start + a.len).contains(&lo),
+            "lo out of range: {lo}"
+        );
+        assert!(
+            (a.start..a.start + a.len).contains(&hi),
+            "hi out of range: {hi}"
+        );
     }
 
     #[test]

@@ -40,9 +40,9 @@ use crate::recording::{
 };
 use crate::session::{AssetRef, Session, TrackId, TrackKind, TrackLifecycle};
 
-use super::hit::{HitMap, HitTarget, TimelineAxis};
 #[cfg(test)]
 use super::hit::hit_test;
+use super::hit::{HitMap, HitTarget, TimelineAxis};
 
 /// Default track-row height, in terminal lines. Tall enough to read the
 /// waveform envelope; `Tab` zooms a row beyond this.

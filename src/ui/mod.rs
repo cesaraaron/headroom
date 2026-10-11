@@ -25,7 +25,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton,
+        MouseEventKind,
+    },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -41,8 +44,9 @@ use draw::{
     draw, render_add_pedal_modal, render_amp_modal, render_cab_modal, render_export_progress,
     render_help_modal,
 };
+use hit::{HitMap, HitTarget, hit_test};
 use input::{
-    PanelMemory, add_pedal, amp_choices, cab_choices, cycle_panel, ensure_focus_visible,
+    PanelMemory, add_pedal, amp_choices, apply_hit, cab_choices, cycle_panel, ensure_focus_visible,
     focus_practice_timeline, init_amp_cursor, init_cab_cursor, jump_group, move_selected_stage,
     nudge, nudge_master, panel_of, press_number, remove_pedal, select_amp, select_cab, step_header,
     step_knob_in_panel, toggle_pedal, toggle_stage,
@@ -60,6 +64,13 @@ fn sync_board(params: &Params) -> Vec<bool> {
         .iter()
         .map(|p| (p.enabled)(params).load(std::sync::atomic::Ordering::Relaxed))
         .collect()
+}
+
+/// True when any modal / overlay is on screen. Overlays are keyboard-only, so a
+/// mouse press is dropped entirely while one is up — a click must never reach the
+/// panels behind a modal. The caller passes one flag per open overlay.
+fn mouse_blocked(overlays: &[bool]) -> bool {
+    overlays.iter().any(|open| *open)
 }
 
 /// Rebuild the pedalboard from the live enabled flags after the rig changed
@@ -346,7 +357,9 @@ pub fn run(
     styles::set_opaque(opaque);
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    // Mouse capture stays on for the whole run: clicks focus panels/cells. Normal
+    // click-drag text selection is lost; the terminal's Shift/Option selection works.
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = ratatui::backend::CrosstermBackend::new(stdout);
     let mut terminal = ratatui::Terminal::new(backend)?;
 
@@ -442,7 +455,11 @@ pub fn run(
             // User quit from the picker.
             None => {
                 disable_raw_mode()?;
-                execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+                execute!(
+                    terminal.backend_mut(),
+                    LeaveAlternateScreen,
+                    DisableMouseCapture
+                )?;
                 return Ok(());
             }
         };
@@ -719,8 +736,11 @@ pub fn run(
                     UnsavedPrompt::Naming { text, .. } => draw::UnsavedPrompt::Naming(text.clone()),
                 });
 
+            // The hit map is rebuilt every frame by `draw`; the mouse handler below
+            // resolves a press against this frame's map.
+            let mut hit_map: HitMap = HitMap::new();
             terminal.draw(|f| {
-                draw(
+                hit_map = draw(
                     f,
                     &params,
                     &levels,
@@ -846,9 +866,65 @@ pub fn run(
             // Drain calibration windows and advance the wizard's timed steps.
             cal_ui.tick(&mut engine, &calibration);
 
-            if event::poll(Duration::from_millis(30))?
-                && let Event::Key(key) = event::read()?
+            let ev = if event::poll(Duration::from_millis(30))? {
+                Some(event::read()?)
+            } else {
+                None
+            };
+
+            // Mouse: focus-only, with the same landing points as the keyboard.
+            // Overlays swallow the event entirely; a click in a border or a gap
+            // hits nothing. Only a left-button press is acted on.
+            if let Some(Event::Mouse(m)) = &ev
+                && m.kind == MouseEventKind::Down(MouseButton::Left)
             {
+                let overlays = [
+                    help_open,
+                    preset_open,
+                    session_browser.open,
+                    add_open,
+                    amp_open,
+                    cab_open,
+                    tuner_open,
+                    metronome_open,
+                    save_open,
+                    path_open.is_some(),
+                    export_open,
+                    export_handle.is_some(),
+                    ir_browser.open,
+                    practice_ui.browser_open,
+                    practice_ui.gain_open(),
+                    practice_ui.move_open(),
+                    cal_ui.open,
+                    unsaved_prompt.is_some(),
+                    #[cfg(feature = "clap")]
+                    browser.open,
+                    #[cfg(all(feature = "au", target_os = "macos"))]
+                    amp_browser.open,
+                ];
+                if !mouse_blocked(&overlays)
+                    && let Some(target) = hit_test(&hit_map, m.column, m.row)
+                {
+                    match target {
+                        HitTarget::TimelineTrack(id) => practice_ui.select_track(*id),
+                        HitTarget::TimelineSeek(axis) => {
+                            practice_ui.seek_frame(axis.frame_at(m.column), &practice);
+                        }
+                        other => apply_hit(
+                            other,
+                            &mut focus,
+                            &mut chain_cursor,
+                            &mut header_on_master,
+                            &mut panels,
+                            &mut panel_mem,
+                            &board,
+                            &params.chain_slots(),
+                        ),
+                    }
+                }
+            }
+
+            if let Some(Event::Key(key)) = ev {
                 // While an export runs, only Esc (cancel) is accepted.
                 if let Some(handle) = &export_handle {
                     if key.code == KeyCode::Esc {
@@ -2030,7 +2106,11 @@ pub fn run(
     }
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     Ok(())
 }
 
@@ -2038,6 +2118,19 @@ pub fn run(
 mod tests {
     use super::*;
     use std::sync::atomic::Ordering::Relaxed;
+
+    /// Overlays are keyboard-only: any one of them being open must swallow mouse
+    /// events, and only when none is open may a click reach the board.
+    #[test]
+    fn mouse_is_ignored_while_an_overlay_is_open() {
+        assert!(!mouse_blocked(&[false, false, false, false]));
+        for i in 0..4 {
+            let mut flags = [false; 4];
+            flags[i] = true;
+            assert!(mouse_blocked(&flags), "overlay {i} must block the mouse");
+        }
+        assert!(mouse_blocked(&[true, true, true, true]));
+    }
 
     /// The prompt names the pending action; the load label uses the folder name.
     #[test]

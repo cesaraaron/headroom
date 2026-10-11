@@ -15,9 +15,9 @@ use super::config::{
     ADD_TILE, AMP_END, AMP_START, CHAIN_TILE, KNOBS, MIC_END, MIC_START, PEDALS, PRACTICE_TILE,
     Panels, Pedal, PedalUi,
 };
-use super::hit::{HitMap, HitTarget};
 #[cfg(test)]
 use super::hit::hit_test;
+use super::hit::{HitMap, HitTarget};
 use super::input::rendered_stages;
 use super::practice::PracticeUi;
 use super::styles::*;
@@ -350,12 +350,7 @@ fn render_chain_row(
                 let end = (col + w).saturating_sub(offset).min(width);
                 if end > start {
                     hits.push((
-                        Rect::new(
-                            area.x + start as u16,
-                            area.y,
-                            (end - start) as u16,
-                            1,
-                        ),
+                        Rect::new(area.x + start as u16, area.y, (end - start) as u16, 1),
                         target.clone(),
                     ));
                 }
@@ -2443,7 +2438,11 @@ mod tests {
         );
         let col = rect.x + rect.width / 2;
         let row = rect.y + rect.height / 2;
-        assert_eq!(hit_test(hits, col, row), Some(&target), "centre of {target:?}");
+        assert_eq!(
+            hit_test(hits, col, row),
+            Some(&target),
+            "centre of {target:?}"
+        );
     }
 
     #[test]
