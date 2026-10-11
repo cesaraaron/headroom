@@ -51,6 +51,24 @@ const MARGIN: f32 = 0.97;
 /// limiter on loud material rather than clipping at the converter.
 pub const MAKEUP: f32 = 1.189; // +1.5 dB
 
+/// Round-trip peak delay of the corner oversampler, in base-rate samples.
+///
+/// The linear-phase derivation gives (M·N−1)/N = 11.75, but the decimated
+/// impulse peak lands 11 samples after the corner input (measured — the
+/// up/decimate phase alignment puts the peak a quarter-sample early of the
+/// group-delay center, and sample-indexed accounting needs the peak, not the
+/// center). The lookahead line is shortened by exactly this, so the impulse
+/// emerges at the same sample as before and `latency()` is unchanged.
+/// Pinned by `corner_preserves_latency_and_ceiling`.
+const OS_CORNER_DELAY: usize = 11;
+
+/// Round-trip group delay of the corner oversampler, in base-rate samples:
+/// each linear-phase prototype (length M·N with M = 12, N = 4 — see
+/// `oversample.rs`) delays by (M·N−1)/2 high-rate samples, so up + down is
+/// (M·N−1)/N = 11.75, rounded. The lookahead line below is shortened by
+/// exactly this, so total latency — and the gain-to-peak alignment — is what
+/// it always was (`latency()` reports unchanged totals).
+
 /// A stereo-linked lookahead limiter. Real-time safe: all buffers are
 /// preallocated by [`Limiter::new`], and `process` neither allocates nor blocks.
 pub struct Limiter {
@@ -78,9 +96,15 @@ pub struct Limiter {
     /// (they cannot interleave); preallocated here, touched per sample.
     det_l: Oversampler4,
     det_r: Oversampler4,
-    /// How many samples the safety clamp had to bite. Should stay 0 on ordinary
-    /// material — if it moves, the limiter is base-rate-clipping transients.
+    /// How many base-rate samples the 4× corner had to touch. Should stay 0
+    /// on ordinary material — if it moves, the detector has regressed and the
+    /// corner is doing base-rate-clipping work at high rate instead.
     clamp_hits: u64,
+    /// 4× clamp for the corner (see `process`): the gained, delayed signal is
+    /// clamped per high-rate sample and decimated back, so inter-sample overs
+    /// are turned down instead of base-rate-clipped. Preallocated here.
+    corner_l: Oversampler4,
+    corner_r: Oversampler4,
 }
 
 impl Limiter {
@@ -98,9 +122,15 @@ impl Limiter {
         let look = ((sr * LOOKAHEAD_MS / 1000.0).round() as usize).max(1);
         let sr = sr.max(1.0);
         let release = 1.0 - (-1.0 / (RELEASE_MS / 1000.0 * sr)).exp();
+        // The corner below delays the signal by OS_CORNER_DELAY base-rate
+        // samples; shorten the lookahead line by the same so the gain still
+        // lands on the peak it was computed for and total latency is unchanged
+        // (deviation from the plan, which grew the line — growing would add
+        // latency everywhere for no timing benefit; see the plan ledger).
+        let line = look.saturating_sub(OS_CORNER_DELAY).max(1);
         Self {
-            delay_l: vec![0.0; look],
-            delay_r: vec![0.0; look],
+            delay_l: vec![0.0; line],
+            delay_r: vec![0.0; line],
             pos: 0,
             ceiling,
             makeup,
@@ -112,12 +142,16 @@ impl Limiter {
             det_l: Oversampler4::new(sr),
             det_r: Oversampler4::new(sr),
             clamp_hits: 0,
+            corner_l: Oversampler4::new(sr),
+            corner_r: Oversampler4::new(sr),
         }
     }
 
-    /// Latency the lookahead adds, in samples.
+    /// Latency the limiter adds, in samples: lookahead plus the corner's
+    /// round trip. Unchanged by the oversampled corner (the line shrank by
+    /// exactly the corner's delay).
     pub fn latency(&self) -> usize {
-        self.delay_l.len()
+        self.delay_l.len() + OS_CORNER_DELAY
     }
 
     /// Clear the lookahead and open the gain. Used when the limiter is
@@ -130,6 +164,8 @@ impl Limiter {
         self.env = 0.0;
         self.det_l.reset();
         self.det_r.reset();
+        self.corner_l.reset();
+        self.corner_r.reset();
     }
 
     #[inline]
@@ -169,16 +205,33 @@ impl Limiter {
         };
         self.gain += (target - self.gain) * coeff;
 
-        let (yl, yr) = (
-            self.delay_l[self.pos] * self.gain,
-            self.delay_r[self.pos] * self.gain,
-        );
-        if yl.abs() > self.ceiling || yr.abs() > self.ceiling {
+        // Oversampled corner: clamp the gained signal per high-rate sample and
+        // decimate back, so an over between base-rate samples is turned down
+        // instead of base-rate-clipped. Counts one hit per base-rate sample
+        // where any phase clamped (ordered comparisons, so NaN still counts
+        // as nothing — same as the old absolute-value check).
+        let ceil = self.ceiling;
+        let mut hit = false;
+        let yl = self
+            .corner_l
+            .process(self.delay_l[self.pos] * self.gain, |u| {
+                let c = u.clamp(-ceil, ceil);
+                hit = hit || c < u || c > u;
+                c
+            });
+        let yr = self
+            .corner_r
+            .process(self.delay_r[self.pos] * self.gain, |u| {
+                let c = u.clamp(-ceil, ceil);
+                hit = hit || c < u || c > u;
+                c
+            });
+        if hit {
             self.clamp_hits += 1;
         }
-        // Safety clamp: with the envelope follower the gain covers every peak, so
-        // this should never bite — it exists only to make the ceiling an exact
-        // guarantee. If `clamp_hits` ever moves, the detector has regressed.
+        // Backstop: decimation can ring microscopically over the ceiling; keep
+        // the exact guarantee (and the harness's hard sample-peak bound) with
+        // a base-rate clamp that stays silent on ordinary material.
         let dl = yl.clamp(-self.ceiling, self.ceiling);
         let dr = yr.clamp(-self.ceiling, self.ceiling);
         self.delay_l[self.pos] = li;
@@ -220,8 +273,11 @@ mod tests {
     fn quiet_signal_passes_at_makeup() {
         let mut lim = Limiter::new(48_000.0);
         // Prime past the lookahead with a quiet signal; the output mirrors the
-        // input delayed by `latency`, scaled only by the makeup gain.
-        let n = lim.latency();
+        // input delayed by `latency`, scaled only by the makeup gain. The +64
+        // covers the corner oversamplers' histories settling after the line
+        // fills (up 12 + down 24 base-rate samples of memory, plus margin) —
+        // before that the decimator is still ringing from the startup step.
+        let n = lim.latency() + 64;
         for _ in 0..n {
             lim.process(0.1, -0.1);
         }
@@ -321,5 +377,55 @@ mod tests {
             "detector missed the inter-sample over: gain {}",
             lim.gain
         );
+    }
+
+    /// The corner must preserve sample-exact timing and the exact ceiling: a
+    /// lone sub-ceiling impulse emerges `latency()` samples later (gain never
+    /// moves — the envelope stays under the ceiling), and nothing exceeds the
+    /// ceiling. This pins the shrink arithmetic (line shortened by the
+    /// corner's group delay): forgetting the shrink puts the peak at 84.
+    ///
+    /// Characterization: passes before and after (both clamp exactly); guards
+    /// the T2 wiring, not the 4× benefit itself — inter-sample overs are
+    /// base-rate-invisible by design (see plan Task 2 ruling).
+    #[test]
+    fn corner_preserves_latency_and_ceiling() {
+        let sr = 48_000.0;
+        let mut lim = Limiter::new(sr);
+        let n = 200usize;
+        let mut out = vec![0.0f32; n];
+        for (i, o) in out.iter_mut().enumerate() {
+            let x = if i == 0 { 0.5 } else { 0.0 };
+            // 0.5 × MAKEUP = 0.5945 < 0.891: gain stays 1.0 throughout.
+            let (l, _) = lim.process(x, x);
+            *o = l;
+        }
+        let peak_i = out
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
+            .map(|(i, _)| i)
+            .unwrap();
+        assert_eq!(
+            peak_i,
+            lim.latency(),
+            "impulse emerged at {peak_i}, latency() says {}",
+            lim.latency()
+        );
+        assert!(
+            out.iter().all(|&v| v <= CEILING),
+            "output exceeds the ceiling exactly"
+        );
+    }
+
+    /// Total latency is invariant: the corner's round-trip group delay is
+    /// compensated by shortening the lookahead line, so `latency()` reports
+    /// the same totals as before (72 @ 48 kHz, 66 @ 44.1 kHz) and export
+    /// onset accounting needs no change. Characterization: passes before and
+    /// after; guards the shrink decision.
+    #[test]
+    fn limiter_latency_totals_unchanged() {
+        assert_eq!(Limiter::new(48_000.0).latency(), 72);
+        assert_eq!(Limiter::new(44_100.0).latency(), 66);
     }
 }
