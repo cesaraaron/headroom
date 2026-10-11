@@ -89,24 +89,23 @@ pub fn synth(sr: f32, len: usize, voicing: &mut dyn FnMut(f32) -> f32, tex: &Tex
         *s = voicing(if n == 0 { 1.0 } else { 0.0 });
     }
 
-    // 2. Early-reflection comb kernel (direct path + reflections).
-    let max_ms = tex.reflections.iter().fold(0.0f32, |m, r| m.max(r.0));
-    let comb_len = (max_ms * sr / 1000.0) as usize + tex.predelay + 2;
-    let mut comb = vec![0.0f32; comb_len.max(1)];
-    let direct = tex.predelay.min(comb.len() - 1);
-    comb[direct] = 1.0;
+    // 2. Early-reflection taps (direct path + reflections) as a sparse list.
+    //    The kernel is a lone unit impulse plus a handful of reflection taps,
+    //    so convolving sample-by-sample over the whole kernel window is O(len
+    //    × window) multiply-adds of mostly zeros — the measured bulk of
+    //    `CabBank::new`. Summing only the nonzero taps is the same arithmetic
+    //    in a different order (float dust only, proven by the harness).
+    let mut taps: Vec<(usize, f32)> = Vec::with_capacity(tex.reflections.len() + 1);
+    taps.push((tex.predelay, 1.0));
     for &(ms, g) in tex.reflections {
-        let idx = tex.predelay + (ms * sr / 1000.0) as usize;
-        if idx < comb.len() {
-            comb[idx] += g;
-        }
+        taps.push((tex.predelay + (ms * sr / 1000.0) as usize, g));
     }
 
-    // 3. Convolve skeleton with the comb kernel → body with comb coloration.
+    // 3. Convolve skeleton with the sparse taps → body with comb coloration.
     let mut ir = vec![0.0f32; len];
     for (i, out) in ir.iter_mut().enumerate() {
         let mut acc = 0.0f32;
-        for (k, &c) in comb.iter().enumerate() {
+        for &(k, c) in &taps {
             if i >= k {
                 acc += c * skel[i - k];
             }
@@ -520,6 +519,52 @@ mod tests {
         assert!(
             (riser - direct).abs() < 1e-6,
             "first modal riser {riser:.8} != direct {direct:.8}"
+        );
+    }
+
+    /// Each reflection must land as an exact tap: with flat voicing, one
+    /// reflection and no modes, the body is the direct impulse plus the
+    /// reflection tap (up to the energy normalization and the DC removal), and
+    /// a tap in between is pure negated mean — no smearing. A sparse comb that
+    /// drops or misplaces a tap fails here by O(gain), not by float dust.
+    ///
+    /// Characterization test: passes on the dense convolution and must keep
+    /// passing on the sparse form.
+    #[test]
+    fn synth_reflection_lands_exact_taps() {
+        let sr = 48_000.0;
+        let len = ir_len(sr);
+        let mut flat = |x: f32| x;
+        const TAU_MS: f32 = 1.0; // 48 samples at 48 kHz
+        const G: f32 = -0.7;
+        const P: usize = 4;
+        let tex = Texture {
+            predelay: P,
+            reflections: &[(TAU_MS, G)],
+            modes: &[],
+            scatter: &[],
+        };
+        let ir = synth(sr, len, &mut flat, &tex);
+        // Body energy: direct (1.0) + one reflection (G) → normalization gain.
+        let gain = 1.0 / (1.0 + G * G).sqrt();
+        let mean = gain * (1.0 + G) / len as f32;
+        let tau = (TAU_MS * sr / 1000.0) as usize;
+        assert!(
+            (ir[P] - (gain - mean)).abs() < 1e-6,
+            "direct tap wrong: {} vs {}",
+            ir[P],
+            gain - mean
+        );
+        assert!(
+            (ir[P + tau] - (gain * G - mean)).abs() < 1e-6,
+            "reflection tap wrong: {} vs {}",
+            ir[P + tau],
+            gain * G - mean
+        );
+        assert!(
+            (ir[P + tau / 2] - (-mean)).abs() < 1e-9,
+            "smeared energy between taps: {}",
+            ir[P + tau / 2]
         );
     }
 }
