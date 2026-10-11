@@ -43,8 +43,9 @@ fn main() -> Result<()> {
     let looper = Arc::new(looper::LooperControl::new());
 
     // Optional MIDI expression input for the wah; disabled if no controller or
-    // `midi.conf` says so. The handle keeps the connection open for the run.
-    let _midi = rusty_riff::midi::start(params.clone());
+    // `midi.conf` says so. The shared state drives the `F2` bind screen; the
+    // handle keeps the connection open for the run.
+    let (midi_state, midi_handle) = rusty_riff::midi::start(params.clone());
 
     // TUI starts immediately; device selection happens inside via modals.
     ui::run(
@@ -57,6 +58,7 @@ fn main() -> Result<()> {
         practice,
         calibration,
         looper,
+        (midi_state, midi_handle),
         opaque,
     )?;
 

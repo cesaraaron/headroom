@@ -52,6 +52,7 @@ use input::{
     nudge, nudge_master, panel_of, press_number, remove_pedal, select_amp, select_cab, step_header,
     step_knob_in_panel, toggle_pedal, toggle_stage,
 };
+use midi::{MidiUi, render_midi};
 use practice::{PracticeUi, SaveContext};
 use presets::{
     PathDialogKind, render_path_dialog, render_preset_modal, render_save_dialog, selected_preset,
@@ -400,6 +401,7 @@ pub fn run(
     practice: Arc<Practice>,
     calibration: Arc<crate::audio::InputCalibration>,
     looper: Arc<LooperControl>,
+    midi: (Arc<crate::midi::MidiState>, Option<crate::midi::MidiHandle>),
     opaque: bool,
 ) -> Result<()> {
     // Panel background: transparent (terminal default) unless `--opaque` was
@@ -477,6 +479,9 @@ pub fn run(
     let mut practice_ui = PracticeUi::new();
     // Session (project) browser modal, toggled with `J`.
     let mut session_browser = SessionBrowser::new();
+    // MIDI bind screen (`F2`) and the live MIDI binding state it edits.
+    let (midi_state, mut midi_handle) = midi;
+    let mut midi_ui = MidiUi::new();
     // Timeline export (`E`): typed destination + background render worker.
     let mut export_open = false;
     let mut export_input = String::new();
@@ -615,6 +620,11 @@ pub fn run(
 
             // Install finished background decodes / capture results before drawing.
             practice_ui.poll(&mut engine, &practice, &capture, &calibration);
+
+            // Learn capture: bind the target that is waiting for a control.
+            if midi_ui.pump(&midi_state) {
+                let _ = midi_state.write_conf();
+            }
 
             // Run an action the unsaved-changes prompt committed once the user
             // decided. `Quit` leaves the loop; `New`/`Load` take effect here so the
@@ -908,6 +918,14 @@ pub fn run(
                 if help_open {
                     render_help_modal(f);
                 }
+                if midi_ui.open {
+                    render_midi(
+                        f,
+                        &midi_ui,
+                        &midi_state,
+                        midi_handle.as_ref().map(|h| h.port.as_str()),
+                    );
+                }
                 if let Some(handle) = &export_handle {
                     render_export_progress(f, handle.percent());
                 }
@@ -925,53 +943,54 @@ pub fn run(
             // Mouse: focus-only, with the same landing points as the keyboard.
             // Overlays swallow the event entirely; a click in a border or a gap
             // hits nothing. Only a left-button press is acted on.
+            // Every overlay the `terminal.draw` closure above can composite must
+            // appear here: a click (or `F2`) must never reach the panels behind a
+            // modal. Keep this list in step with the `render_*` overlay calls.
+            let overlays = [
+                midi_ui.open,
+                help_open,
+                preset_open,
+                session_browser.open,
+                add_open,
+                amp_open,
+                cab_open,
+                tuner_open,
+                metronome_open,
+                save_open,
+                path_open.is_some(),
+                export_open,
+                export_handle.is_some(),
+                ir_browser.open,
+                practice_ui.browser_open,
+                practice_ui.gain_open(),
+                practice_ui.move_open(),
+                cal_ui.open,
+                unsaved_prompt.is_some(),
+                #[cfg(feature = "clap")]
+                browser.open,
+                #[cfg(all(feature = "au", target_os = "macos"))]
+                amp_browser.open,
+            ];
+            let any_overlay = mouse_blocked(&overlays);
+
             if let Some(Event::Mouse(m)) = &ev
                 && m.kind == MouseEventKind::Down(MouseButton::Left)
+                && !any_overlay
+                && let Some(target) = hit_test(&hit_map, m.column, m.row)
             {
-                // Every overlay the `terminal.draw` closure above can composite
-                // must appear here: a click must never reach the panels behind a
-                // modal. Keep this list in step with the `render_*` overlay calls.
-                let overlays = [
-                    help_open,
-                    preset_open,
-                    session_browser.open,
-                    add_open,
-                    amp_open,
-                    cab_open,
-                    tuner_open,
-                    metronome_open,
-                    save_open,
-                    path_open.is_some(),
-                    export_open,
-                    export_handle.is_some(),
-                    ir_browser.open,
-                    practice_ui.browser_open,
-                    practice_ui.gain_open(),
-                    practice_ui.move_open(),
-                    cal_ui.open,
-                    unsaved_prompt.is_some(),
-                    #[cfg(feature = "clap")]
-                    browser.open,
-                    #[cfg(all(feature = "au", target_os = "macos"))]
-                    amp_browser.open,
-                ];
-                if !mouse_blocked(&overlays)
-                    && let Some(target) = hit_test(&hit_map, m.column, m.row)
-                {
-                    dispatch_hit(
-                        target,
-                        m.column,
-                        &mut focus,
-                        &mut chain_cursor,
-                        &mut header_on_master,
-                        &mut panels,
-                        &mut panel_mem,
-                        &board,
-                        &params.chain_slots(),
-                        &mut practice_ui,
-                        &practice,
-                    );
-                }
+                dispatch_hit(
+                    target,
+                    m.column,
+                    &mut focus,
+                    &mut chain_cursor,
+                    &mut header_on_master,
+                    &mut panels,
+                    &mut panel_mem,
+                    &board,
+                    &params.chain_slots(),
+                    &mut practice_ui,
+                    &practice,
+                );
             }
 
             if let Some(Event::Key(key)) = ev {
@@ -980,6 +999,21 @@ pub fn run(
                     if key.code == KeyCode::Esc {
                         handle.cancel();
                     }
+                    continue;
+                }
+
+                // The MIDI bind screen owns input while it is open. `F2` opens it
+                // only when nothing else is up, so it can never stack on a modal.
+                if midi_ui.open {
+                    if matches!(key.code, KeyCode::Char('r') | KeyCode::Char('R')) {
+                        midi_handle = crate::midi::connect(&midi_state, params.clone());
+                    } else if midi_ui.handle_key(key.code, &midi_state) {
+                        let _ = midi_state.write_conf();
+                    }
+                    continue;
+                }
+                if key.code == KeyCode::F(2) && !any_overlay {
+                    midi_ui.open = true;
                     continue;
                 }
 

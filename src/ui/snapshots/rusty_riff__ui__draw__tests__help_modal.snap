@@ -30,6 +30,7 @@ expression: text
 └─────────────────────────────────────║  T  chromatic tuner                                                                       ║──────────────────────────────────────┘
                                       ║  M  practice metronome (+/− tempo, Space on/off)                                          ║                                       
                                       ║  N  calibrate input level                                                                 ║                                       
+                                      ║  F2  MIDI bindings: learn a controller control                                            ║                                       
                                       ║  V  plugin browser                                                                        ║                                       
                                       ║  R  arm / stop a dry raw take (auto-plays; lands on the timeline)                         ║                                       
                                       ║Looper (monitor only)                                                                      ║                                       
@@ -54,6 +55,5 @@ expression: text
                                       ║  +/−  step (seek & move): 0.01/0.05/0.1/0.5/1/5/10/30 s                                   ║                                       
                                       ║  z / v  row height / waveform glyph style                                                 ║                                       
                                       ║  Shift+A / Shift+↑↓  waveform gain / time zoom                                            ║                                       
-                                      ║  G  selected track gain                                                                   ║                                       
                                       ║                                       Esc / K close                                       ║                                       
                                       ╚═══════════════════════════════════════════════════════════════════════════════════════════╝

@@ -105,9 +105,16 @@ soft limiting — just as winding up a real power amp does.
 MIDI is on by default: rusty-riff connects to the first MIDI input and binds the
 standard **Expression** CC (11). Moving the pedal drives the wah's treadle and
 switches it to manual mode, overriding a preset's auto-wah. You can also set the
-wah's `MODE` knob to manual and play `POSITION` by hand. Change the CC, bind more knobs, or turn the
-input off in `~/.config/rusty-riff/midi.conf` (`<cc> = <target>` maps another
-CC; targets include `wah_position`, `wah_mode`, `delay_time`, `delay_mix`,
+wah's `MODE` knob to manual and play `POSITION` by hand.
+
+Press **`F2`** for the **MIDI bindings** screen: it lists every bindable target
+with its current CC. Move to a target, press `Enter`, then move the control you
+want to use — the next CC it sends binds to that target. `D` unbinds, `↑`/`↓`
+move, `R` reconnects the input, and `Esc` leaves. Every change is written straight
+back to `midi.conf`, and bindings take effect immediately.
+
+You can also edit `~/.config/rusty-riff/midi.conf` by hand (`<cc> = <target>` maps
+another CC; targets include `wah_position`, `wah_mode`, `delay_time`, `delay_mix`,
 `reverb_mix`, `boost_gain`, `master_width`, …):
 
 ```text

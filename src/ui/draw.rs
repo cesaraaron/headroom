@@ -1652,6 +1652,7 @@ pub(super) fn render_help_modal(f: &mut Frame) {
         row("  T", "  chromatic tuner"),
         row("  M", "  practice metronome (+/− tempo, Space on/off)"),
         row("  N", "  calibrate input level"),
+        row("  F2", "  MIDI bindings: learn a controller control"),
     ]);
     #[cfg(feature = "clap")]
     lines.push(row("  V", "  plugin browser"));

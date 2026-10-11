@@ -45,6 +45,7 @@ cargo run --release -- --opaque
 | `/` | Search the preset, session, or import list |
 | `L` | Import library settings (path, only, subpaths) |
 | `N` | Calibrate the input level |
+| `F2` | MIDI bindings (learn a controller) |
 | `Q` | Quit |
 
 ## Mouse
