@@ -2446,6 +2446,55 @@ mod tests {
         }
     }
 
+    /// Small terminals degrade gracefully: ratatui shrinks the fixed panels
+    /// proportionally, and the panels that matter — chain ribbon, practice
+    /// timeline, footer — still render. The tripwire for a layout that assumes a
+    /// big screen.
+    #[test]
+    fn the_panels_fit_a_small_terminal() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let params = Params::new();
+        let board = board_all(false);
+        let levels = Levels::new();
+        let practice = Practice::new();
+        let practice_ui = PracticeUi::new();
+        for (w, h) in [(80u16, 24u16), (60, 20)] {
+            let mut term = Terminal::new(TestBackend::new(w, h)).expect("test backend");
+            term.draw(|f| {
+                draw(
+                    f,
+                    &params,
+                    &levels,
+                    &InputCalibration::default(),
+                    Some(PRACTICE_TILE),
+                    &board,
+                    false,
+                    false,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Panels::all_visible(),
+                    ChainStage::Amp,
+                    false,
+                    None,
+                    None,
+                    Some((&practice, &practice_ui)),
+                );
+            })
+            .expect("draw");
+            let text = screen_text(&term);
+            for needle in ["[ ] move", "T I M E L I N E", "K keybindings"] {
+                assert!(
+                    text.contains(needle),
+                    "{w}x{h} is missing {needle:?}: {text}"
+                );
+            }
+        }
+    }
+
     fn board_all(on: bool) -> Vec<bool> {
         vec![on; PEDALS.len()]
     }
