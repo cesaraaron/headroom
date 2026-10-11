@@ -16,6 +16,8 @@
 //! of the two), so a hard-panned peak cannot shift the stereo image — which the
 //! old per-channel clip did.
 
+use crate::dsp::oversample::Oversampler4;
+
 /// Lookahead window, milliseconds. Long enough to open the gain before a
 /// transient reaches the output, short enough to be inaudible as latency.
 pub const LOOKAHEAD_MS: f32 = 1.5;
@@ -71,6 +73,11 @@ pub struct Limiter {
     attack: f32,
     release: f32,
     env_release: f32,
+    /// 4× interpolators for the detector feed: the envelope follower runs off
+    /// the inter-sample peak, not the sample peak. Histories are per-channel
+    /// (they cannot interleave); preallocated here, touched per sample.
+    det_l: Oversampler4,
+    det_r: Oversampler4,
     /// How many samples the safety clamp had to bite. Should stay 0 on ordinary
     /// material — if it moves, the limiter is base-rate-clipping transients.
     clamp_hits: u64,
@@ -102,6 +109,8 @@ impl Limiter {
             attack: 1.0 - (-1.0 / (ATTACK_MS / 1000.0 * sr)).exp(),
             release,
             env_release: (-1.0 / (ENV_RELEASE_MS / 1000.0 * sr)).exp(),
+            det_l: Oversampler4::new(sr),
+            det_r: Oversampler4::new(sr),
             clamp_hits: 0,
         }
     }
@@ -119,13 +128,23 @@ impl Limiter {
         self.pos = 0;
         self.gain = 1.0;
         self.env = 0.0;
+        self.det_l.reset();
+        self.det_r.reset();
     }
 
     #[inline]
     pub fn process(&mut self, l: f32, r: f32) -> (f32, f32) {
         let li = l * self.makeup;
         let ri = r * self.makeup;
-        let peak = li.abs().max(ri.abs());
+        // True-peak detector: the max over the 4× phases (and both channels —
+        // still one linked value), so an over between base-rate samples pulls
+        // the gain down instead of sailing through to the safety clamp.
+        let up_l = self.det_l.upsample(li);
+        let up_r = self.det_r.upsample(ri);
+        let mut peak = 0.0f32;
+        for &u in up_l.iter().chain(up_r.iter()) {
+            peak = peak.max(u.abs());
+        }
         // Peak-hold envelope: instant attack, ~40 ms release. The gain computer runs
         // off this, *not* the raw sample — following the waveform made the gain dip
         // at every cycle's peak and lag it, so the output overshot and the safety
@@ -279,5 +298,28 @@ mod tests {
             let (l, _) = lim.process(0.1, 0.1);
             assert!((l - 0.1 * MAKEUP).abs() < 2e-3, "gain did not recover: {l}");
         }
+    }
+
+    /// The detector must catch an inter-sample over: a 12 kHz tone at 0.9
+    /// started at 45° samples at ±0.707·0.9 (× MAKEUP = 0.757, under the
+    /// 0.891 ceiling), while its true peak is 0.9 (× MAKEUP = 1.070, over).
+    /// A sample-peak detector holds gain at 1.0; the 4× detector must pull
+    /// it down within the lookahead window.
+    #[test]
+    fn detector_catches_an_intersample_over() {
+        let sr = 48_000.0;
+        let mut lim = Limiter::new(sr);
+        for i in 0..4000 {
+            let x = (2.0 * std::f32::consts::PI * 12_000.0 * i as f32 / sr
+                + std::f32::consts::FRAC_PI_4)
+                .sin()
+                * 0.9;
+            lim.process(x, x);
+        }
+        assert!(
+            lim.gain < 0.95,
+            "detector missed the inter-sample over: gain {}",
+            lim.gain
+        );
     }
 }
