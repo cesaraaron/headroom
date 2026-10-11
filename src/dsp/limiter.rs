@@ -63,13 +63,6 @@ pub const MAKEUP: f32 = 1.189; // +1.5 dB
 /// Pinned by `corner_preserves_latency_and_ceiling`.
 const OS_CORNER_DELAY: usize = 11;
 
-/// Round-trip group delay of the corner oversampler, in base-rate samples:
-/// each linear-phase prototype (length M·N with M = 12, N = 4 — see
-/// `oversample.rs`) delays by (M·N−1)/2 high-rate samples, so up + down is
-/// (M·N−1)/N = 11.75, rounded. The lookahead line below is shortened by
-/// exactly this, so total latency — and the gain-to-peak alignment — is what
-/// it always was (`latency()` reports unchanged totals).
-
 /// A stereo-linked lookahead limiter. Real-time safe: all buffers are
 /// preallocated by [`Limiter::new`], and `process` neither allocates nor blocks.
 pub struct Limiter {
