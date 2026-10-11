@@ -134,14 +134,30 @@ pub fn synth(sr: f32, len: usize, voicing: &mut dyn FnMut(f32) -> f32, tex: &Tex
     // 5. Add decaying modal resonances (cone + breakup ring) on top of the
     //    level-matched body — a controlled amount of resonance, not a takeover.
     //    The authored modes are joined by the expanded scatter clusters.
+    //
+    //    Each mode is a complex-oscillator recurrence, not a per-sample
+    //    `exp·sin`: `decay = exp(-1/tau)` per sample with rotation `w` gives
+    //    `(c, s) = decay^n·(cos wn, sin wn)` to float drift (bounded in
+    //    `recurrence_tests`), while the direct form burns two transcendentals
+    //    per tap per mode — the bulk of `CabBank::new`. The oscillator starts
+    //    at the predelay (`sin 0 = 0`, contributing nothing before it),
+    //    matching the direct `nn = n - predelay` form sample for sample.
     let scatter: Vec<(f32, f32, f32)> = tex.scatter.iter().flat_map(|s| s.modes()).collect();
     for &(f, t60_ms, g) in tex.modes.iter().chain(scatter.iter()) {
         // t60 (−60 dB) → exponential time constant: ln(1000) ≈ 6.908.
         let tau = (t60_ms / 1000.0) * sr / 6.908;
         let w = 2.0 * PI * f / sr;
+        let decay = (-1.0 / tau).exp();
+        let (rc, rs) = (decay * w.cos(), decay * w.sin());
+        let (mut c, mut s) = (1.0f32, 0.0f32);
         for (n, out) in ir.iter_mut().enumerate() {
-            let nn = n.saturating_sub(tex.predelay) as f32;
-            *out += g * (-nn / tau).exp() * (w * nn).sin();
+            if n >= tex.predelay {
+                *out += g * s;
+                let nc = c * rc - s * rs;
+                let ns = s * rc + c * rs;
+                c = nc;
+                s = ns;
+            }
         }
     }
 
@@ -459,6 +475,52 @@ mod tests {
         let dc: f32 = ir.iter().sum();
         assert!(dc.abs() < 0.5, "IR carries DC bias: {dc}");
         let _ = PI;
+    }
+
+    /// The modal resonances must start exactly at the predelay boundary: with
+    /// flat voicing and no reflections the body is a lone unit impulse at
+    /// `predelay`, so every tap before it is pure (negated) DC mean, and the
+    /// first riser past it equals the direct `exp·sin` form. Catches a
+    /// predelay misalignment (off-by-one in the modal loop) that the
+    /// frequency/decay tests above would miss.
+    ///
+    /// Characterization test: passes on the direct form and must keep passing
+    /// on the recurrence — a behavior-preserving refactor, so there is no
+    /// failing-first run; the test guards the migration instead.
+    #[test]
+    fn synth_modal_starts_at_predelay_boundary() {
+        let sr = 48_000.0;
+        let len = ir_len(sr);
+        let mut flat = |x: f32| x;
+        const F: f32 = 110.0;
+        const T60: f32 = 90.0;
+        const G: f32 = 0.05;
+        let p = 4usize;
+        let tex = Texture {
+            predelay: p,
+            reflections: &[],
+            modes: &[(F, T60, G)],
+            scatter: &[],
+        };
+        let ir = synth(sr, len, &mut flat, &tex);
+        // Before the predelay: body and modes are both zero, so every tap is
+        // the same negated-DC mean.
+        assert!(
+            (ir[0] - ir[p - 1]).abs() < 1e-9,
+            "modal content before the predelay: {} vs {}",
+            ir[0],
+            ir[p - 1]
+        );
+        // First riser: ir[p] = 1 (body impulse) - mean, ir[p+1] = modal(1) -
+        // mean, so ir[p+1] - ir[p] + 1 isolates the direct modal sample.
+        let tau = (T60 / 1000.0) * sr / 6.908;
+        let w = 2.0 * PI * F / sr;
+        let direct = G * (-1.0 / tau).exp() * w.sin();
+        let riser = ir[p + 1] - ir[p] + 1.0;
+        assert!(
+            (riser - direct).abs() < 1e-6,
+            "first modal riser {riser:.8} != direct {direct:.8}"
+        );
     }
 }
 
