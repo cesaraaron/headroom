@@ -1,9 +1,10 @@
 //! MIDI input — drive pedals/knobs and follow a MIDI clock from a controller.
 //!
 //! A `midir` input connection reads MIDI on its own thread. The callback runs
-//! **off the audio thread** and only performs atomic stores into [`Params`], so
-//! there is no allocation, lock, or wait anywhere near the callback — the same
-//! discipline as the UI/control thread.
+//! **off the audio thread** and only performs atomic stores into [`Params`] plus a
+//! non-blocking `try_lock` of the live binding table, so there is no allocation or
+//! blocking wait anywhere near the callback — the same discipline as the
+//! UI/control thread.
 //!
 //! Control Changes are bound to targets in `~/.config/rusty-riff/midi.conf`. The
 //! legacy single binding (`cc = 11`) drives the wah treadle; add more as
@@ -21,12 +22,17 @@
 //! an expression pedal overrides a preset's auto-wah as soon as it moves. When
 //! `clock` is on, incoming 24-ppqn clock sets the delay `TIME` to the beat and
 //! the UI footer shows the tempo; a clock `Stop` (or the signal going idle) hands
-//! control back to the knob and the `;` tap. A learn/bind screen is not built yet
-//! — bindings are edited in the config file.
+//! control back to the knob and the `;` tap.
+//!
+//! The `F2` **MIDI bindings** screen (`crate::ui::midi`) edits the table live:
+//! move to a target, press Enter, move the control. Bindings are persisted to the
+//! file above and take effect immediately.
 
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering::Relaxed};
+use std::sync::atomic::{
+    AtomicU32, AtomicU64, Ordering::Acquire, Ordering::Relaxed, Ordering::Release,
+};
 
 use midir::{Ignore, MidiInput};
 
@@ -180,34 +186,41 @@ impl MidiState {
     /// [`default_midi_state`], not here, so a file the user has emptied stays
     /// empty.
     pub fn from_conf(text: &str) -> Self {
-        let (enabled, bindings, clock) = parse_midi_conf(text);
-        Self {
-            bindings: Mutex::new(bindings),
+        let (enabled, parsed, clock) = parse_midi_conf(text);
+        let state = Self {
+            bindings: Mutex::new(Vec::new()),
             enabled,
             clock,
             cc_seq: AtomicU64::new(0),
             last_cc: AtomicU32::new(0),
+        };
+        // Normalise through `bind`, so a hand-edited file cannot leave one CC (or
+        // one target) bound twice — last line wins, and the table stays sorted.
+        for (cc, target) in parsed {
+            state.bind(cc, target);
         }
+        state
     }
 
-    /// Publish a CC event to the learn channel: store the value *before* bumping
-    /// the sequence, so a reader that sees a new sequence reads a matching value.
-    /// The MIDI thread is the producer; tests use it to simulate a controller.
+    /// Publish a CC event to the learn channel. The value is stored with a
+    /// `Release` on the sequence, so a reader that acquires a fresh sequence is
+    /// guaranteed to see the matching value (not a stale one). The MIDI thread is
+    /// the producer; tests use it to simulate a controller.
     pub(crate) fn record_cc(&self, cc: u8, value: u8) {
         self.last_cc
             .store((u32::from(cc) << 8) | u32::from(value), Relaxed);
-        self.cc_seq.fetch_add(1, Relaxed);
+        self.cc_seq.fetch_add(1, Release);
     }
 
     /// A token for the current CC sequence — read it when arming Learn.
     pub fn cc_seq(&self) -> u64 {
-        self.cc_seq.load(Relaxed)
+        self.cc_seq.load(Acquire)
     }
 
-    /// The first CC seen after `seq`: `(cc, value, new_seq)`, or `None` when
+    /// The latest CC seen since `seq`: `(cc, value, new_seq)`, or `None` when
     /// nothing has arrived since. Polled once per frame while learning.
     pub fn cc_since(&self, seq: u64) -> Option<(u8, u8, u64)> {
-        let now = self.cc_seq.load(Relaxed);
+        let now = self.cc_seq.load(Acquire);
         if now == seq {
             return None;
         }
@@ -247,12 +260,10 @@ impl MidiState {
         let Some(path) = midi_config_path() else {
             return Ok(());
         };
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        let tmp = path.with_extension("conf.tmp");
-        std::fs::write(&tmp, render_conf(self.enabled, self.clock, &self.lock()))?;
-        std::fs::rename(&tmp, &path)
+        // Snapshot under the lock, then write outside it, so a conf write cannot
+        // stall the MIDI thread's `try_lock` for the length of the file I/O.
+        let body = render_conf(self.enabled, self.clock, &self.lock());
+        write_conf_at(&path, &body)
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Vec<(u8, MidiTarget)>> {
@@ -281,6 +292,17 @@ fn render_conf(enabled: bool, clock: bool, bindings: &[(u8, MidiTarget)]) -> Str
         out.push_str(&format!("{cc} = {}\n", target.name()));
     }
     out
+}
+
+/// Write `body` to `path` atomically: a temp file beside it, then a rename.
+/// Creates the parent directory (a fresh install has no config dir yet).
+fn write_conf_at(path: &std::path::Path, body: &str) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("conf.tmp");
+    std::fs::write(&tmp, body)?;
+    std::fs::rename(&tmp, path)
 }
 
 /// `~/.config/rusty-riff/midi.conf`.
@@ -426,8 +448,9 @@ pub fn cc_to_unit(value: u8) -> f32 {
 }
 
 /// Parse `midi.conf` → `(enabled, bindings, clock)`. Unknown lines/targets are
-/// ignored; a missing or empty file yields the default (enabled, CC 11 → wah
-/// treadle, clock off).
+/// ignored. This does **not** seed a default binding: a missing file's default
+/// (CC 11 → wah) is applied by [`midi_config`], so a file the bind screen has
+/// emptied stays empty.
 fn parse_midi_conf(text: &str) -> (bool, Vec<(u8, MidiTarget)>, bool) {
     let mut enabled = true;
     let mut clock = false;
@@ -747,13 +770,38 @@ mod tests {
     }
 
     #[test]
-    fn start_always_returns_the_shared_state() {
-        // Even with no port (or MIDI disabled), the UI gets a state so the bind
-        // screen can list and edit bindings.
-        let (state, _handle) = start(Arc::new(Params::new()));
-        let expected = midi_config();
-        assert_eq!(state.enabled(), expected.enabled());
-        assert_eq!(state.clock(), expected.clock());
-        assert_eq!(state.bindings(), expected.bindings());
+    fn duplicate_conf_lines_are_deduped() {
+        // A hand-edited file that binds one CC (or one target) twice must not
+        // round-trip duplicates.
+        let s = MidiState::from_conf("11 = wah_position\n11 = delay_mix\n");
+        assert_eq!(s.bindings(), vec![(11, MidiTarget::DelayMix)]);
+        let s = MidiState::from_conf("11 = wah_position\n20 = wah_position\n");
+        assert_eq!(s.bindings(), vec![(20, MidiTarget::WahPosition)]);
+    }
+
+    #[test]
+    fn write_conf_at_round_trips_and_leaves_no_temp_file() {
+        let dir = std::env::temp_dir().join(format!("rr-midi-{}", std::process::id()));
+        let path = dir.join("nested").join("midi.conf");
+        write_conf_at(&path, "enabled = true\nclock = false\n11 = wah_position\n")
+            .expect("write conf");
+        let text = std::fs::read_to_string(&path).expect("read back");
+        assert_eq!(
+            MidiState::from_conf(&text).bindings(),
+            vec![(11, MidiTarget::WahPosition)]
+        );
+        assert!(
+            !path.with_extension("conf.tmp").exists(),
+            "the temp file must be renamed away"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_disabled_state_does_not_connect() {
+        // Deterministic and device-free: the only branch of `connect` testable
+        // without a real port.
+        let state = Arc::new(MidiState::from_conf("enabled = false\n"));
+        assert!(connect(&state, Arc::new(Params::new())).is_none());
     }
 }

@@ -82,6 +82,12 @@ impl MidiUi {
                 };
                 false
             }
+            // `F2` toggles the screen, so a second press closes it (the caller
+            // opens it; this arm only ever runs while it is open).
+            KeyCode::F(2) => {
+                self.open = false;
+                false
+            }
             // `D` on the pedalboard removes a pedal, so the modal's unbind is
             // `D` here too, plus `Delete`.
             KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Delete => {
@@ -275,6 +281,15 @@ mod tests {
         assert_eq!(ui.learning(), None);
         ui.handle_key(KeyCode::Esc, &s);
         assert!(!ui.open);
+    }
+
+    #[test]
+    fn f2_closes_the_modal() {
+        let mut ui = MidiUi::new();
+        ui.open = true;
+        let s = state("");
+        ui.handle_key(KeyCode::F(2), &s);
+        assert!(!ui.open, "F2 must toggle the screen closed");
     }
 
     fn screen_text(term: &ratatui::Terminal<ratatui::backend::TestBackend>) -> String {
