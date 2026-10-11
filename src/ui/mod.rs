@@ -33,7 +33,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 
-use crate::dsp::{ChainStage, Levels, Metronome, Params, Tuner};
+use crate::dsp::{CHAIN_LEN, ChainStage, Levels, Metronome, Params, Tuner};
 use crate::looper::{LoopState, LooperControl};
 use crate::practice::Practice;
 use crate::preset::Preset;
@@ -71,6 +71,55 @@ fn sync_board(params: &Params) -> Vec<bool> {
 /// panels behind a modal. The caller passes one flag per open overlay.
 fn mouse_blocked(overlays: &[bool]) -> bool {
     overlays.iter().any(|open| *open)
+}
+
+/// Route a resolved click to the state the keyboard would have reached. A
+/// timeline target first moves focus onto the timeline pane (so a row click
+/// highlights the row and later keys drive the pane), then selects the row or
+/// seeks to the clicked column; other targets go through [`apply_hit`].
+#[allow(clippy::too_many_arguments)]
+fn dispatch_hit(
+    target: &HitTarget,
+    click_col: u16,
+    focus: &mut Option<usize>,
+    chain_cursor: &mut ChainStage,
+    header_on_master: &mut bool,
+    panels: &mut Panels,
+    panel_mem: &mut PanelMemory,
+    board: &[bool],
+    order: &[u8; CHAIN_LEN],
+    practice_ui: &mut PracticeUi,
+    practice: &Practice,
+) {
+    if matches!(
+        target,
+        HitTarget::TimelineTrack(_) | HitTarget::TimelineSeek(_)
+    ) {
+        apply_hit(
+            &HitTarget::Panel(3),
+            focus,
+            chain_cursor,
+            header_on_master,
+            panels,
+            panel_mem,
+            board,
+            order,
+        );
+    }
+    match target {
+        HitTarget::TimelineTrack(id) => practice_ui.select_track(*id),
+        HitTarget::TimelineSeek(axis) => practice_ui.seek_frame(axis.frame_at(click_col), practice),
+        other => apply_hit(
+            other,
+            focus,
+            chain_cursor,
+            header_on_master,
+            panels,
+            panel_mem,
+            board,
+            order,
+        ),
+    }
 }
 
 /// Rebuild the pedalboard from the live enabled flags after the rig changed
@@ -905,22 +954,19 @@ pub fn run(
                 if !mouse_blocked(&overlays)
                     && let Some(target) = hit_test(&hit_map, m.column, m.row)
                 {
-                    match target {
-                        HitTarget::TimelineTrack(id) => practice_ui.select_track(*id),
-                        HitTarget::TimelineSeek(axis) => {
-                            practice_ui.seek_frame(axis.frame_at(m.column), &practice);
-                        }
-                        other => apply_hit(
-                            other,
-                            &mut focus,
-                            &mut chain_cursor,
-                            &mut header_on_master,
-                            &mut panels,
-                            &mut panel_mem,
-                            &board,
-                            &params.chain_slots(),
-                        ),
-                    }
+                    dispatch_hit(
+                        target,
+                        m.column,
+                        &mut focus,
+                        &mut chain_cursor,
+                        &mut header_on_master,
+                        &mut panels,
+                        &mut panel_mem,
+                        &board,
+                        &params.chain_slots(),
+                        &mut practice_ui,
+                        &practice,
+                    );
                 }
             }
 
@@ -2130,6 +2176,82 @@ mod tests {
             assert!(mouse_blocked(&flags), "overlay {i} must block the mouse");
         }
         assert!(mouse_blocked(&[true, true, true, true]));
+    }
+
+    /// A click on the timeline must leave focus exactly where the keyboard would:
+    /// the pane focused, and the row selected / the playhead seeked.
+    #[test]
+    fn timeline_clicks_focus_the_panel_and_apply() {
+        use super::hit::TimelineAxis;
+        use crate::session::{TrackKind, TrackLifecycle};
+
+        let params = Params::new();
+        let board = sync_board(&params);
+        let order = params.chain_slots();
+        let mut practice_ui = PracticeUi::new();
+        let practice = Practice::new();
+        practice_ui.session.push(
+            1,
+            "t".into(),
+            TrackKind::Import,
+            None,
+            0,
+            48_000,
+            TrackLifecycle::Ready,
+        );
+        let mut focus = Some(AMP_START);
+        let mut chain_cursor = ChainStage::Amp;
+        let mut header_on_master = false;
+        let mut panels = Panels {
+            amp: true,
+            rig: true,
+            timeline: true,
+        };
+        let mut panel_mem = PanelMemory::new();
+
+        dispatch_hit(
+            &HitTarget::TimelineTrack(1),
+            10,
+            &mut focus,
+            &mut chain_cursor,
+            &mut header_on_master,
+            &mut panels,
+            &mut panel_mem,
+            &board,
+            &order,
+            &mut practice_ui,
+            &practice,
+        );
+        assert_eq!(
+            focus,
+            Some(PRACTICE_TILE),
+            "a row click must focus the timeline pane"
+        );
+        assert_eq!(practice_ui.session.selected(), Some(1));
+
+        // A waveform click focuses the pane and seeks to the clicked column.
+        focus = Some(AMP_START);
+        let axis = TimelineAxis {
+            x0: 0,
+            start: 0,
+            len: 48_000,
+            wave_w: 10,
+        };
+        dispatch_hit(
+            &HitTarget::TimelineSeek(axis),
+            5,
+            &mut focus,
+            &mut chain_cursor,
+            &mut header_on_master,
+            &mut panels,
+            &mut panel_mem,
+            &board,
+            &order,
+            &mut practice_ui,
+            &practice,
+        );
+        assert_eq!(focus, Some(PRACTICE_TILE));
+        assert_eq!(practice.snapshot().seek, Some(axis.frame_at(5)));
     }
 
     /// The prompt names the pending action; the load label uses the folder name.

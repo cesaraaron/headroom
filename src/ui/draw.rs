@@ -895,7 +895,7 @@ fn render_rig(
         }
     }
 
-    render_pedal_detail(f, parts[1], params, focus);
+    render_pedal_detail(f, parts[1], params, focus, hits);
 }
 
 /// The "+ ADD" tile: an empty slot inviting the user to add a pedal.
@@ -1063,7 +1063,13 @@ fn editor_top_edge(rule: Rect, color: Color) -> Line<'static> {
     Line::from(Span::styled(s, style))
 }
 
-fn render_pedal_detail(f: &mut Frame, area: Rect, params: &Params, focus: Option<usize>) {
+fn render_pedal_detail(
+    f: &mut Frame,
+    area: Rect,
+    params: &Params,
+    focus: Option<usize>,
+    hits: &mut HitMap,
+) {
     let pedal = PEDALS
         .iter()
         .find(|p| focus.is_some_and(|i| (p.start..p.end).contains(&i)));
@@ -1146,6 +1152,9 @@ fn render_pedal_detail(f: &mut Frame, area: Rect, params: &Params, focus: Option
             false,
             None,
         );
+        if cols[i].width > 0 && cols[i].height > 0 {
+            hits.push((cols[i], HitTarget::Knob(ki)));
+        }
     }
 }
 
@@ -2471,6 +2480,23 @@ mod tests {
         let board = board_all(true);
         let (_text, hits) = render_hits(&params, &board, Some(ADD_TILE), false);
         assert_cell_region(&hits, 4, HitTarget::Knob(ADD_TILE));
+    }
+
+    #[test]
+    fn hit_map_records_a_pedal_editor_knob() {
+        let params = Params::new();
+        let board = board_all(true);
+        // Any pedal with more than one knob: its editor draws every knob of the
+        // focused pedal, and each must be its own click target (the tile only
+        // covers the pedal's first knob).
+        let pi = PEDALS
+            .iter()
+            .position(|p| p.end - p.start >= 2)
+            .expect("a multi-knob pedal");
+        let (_text, hits) = render_hits(&params, &board, Some(PEDALS[pi].start), false);
+        for ki in PEDALS[pi].start..PEDALS[pi].end {
+            assert_cell_region(&hits, 4, HitTarget::Knob(ki));
+        }
     }
 
     /// The board the app actually boots with, derived from the default enabled
