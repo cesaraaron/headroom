@@ -451,9 +451,6 @@ pub(super) fn nudge_master(params: &Params, delta: f32) {
         .store((v + delta).clamp(0.0, 1.0), Relaxed);
 }
 
-/// Move the ribbon cursor to the neighbouring rendered stage (wrapping around
-/// the ends). A stale cursor (its pedal left the board) re-anchors at the
-/// nearest end instead.
 /// Names the cost of a reorder that newly places a mono pedal after the cab,
 /// or `None` when the move introduces no such fold.
 ///
