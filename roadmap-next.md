@@ -14,6 +14,108 @@ Each item states **why**, **scope**, **audio-thread constraints**, and
 
 ---
 
+## Handoff — current state (2026-10-11)
+
+**A fresh agent should be able to continue from this section alone.** It records
+what just shipped, exactly what to do next, the known deferred minors, and the
+working conventions.
+
+### Just shipped (on `main`, pushed)
+
+| Area | Commits | Where |
+| --- | --- | --- |
+| Mouse click-to-focus | `cd2c734`…`72520fc` | spec/plan `docs/superpowers/{specs,plans}/2026-10-10-mouse-click-focus*` |
+| MIDI learn/bind screen (`F2`) | `05c565a`…`f4014d2` | spec/plan `…/2026-10-10-midi-learn-screen*` |
+| Timeline loop `[` → end of the last-ending track | `efaefcb` | `src/ui/practice.rs::set_loop_start` |
+| Preset + session filters match the **name only** | `ef436dd` | `src/ui/presets.rs::preset_matches`, `src/ui/sessions.rs::visible_rows` |
+| Tall overlays scroll on a short terminal | `80b1785` `c0c7bde` | `viewport()` in `src/ui/mod.rs`; `src/ui/midi.rs`, `draw.rs`; scrollable `K` |
+
+Implementation pointers: `draw` returns a `HitMap`; `src/ui/hit.rs` holds
+`HitTarget`/`hit_test`/`TimelineAxis`; `src/ui/input.rs::apply_hit` applies a click
+and `dispatch_hit` (`src/ui/mod.rs`) routes it. `src/midi.rs` owns the live binding
+table, the learn channel (`cc_seq`/`cc_since`) and `midi.conf` write-back;
+`src/ui/midi.rs` is the modal.
+
+### Next up (in this order)
+
+**Item 2 — DSP perf batch (tone-neutral, measurable). Start here.**
+
+- **E3 — per-sample transcendentals.** `src/dsp/effects/uni_vibe.rs` runs ~11
+  sin/cos per sample (`:64,73,74`), `phaser.rs` 7, `compressor.rs` `log10` + 2
+  `powf`, `noise_gate.rs:35` `powf`, `pitch.rs:85` `exp2` + 2 `cos`. The four
+  uni-vibe/phaser stage frequencies change at ≤8 Hz, so a coefficient/oscillator
+  recurrence is exact enough. Verify with `examples/bench.rs` (µs/block, % of the
+  10 ms budget) and the fidelity harness; expect **no** LUFS/LTAS movement.
+- **D7 remainder.**
+  - `src/dsp/cab/ir.rs:138-146` calls `exp()`/`sin()` per mode *per sample*
+    (~10.5 M pairs) — the bulk of the measured ~221 ms `CabBank::new`. Replace
+    with a complex-oscillator recurrence.
+  - `src/dsp/cab/mod.rs:592` indexes `ribbon_l`/`room_l` with `close_l.len()` as
+    the bound — a ragged IR would panic **on the audio thread**. Make it ignore.
+  - `DEFAULT_MIC_BLEND = 0.0` / `DEFAULT_MIC_ROOM = 0.0` (`src/dsp/mod.rs`) mean a
+    fresh start builds 6 synthesized IRs per cab and uses 2. Decide (change the
+    default, or stop building the unused ones).
+  - *(Already done: the `GrilleEcho::frac_tap` `debug_assert`, `ef66756`.)*
+- **Palette/theming refactor** — the rest of 3.3; see its entry below. Large and
+  cosmetic; keep it separate from the DSP batch.
+
+**Item 3 — DSP tone batch (re-blesses the baseline; needs a listening pass).**
+
+- **F1 remainder** — true-peak / inter-sample-peak detection, an audio-thread-safe
+  stereo-linked gain-reduction readout, and oversampling the limiter's own corner.
+  `src/dsp/limiter.rs`; rationale in `docs/fidelity-implement.md` § *"Still open
+  (F1 remainder), deliberately"*.
+- **B2 / B4 / B5** — reorder behaviour decisions (`docs/dsp-findings-2026-09.md`):
+  warn or refuse moves that collapse stereo / feed post-mic signal to line effects
+  (B2); gain compensation on reorder (B4); whether to reset feedback-loop state
+  (reverb/delay/flanger/phaser) on reorder (B5). Touch `src/ui/input.rs` (the
+  `[`/`]` move) and `src/dsp/mod.rs::set_chain_order`. **B3 is already fixed** —
+  `set_chain_order` sanitises at runtime in every build.
+- **C2–C5 amp gaps** — no negative feedback (C2), sag model inverted (C3), one
+  clipper for five tube types (C4), per-model defects (C5). `src/dsp/amp/`. Each is
+  independently listenable and re-blessable.
+- Re-bless `docs/fidelity/baseline-synth-48k.toml` per `CONTRIBUTING.md` →
+  "Fidelity harness" whenever tone moves.
+
+**Blocked:** fidelity Phase 3 (measured-IR / cab-capture match) needs re-amp + mic
+captures — do not start.
+
+### Known deferred minors (recorded; no user-facing defect)
+
+- `TimelineAxis::col_at` is `#[cfg(test)]`-only (`src/ui/hit.rs`).
+- The mouse overlay-guard test (`src/ui/mod.rs` tests) exercises a synthetic bool
+  slice, not the real ~19-flag array at the call site — there is no test seam
+  without extracting a struct.
+- A MIDI control that emits two CC numbers per motion binds the second (`cc_since`
+  returns the *latest*, not the first).
+- `D` on an already-unbound MIDI target still rewrites `midi.conf`.
+- `MidiState::write_conf` errors are swallowed (`let _ =` at both call sites).
+
+### Working conventions
+
+- **Branch**: work directly on `main`. The human A/Bs the result, then says the word
+  to push; never push unprompted.
+- **Gates before every push** — all must pass:
+  ```bash
+  cargo fmt --check
+  cargo clippy --all-targets --all-features -- -D warnings
+  cargo test --release
+  cargo test                                   # debug
+  cargo run --release --example fidelity_render -- --check docs/fidelity/baseline-synth-48k.toml
+  ```
+- **Re-bless a snapshot** after an intentional UI change:
+  `INSTA_UPDATE=always cargo test --release --lib`, then
+  `find . -name '*.snap.new' -not -path './target/*' -delete`.
+- **Workflow** for anything non-trivial: spec first
+  (`docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`), then a plan
+  (`docs/superpowers/plans/…`), then TDD execution task by task. Parallel-agent
+  rules: `docs/parallel-work.md`.
+- **Audio path**: `AGENTS.md` → "DSP constraints" — no allocation, blocking or
+  locking on the audio thread; knob values are 0.0–1.0 internally.
+- **Measure before you refactor**: the compact-mode attempt on 2026-10-11 was
+  justified by a probe that forgot to pass the timeline and was wrong; a two-minute
+  render probe settled it. Prefer a probe over an assumption.
+
 ## Track 1 — Playability and performance control
 
 ### 1.1 MIDI input + expression-pedal control
@@ -53,7 +155,8 @@ manual when the pedal moves. Bindings live in `~/.config/rusty-riff/midi.conf`
 (`enabled`, the legacy `cc = 11` shorthand, and `<cc> = <target>` for
 `wah_position`, `delay_mix`, `reverb_mix`, `boost_gain`, …). No hardware was
 available to verify the live path here — the parsing/mapping are unit-tested, and
-the app runs fine with no controller. A learn/bind **screen** remains.
+the app runs fine with no controller. The learn/bind **screen** shipped
+2026-10-10 (`F2`; `src/ui/midi.rs`) — see the handoff section.
 
 ### 1.2 Tap-tempo and MIDI clock sync
 
@@ -180,12 +283,18 @@ layout. Keep the ratatui snapshot tests meaningful.
 
 **Acceptance.** Screenshots/snapshots per theme; no clipping at a small size.
 
-**Status — not started (deferred).** Making the palette runtime-selectable means
-threading a theme through ~537 colour-constant uses in `src/ui/**` (the `PEDALS`
-table itself embeds `PEDAL_*` colours). That is a large, mostly mechanical
-refactor with real regression risk for a cosmetic win, so it is deferred to its
-own dedicated change. Narrow-width layout polish remains available in the
-meantime.
+**Status — narrow-width done; palette still deferred.** The narrow-width half
+landed 2026-10-11: the tall overlays now scroll on a short terminal
+(`80b1785`), and the panel layout already degrades gracefully (ratatui shrinks the
+fixed panels proportionally — locked by `the_panels_fit_a_small_terminal`). A
+"compact mode" was prototyped and **reverted**: measurement showed there was no
+defect to fix. The **palette** remains: making it runtime-selectable means threading
+a theme through ~630 colour-constant uses across `src/ui/**`
+(`rg -o '\bACCENT\b' src/ui | wc -l` → 95, `AMBER` 150, `DIM` 232, `CHROME` 60, …),
+and `src/ui/config.rs`'s `PEDALS` is a `const` array embedding 19 `PEDAL_*` colours,
+so it cannot stay `const`. That is a large, mostly mechanical refactor with real
+regression risk for a cosmetic win, so it stays deferred to its own dedicated
+change.
 
 ### 3.4 UI quality-of-life (rolling)
 
@@ -204,8 +313,9 @@ meantime.
 - **Factory defaults, import library, list search.** A reset-to-factory path,
   an import library browser, and type-to-search in the session/preset lists.
 
-**Open follow-ups.** The remaining items here are the **MIDI learn/bind screen**
-(1.1) and further narrow-width layout work (3.3).
+**Open follow-ups.** Both are now closed: the **MIDI learn/bind screen** (1.1)
+shipped 2026-10-10, and the narrow-width half of 3.3 shipped 2026-10-11. The
+remaining 3.3 work is the palette refactor.
 
 ---
 
@@ -267,15 +377,18 @@ site was not re-added.
 ## Recommended order
 
 _Done: 4.1 CI, 4.2 benchmarks, 4.3 guide, 3.1 presets, 3.2 onboarding profiles,
-3.4 UI QoL, 1.1 MIDI expression + CC→knob config, 1.2 tap-tempo + MIDI clock,
-2.1 looper, 2.2 timeline UX, 2.3 loop-region export. See above._
+3.4 UI QoL, 1.1 MIDI expression + CC→knob config, **1.1 MIDI learn/bind screen
+(`F2`)** and the **3.3 narrow-width half**, 1.2 tap-tempo + MIDI clock, 2.1 looper,
+2.2 timeline UX, 2.3 loop-region export, plus **mouse click-to-focus**. See above
+and the handoff section at the top._
 
-Remaining, in order:
+Remaining, in order (detail in the handoff section):
 
-1. **3.3 Theming / narrow-width layout** — a large, mostly mechanical palette
-   refactor; deferred to its own change.
-2. **1.1 MIDI learn/bind screen** — config already maps CCs; the screen is UI
-   polish.
+1. **DSP perf batch** — E3 (per-sample transcendentals) and D7's IR-build
+   `exp`/`sin` plus the ragged-IR bound. Measurable, tone-neutral.
+2. **DSP tone batch** — F1 remainder, B2/B4/B5 reorder decisions, C2–C5 amp gaps.
+   Re-blesses the fidelity baseline; wants a listening pass.
+3. **3.3 palette refactor** — the last cosmetic piece of 3.3, parked deliberately.
 
 The **fidelity path is closed**: the amp effects loop (Phase 2 item 5) was
 retired as out-of-scope, the TS-808 was corrected against the circuit (no 340 Hz

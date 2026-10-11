@@ -27,6 +27,13 @@ CI's fidelity `--check` stays valid.
 > (bench + guide + preset search). Keep the table below as the template for the
 > next batch.
 
+> **Current split (2026-10-11):** the two open workstreams are disjoint and can
+> run in parallel — the **DSP batch** (roadmap item 2/3) owns `src/dsp/**`,
+> `examples/bench.rs` and `docs/fidelity/**`; the **palette refactor**
+> (roadmap 3.3) owns `src/ui/**` (and `src/ui/config.rs`'s `PEDALS` colours). The
+> DSP tone batch re-blesses `docs/fidelity/baseline-synth-48k.toml`, so nothing
+> else may touch `src/dsp/**` or that baseline while it is in flight.
+
 ## Setting up the worktrees
 
 From the main checkout (replace `../rusty-riff-x` with any path outside this

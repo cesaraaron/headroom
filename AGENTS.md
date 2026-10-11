@@ -98,8 +98,10 @@ External impulse responses (IRs) for cabinet simulation are stored in `~/.config
 The user-facing guide is the in-app help overlay (`K`) plus the README. The
 design/as-built notes live in `docs/` (`fidelity-plan.md`,
 `fidelity-implement.md`), and the off-path product/engineering roadmap is
-`roadmap-next.md` at the root. For running parallel feature branches/agents, see
-`docs/parallel-work.md`. There is no separate docs website.
+`roadmap-next.md` at the root — **its first section is the running handoff (what
+shipped, what to do next, the gates); a fresh session should start there.** For
+running parallel feature branches/agents, see `docs/parallel-work.md`. There is no
+separate docs website.
 
 ---
 
