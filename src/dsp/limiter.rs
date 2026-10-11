@@ -55,6 +55,12 @@ pub struct Limiter {
     delay_l: Vec<f32>,
     delay_r: Vec<f32>,
     pos: usize,
+    /// Output ceiling. The master bus uses [`CEILING`] (−1 dBFS); the final output
+    /// stage uses 1.0 (it sums already-limited buses).
+    ceiling: f32,
+    /// Makeup applied before the ceiling. The master bus uses [`MAKEUP`]; the final
+    /// stage applies none.
+    makeup: f32,
     /// Current gain, 1.0 when open. Applied to the delayed signal.
     gain: f32,
     /// Peak-hold envelope of the (makeup'd) input. The gain computer runs off this,
@@ -72,6 +78,16 @@ pub struct Limiter {
 
 impl Limiter {
     pub fn new(sr: f32) -> Self {
+        Self::with_ceiling(sr, CEILING, MAKEUP)
+    }
+
+    /// A limiter for the final output stage: a full-scale ceiling, no makeup (it
+    /// receives the sum of already-limited buses).
+    pub fn output_stage(sr: f32) -> Self {
+        Self::with_ceiling(sr, 1.0, 1.0)
+    }
+
+    fn with_ceiling(sr: f32, ceiling: f32, makeup: f32) -> Self {
         let look = ((sr * LOOKAHEAD_MS / 1000.0).round() as usize).max(1);
         let sr = sr.max(1.0);
         let release = 1.0 - (-1.0 / (RELEASE_MS / 1000.0 * sr)).exp();
@@ -79,6 +95,8 @@ impl Limiter {
             delay_l: vec![0.0; look],
             delay_r: vec![0.0; look],
             pos: 0,
+            ceiling,
+            makeup,
             gain: 1.0,
             env: 0.0,
             attack: 1.0 - (-1.0 / (ATTACK_MS / 1000.0 * sr)).exp(),
@@ -105,8 +123,8 @@ impl Limiter {
 
     #[inline]
     pub fn process(&mut self, l: f32, r: f32) -> (f32, f32) {
-        let li = l * MAKEUP;
-        let ri = r * MAKEUP;
+        let li = l * self.makeup;
+        let ri = r * self.makeup;
         let peak = li.abs().max(ri.abs());
         // Peak-hold envelope: instant attack, ~40 ms release. The gain computer runs
         // off this, *not* the raw sample — following the waveform made the gain dip
@@ -120,8 +138,8 @@ impl Limiter {
         // Gain that keeps the envelope at the ceiling; 1.0 when already under it.
         // `MARGIN` leaves a hair of headroom, so the gain's residual lag never even
         // reaches the clamp on ordinary material.
-        let target = if self.env > CEILING {
-            CEILING * MARGIN / self.env
+        let target = if self.env > self.ceiling {
+            self.ceiling * MARGIN / self.env
         } else {
             1.0
         };
@@ -136,14 +154,14 @@ impl Limiter {
             self.delay_l[self.pos] * self.gain,
             self.delay_r[self.pos] * self.gain,
         );
-        if yl.abs() > CEILING || yr.abs() > CEILING {
+        if yl.abs() > self.ceiling || yr.abs() > self.ceiling {
             self.clamp_hits += 1;
         }
         // Safety clamp: with the envelope follower the gain covers every peak, so
         // this should never bite — it exists only to make the ceiling an exact
         // guarantee. If `clamp_hits` ever moves, the detector has regressed.
-        let dl = yl.clamp(-CEILING, CEILING);
-        let dr = yr.clamp(-CEILING, CEILING);
+        let dl = yl.clamp(-self.ceiling, self.ceiling);
+        let dr = yr.clamp(-self.ceiling, self.ceiling);
         self.delay_l[self.pos] = li;
         self.delay_r[self.pos] = ri;
         self.pos += 1;

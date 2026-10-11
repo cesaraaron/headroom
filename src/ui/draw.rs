@@ -513,10 +513,12 @@ fn render_amp_panel(
     );
 }
 
-/// Built-in monitoring latency, in ms: the cab convolver's fixed block latency plus
-/// the master limiter's lookahead. Device buffering sits on top and is not known here.
+/// Built-in monitoring latency, in ms: the cab convolver's fixed block latency, the
+/// chain master limiter's lookahead, and the final output stage's lookahead. Device
+/// buffering sits on top and is not known here.
 fn builtin_latency_ms(sr: f32) -> f32 {
-    crate::dsp::conv::latency() as f32 / sr.max(1.0) * 1000.0 + crate::dsp::limiter::LOOKAHEAD_MS
+    crate::dsp::conv::latency() as f32 / sr.max(1.0) * 1000.0
+        + 2.0 * crate::dsp::limiter::LOOKAHEAD_MS
 }
 
 /// Left box: amp tone-stack knobs, blank bottom margin, grille strip.

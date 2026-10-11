@@ -2552,3 +2552,15 @@ turning it up is caught cleanly. (The limiter itself is unchanged in intent.)
 
 Baseline re-blessed (the clamp removal re-voices the presets, mixed ±1–2 dB); 502
 tests both profiles.
+
+### F2 follow-up — the final output stage is a limiter, not a soft-clip
+
+The final `output_stage` (which sums the live rig + take bus + the monitor-only
+mixes) was the *same* base-rate `soft_limit` the master bus used to have — so when it
+bit (a take stacked on a hot live rig, exactly the reported workflow) it aliased, the
+same hiss. It now sums and runs a **full-scale lookahead limiter**
+(`Limiter::output_stage`, ceiling 1.0, no makeup) — the `Limiter` gained a
+configurable ceiling/makeup so the master bus keeps `CEILING`/`MAKEUP` and the final
+stage holds 1.0. It adds its lookahead to the monitoring latency, reflected in the D6
+readout. The fidelity baseline is unchanged: the harness renders the chain directly and
+never routes through the final stage.

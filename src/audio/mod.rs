@@ -9,10 +9,11 @@ use std::sync::atomic::Ordering::Relaxed;
 
 use crate::dsp::cab::ExternalIrCab;
 use crate::dsp::effects::db_to_lin;
+use crate::dsp::limiter::Limiter;
 use crate::dsp::metronome::{Metronome, MetronomeVoice};
 use crate::dsp::player::{PlayerTrack, PlayerVoice, TrackKind};
 use crate::dsp::tuner::{Tuner, TunerDetector};
-use crate::dsp::{DcBlocker, DspChain, Levels, Params, StereoInsert, soft_limit};
+use crate::dsp::{DcBlocker, DspChain, Levels, Params, StereoInsert};
 use crate::looper::{Looper, LooperControl};
 use crate::practice::Practice;
 use crate::recording::{CaptureState, capture_ring};
@@ -741,9 +742,20 @@ fn with_buffer(cfg: &StreamConfig, buffer_size: cpal::BufferSize) -> StreamConfi
 /// limiter at `−1 dBFS`, so the sum is normally well under the ceiling. It exists
 /// for the monitor-only mixes (metronome/backing/looper) and for stacking a take on
 /// the live rig, where two limited buses add and can exceed full scale.
+///
+/// The ceiling is a **lookahead limiter** at full scale, not the old memoryless
+/// soft-clip: the soft-clip was a base-rate nonlinearity, so when it bit (a take
+/// stacked on a hot live rig) its harmonics aliased — the same hiss the master bus
+/// had. The limiter turns the sum down cleanly.
 #[inline]
-fn output_stage(live_l: f32, live_r: f32, take_l: f32, take_r: f32) -> (f32, f32) {
-    (soft_limit(live_l + take_l), soft_limit(live_r + take_r))
+fn output_stage(
+    live_l: f32,
+    live_r: f32,
+    take_l: f32,
+    take_r: f32,
+    limiter: &mut Limiter,
+) -> (f32, f32) {
+    limiter.process(live_l + take_l, live_r + take_r)
 }
 
 struct InputState {
@@ -783,6 +795,8 @@ struct InputState {
     /// without passing through the chain's master bus.
     tuner_dc_l: DcBlocker,
     tuner_dc_r: DcBlocker,
+    /// Full-scale lookahead limiter on the final output (see [`output_stage`]).
+    final_limiter: Limiter,
     insert_rx: Consumer<InsertCommand>,
     dropped_tx: Producer<Box<dyn StereoInsert>>,
     ext_cab_rx: Consumer<ExtCabCommand>,
@@ -1130,7 +1144,8 @@ impl InputState {
             // (0.5) and the looper ride on top of that with nothing after
             // them. Without this the converter clips, and the overload grows
             // with every take layer.
-            let (out_left, out_right) = output_stage(live_l, live_r, take_l, take_r);
+            let (out_left, out_right) =
+                output_stage(live_l, live_r, take_l, take_r, &mut self.final_limiter);
             let out_mono = 0.5 * (out_left + out_right);
 
             // True peak of the final, post-ceiling signal, with a slow decay so a
@@ -1351,6 +1366,7 @@ fn build_engine(
         take_r,
         tuner_dc_l: DcBlocker::new(sr),
         tuner_dc_r: DcBlocker::new(sr),
+        final_limiter: Limiter::output_stage(sr),
         insert_rx,
         dropped_tx,
         ext_cab_rx,
@@ -1457,57 +1473,26 @@ fn build_engine(
 
 #[cfg(test)]
 mod tests {
-    use super::{block_ranges, output_stage};
+    use super::{Limiter, block_ranges, output_stage};
 
-    /// The ceiling indicator must light exactly when `soft_limit` has to work,
-    /// and must release on its own.
-    ///
-    /// The knee opens at 0.95, so anything the limiter changes was above that.
-    /// Below it the signal is untouched and no indicator is warranted — that
-    /// distinction is the whole point: the audible "clipping" people report is
-    /// usually saturation upstream, and an indicator that lit for any loud
-    /// signal would be useless.
-    #[test]
-    fn ceiling_indicator_tracks_only_real_limiting() {
-        const KNEE: f32 = 0.95;
-        // Below the knee: nothing to indicate.
-        for v in [0.0f32, 0.2, 0.5, 0.9] {
-            let engages = v > KNEE;
-            assert!(
-                !engages,
-                "{v} is below the knee, the limiter must pass it untouched"
-            );
-            let (l, _r) = output_stage(v, v, 0.0, 0.0);
-            assert!((l - v).abs() < 1e-6, "a sub-knee sample was altered");
-        }
-        // Above it: engaged, and still bounded.
-        for v in [1.0f32, 1.5, 4.0] {
-            assert!(v > KNEE);
-            let (l, r) = output_stage(v, v, 0.0, 0.0);
-            assert!(l <= 1.0 && r <= 1.0, "{v} escaped the ceiling");
-            assert!(l < v, "{v} was not limited at all");
-        }
-        // Two already-limited buses summing is the case that motivated the
-        // final stage; it must engage even though each bus individually is
-        // exactly at the ceiling.
-        let (l, _r) = output_stage(1.0, 1.0, 1.0, 1.0);
-        assert!(
-            l < 1.0,
-            "two buses at the ceiling must still be bounded, got {l}"
-        );
+    const SR: f32 = 48_000.0;
+
+    fn stage() -> Limiter {
+        Limiter::output_stage(SR)
     }
 
-    /// The final output stage must hold the ceiling **no matter how many
-    /// already-limited buses are summed into it**.
-    ///
-    /// The defect: each bus went through its own `master_bus` and was bounded
-    /// at 1.0, but nothing bounded their *sum*. Live rig + take bus + metronome
-    /// click reached the converter at up to 1.5, and the take bus is a whole
-    /// second rig, so the overload grew with every layer.
+    /// Run the stage past its lookahead so a settled output can be read.
+    fn settle(lim: &mut Limiter, l: f32, r: f32) {
+        for _ in 0..(lim.latency() + 8) {
+            lim.process(l, r);
+        }
+    }
+
+    /// The final output stage must hold a full-scale ceiling **no matter how many
+    /// already-limited buses are summed into it** (live rig + a take bus, each its
+    /// own `master_bus`, plus the metronome/looper on the live bus).
     #[test]
     fn summed_monitor_buses_cannot_exceed_the_ceiling() {
-        // The worst realistic case: both rigs at the ceiling, plus the
-        // metronome click (CLICK_GAIN = 0.5) and a full-scale loop.
         const CLICK: f32 = 0.5;
         for &(live, take) in &[
             (1.0f32, 1.0f32),
@@ -1517,33 +1502,31 @@ mod tests {
             (4.0, 4.0),
             (1.0e6, 1.0e6),
         ] {
-            let (l, r) = output_stage(live, live, take, take);
-            assert!(
-                l <= 1.0 && l.is_finite(),
-                "L ceiling failed at {l} for {live}+{take}"
-            );
-            assert!(
-                r <= 1.0 && r.is_finite(),
-                "R ceiling failed at {r} for {live}+{take}"
-            );
-
-            // And with the monitor-only buses riding on the live channel.
-            let (l, r) = output_stage(live + CLICK, live + CLICK, take, take);
-            assert!(
-                l <= 1.0 && r <= 1.0,
-                "ceiling failed with the click: ({l}, {r}) for {live}+{take}"
-            );
+            for extra in [0.0f32, CLICK] {
+                let mut lim = stage();
+                let mut worst = 0.0f32;
+                for _ in 0..(lim.latency() + 4000) {
+                    let (l, r) = output_stage(live + extra, live + extra, take, take, &mut lim);
+                    worst = worst.max(l.abs()).max(r.abs());
+                }
+                assert!(
+                    worst <= 1.0 + 1e-3 && worst.is_finite(),
+                    "ceiling failed at {worst} for {live}+{take} (+{extra})"
+                );
+            }
         }
     }
 
-    /// A quiet bus must pass through the final stage untouched, so the stage is
-    /// only a safety net and not a permanent colouration.
+    /// A quiet sum passes the final stage at unity, so it is a safety net and not a
+    /// permanent colouration. (Read after the lookahead settles.)
     #[test]
     fn final_stage_is_transparent_at_normal_levels() {
         for v in [0.0f32, 0.1, 0.5, 0.9] {
-            let (l, r) = output_stage(v, -v, 0.0, 0.0);
-            assert!((l - v).abs() < 1e-6, "L changed a quiet sample: {v} -> {l}");
-            assert!((r + v).abs() < 1e-6, "R changed a quiet sample: {v} -> {r}");
+            let mut lim = stage();
+            settle(&mut lim, v, -v);
+            let (l, r) = output_stage(v, -v, 0.0, 0.0, &mut lim);
+            assert!((l - v).abs() < 1e-3, "L changed a quiet sample: {v} -> {l}");
+            assert!((r + v).abs() < 1e-3, "R changed a quiet sample: {v} -> {r}");
         }
     }
 
@@ -1551,20 +1534,20 @@ mod tests {
     /// monitor-only buses are summed here — so turning the master up cannot change the
     /// level of a backing import, the metronome click or the looper. That separation is
     /// what makes the master usable for balancing the guitar against a backing track.
-    ///
-    /// `output_stage` is the final summing point and takes no `Params`, which is the
-    /// structural half of the guarantee. This pins the other half: the monitor buses
-    /// enter as a plain additive term carrying no gain of their own.
     #[test]
     fn monitor_buses_are_added_after_the_master_and_carry_no_gain() {
         const IMPORT: f32 = 0.2;
-        // Kept below the limiter knee so the stage is transparent and the only thing
-        // under test is that the monitor bus adds at unity on top of the chain.
+        // Kept below the ceiling so the stage is transparent and the only thing under
+        // test is that the monitor bus adds at unity on top of the chain.
         for live in [0.0f32, 0.2, 0.5, 0.7] {
-            let (with_monitor, _) = output_stage(live + IMPORT, live + IMPORT, 0.0, 0.0);
-            let (without, _) = output_stage(live, live, 0.0, 0.0);
+            let mut a = stage();
+            settle(&mut a, live + IMPORT, live + IMPORT);
+            let (with_monitor, _) = output_stage(live + IMPORT, live + IMPORT, 0.0, 0.0, &mut a);
+            let mut b = stage();
+            settle(&mut b, live, live);
+            let (without, _) = output_stage(live, live, 0.0, 0.0, &mut b);
             assert!(
-                (with_monitor - without - IMPORT).abs() < 1e-6,
+                (with_monitor - without - IMPORT).abs() < 1e-3,
                 "monitor bus must add at unity on top of the chain output: \
                  {without} + {IMPORT} != {with_monitor}"
             );
