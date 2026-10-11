@@ -1,7 +1,7 @@
 # 🎸 rusty-riff
 
-A guitar amp and pedalboard rig that runs in your terminal. Keyboard-driven, with
-live metering and artist-inspired presets.
+A guitar amp and pedalboard rig that runs in your terminal. Keyboard- and
+mouse-driven, with live metering and artist-inspired presets.
 
 See the [user guide](docs/guide.md) for a walkthrough of calibration, the signal
 chain, presets, practice, and plugins.
@@ -46,6 +46,20 @@ cargo run --release -- --opaque
 | `L` | Import library settings (path, only, subpaths) |
 | `N` | Calibrate the input level |
 | `Q` | Quit |
+
+## Mouse
+
+The mouse is a second way to move focus, never a way to edit a value:
+
+- Click a panel to focus it (a hidden panel is shown).
+- Click a knob, a pedal tile, or a knob in the pedal detail editor to focus it;
+  click a chain-ribbon stage or the `MASTER` cell to select it.
+- In the timeline, click a track row to select it, or the ruler / waveform to
+  move the playhead.
+
+Clicks are ignored while a browser or dialog is open. Mouse capture stays on for
+the whole run, so normal click-drag text selection is disabled — hold **Shift**
+(some terminals use **Option**) to select text.
 
 ## Input level
 

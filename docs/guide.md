@@ -38,6 +38,11 @@ open (otherwise the chain ribbon):
 transport under focus. On the pedalboard, `A` opens the **add-pedal** picker
 (`D` removes the focused pedal); elsewhere `A` opens the amp model browser.
 
+The mouse is a second way to move focus, never a way to edit a value: click a
+panel to focus it (a hidden panel is shown), click a knob or tile to focus it,
+and in the timeline click a track row to select it or the waveform to move the
+playhead. Clicks are ignored while a browser or dialog is open.
+
 ## Calibrate the input
 
 Amp breakup depends on how hard your interface drives the input, so calibrate
