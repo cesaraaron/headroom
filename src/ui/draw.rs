@@ -15,6 +15,9 @@ use super::config::{
     ADD_TILE, AMP_END, AMP_START, CHAIN_TILE, KNOBS, MIC_END, MIC_START, PEDALS, PRACTICE_TILE,
     Panels, Pedal, PedalUi,
 };
+use super::hit::{HitMap, HitTarget};
+#[cfg(test)]
+use super::hit::hit_test;
 use super::input::rendered_stages;
 use super::practice::PracticeUi;
 use super::styles::*;
@@ -39,7 +42,7 @@ pub(super) fn draw(
     session: Option<(&str, bool)>,
     unsaved: Option<&UnsavedPrompt>,
     timeline: Option<(&Practice, &PracticeUi)>,
-) {
+) -> HitMap {
     let area = f.area();
 
     // No outer frame: the only bordered boxes on screen are the four panels
@@ -84,6 +87,10 @@ pub(super) fn draw(
         .split(inner);
 
     let mut i = 0usize;
+    // Panel-level fallbacks are recorded first, so the specific cells a panel
+    // draws (a knob, a tile, a ribbon stage) are recorded on top and win.
+    let mut hits: HitMap = HitMap::new();
+    hits.push((rows[i], HitTarget::Panel(1)));
     render_header(
         f,
         rows[i],
@@ -97,14 +104,17 @@ pub(super) fn draw(
         focus == Some(CHAIN_TILE),
         chain_cursor,
         master_selected,
+        &mut hits,
     );
     i += 1;
     if panels.amp {
+        hits.push((rows[i], HitTarget::Panel(2)));
         render_amp_panel(f, rows[i], params, focus, ext_cab, ext_amp, sr);
         i += 1;
     }
     if show_timeline {
         if let Some((practice, ui)) = timeline {
+            hits.push((rows[i], HitTarget::Panel(3)));
             ui.render(
                 f,
                 rows[i],
@@ -117,6 +127,7 @@ pub(super) fn draw(
         i += 1;
     }
     if panels.rig {
+        hits.push((rows[i], HitTarget::Panel(4)));
         render_rig(f, rows[i], params, board, focus);
         i += 1;
     }
@@ -130,6 +141,7 @@ pub(super) fn draw(
     if let Some(prompt) = unsaved {
         render_unsaved_prompt(f, prompt);
     }
+    hits
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -146,6 +158,7 @@ fn render_header(
     focused: bool,
     cursor: ChainStage,
     master_selected: bool,
+    hits: &mut HitMap,
 ) {
     let block = Block::default()
         .borders(Borders::ALL)
@@ -189,14 +202,18 @@ fn render_header(
     // the row can scroll to keep the selection visible. Bypassed on-board pedals
     // show dimmed only while the ribbon owns focus (so the cursor stays put while
     // toggling); when unfocused they collapse away, and off-board pedals stay hidden.
-    let mut chain: Vec<(Span<'static>, bool)> = vec![(Span::raw("  "), false)];
-    let push_stage =
-        |chain: &mut Vec<(Span<'static>, bool)>, text: String, style: Style, is_sel: bool| {
-            if chain.len() > 1 {
-                chain.push((arrow.clone(), false));
-            }
-            chain.push((Span::styled(text, style), is_sel));
-        };
+    let mut chain: Vec<(Span<'static>, bool, Option<HitTarget>)> =
+        vec![(Span::raw("  "), false, None)];
+    let push_stage = |chain: &mut Vec<(Span<'static>, bool, Option<HitTarget>)>,
+                      text: String,
+                      style: Style,
+                      is_sel: bool,
+                      target: Option<HitTarget>| {
+        if chain.len() > 1 {
+            chain.push((arrow.clone(), false, None));
+        }
+        chain.push((Span::styled(text, style), is_sel, target));
+    };
 
     for &(_, slot_stage) in &rendered_stages(&params.chain_slots(), board) {
         let selected_here = focused && !master_selected && cursor == slot_stage;
@@ -220,7 +237,13 @@ fn render_header(
         } else {
             Style::default().fg(DIM)
         };
-        push_stage(&mut chain, label, style, selected_here);
+        push_stage(
+            &mut chain,
+            label,
+            style,
+            selected_here,
+            Some(HitTarget::ChainStage(slot_stage)),
+        );
     }
     // The hosted plugin insert (if any) runs post-rack, pre-master.
     if let Some(name) = plugin {
@@ -229,6 +252,7 @@ fn render_header(
             format!("🔌 {name}"),
             Style::default().fg(AMBER),
             false,
+            None,
         );
     }
     // The rig master output, then the OUTPUT terminator: one unit at the end of the
@@ -246,6 +270,7 @@ fn render_header(
         format!("MASTER {db:+.1}"),
         master_style,
         master_sel,
+        Some(HitTarget::MasterCell),
     );
     push_stage(
         &mut chain,
@@ -254,6 +279,7 @@ fn render_header(
         // Grouped with the master for scrolling, so revealing the level also reveals
         // what it feeds. Styling comes from the span, so OUTPUT is not highlighted.
         master_sel,
+        None,
     );
 
     // Live order on the left (70%), the input/output mini-bars on the right (30%).
@@ -261,7 +287,7 @@ fn render_header(
         .direction(Direction::Horizontal)
         .constraints([Constraint::Ratio(7, 10), Constraint::Ratio(3, 10)])
         .split(inner);
-    render_chain_row(f, halves[0], &chain);
+    render_chain_row(f, halves[0], &chain, hits);
 
     let meter_rows = Layout::default()
         .direction(Direction::Vertical)
@@ -290,22 +316,52 @@ fn render_header(
 /// marking either clipped end with an ellipsis so it is clear there is more to the
 /// left or right. The scroll is anchored at the start until the selection reaches
 /// the right edge, then follows it -- the least movement that keeps it on screen.
-fn render_chain_row(f: &mut Frame, area: Rect, chain: &[(Span<'static>, bool)]) {
-    let total: usize = chain.iter().map(|(s, _)| s.width()).sum();
+fn render_chain_row(
+    f: &mut Frame,
+    area: Rect,
+    chain: &[(Span<'static>, bool, Option<HitTarget>)],
+    hits: &mut HitMap,
+) {
+    let total: usize = chain.iter().map(|(s, _, _)| s.width()).sum();
     let width = area.width as usize;
     let max_offset = total.saturating_sub(width);
     // The selection may span more than one entry (the master and OUTPUT scroll as a
     // unit), so the scroll is driven by the end of the selected run.
-    let offset = match chain.iter().rposition(|(_, sel)| *sel) {
+    let offset = match chain.iter().rposition(|(_, sel, _)| *sel) {
         Some(last) => {
-            let end: usize = chain[..=last].iter().map(|(s, _)| s.width()).sum();
+            let end: usize = chain[..=last].iter().map(|(s, _, _)| s.width()).sum();
             end.saturating_sub(width).min(max_offset)
         }
         None => 0,
     };
 
-    let line = Line::from(chain.iter().map(|(s, _)| s.clone()).collect::<Vec<_>>());
+    let line = Line::from(chain.iter().map(|(s, _, _)| s.clone()).collect::<Vec<_>>());
     f.render_widget(Paragraph::new(line).scroll((0, offset as u16)), area);
+
+    // Record a clickable rect for each entry that carries a target, clipped to the
+    // visible window (the row scrolls, so an entry may be partly or wholly off it).
+    if area.width > 0 {
+        let mut col = 0usize;
+        for (span, _, target) in chain {
+            let w = span.width();
+            if let Some(target) = target {
+                let start = col.saturating_sub(offset).min(width);
+                let end = (col + w).saturating_sub(offset).min(width);
+                if end > start {
+                    hits.push((
+                        Rect::new(
+                            area.x + start as u16,
+                            area.y,
+                            (end - start) as u16,
+                            1,
+                        ),
+                        target.clone(),
+                    ));
+                }
+            }
+            col += w;
+        }
+    }
 
     // Mark the clipped ends. `set_string` writes the cell directly, since the
     // ellipsis is chrome the row itself does not carry.
@@ -2251,6 +2307,85 @@ mod tests {
 
     fn board_all(on: bool) -> Vec<bool> {
         vec![on; PEDALS.len()]
+    }
+
+    /// The `label`'s column on the chain row (row 1 — the first `Length(3)`
+    /// header's inner line). Column is counted in characters, not bytes: the
+    /// arrows and box glyphs are multi-byte. Panics if the label is not on the
+    /// chain row, so a scrolled-off stage fails loudly rather than matching text
+    /// elsewhere on screen.
+    fn chain_label_col(text: &str, label: &str) -> u16 {
+        let row = text.lines().nth(1).expect("chain row");
+        let byte = row
+            .find(label)
+            .unwrap_or_else(|| panic!("{label:?} not on the chain row: {row:?}"));
+        row[..byte].chars().count() as u16
+    }
+
+    /// Render the main screen and return both its glyphs and the recorded hit map.
+    fn render_hits(
+        params: &Params,
+        board: &[bool],
+        focus: Option<usize>,
+        master_selected: bool,
+    ) -> (String, HitMap) {
+        let levels = Levels::new();
+        let mut term = Terminal::new(TestBackend::new(W, H)).expect("test backend");
+        let mut hits: HitMap = HitMap::new();
+        term.draw(|f| {
+            hits = draw(
+                f,
+                params,
+                &levels,
+                &InputCalibration::default(),
+                focus,
+                board,
+                false,
+                false,
+                None,
+                None,
+                None,
+                None,
+                Panels::all_visible(),
+                ChainStage::Amp,
+                master_selected,
+                None,
+                None,
+                None,
+            );
+        })
+        .expect("draw");
+        (screen_text(&term), hits)
+    }
+
+    /// A click on a chain-ribbon stage resolves to that stage, and the MASTER
+    /// cell to `MasterCell` — the panel-1 fallback must sit *behind* them.
+    #[test]
+    fn hit_map_records_chain_and_master() {
+        let params = Params::new();
+        let board = board_all(true);
+
+        // With the cursor on an early stage the row is anchored at the start, so
+        // the first stage (GATE) is on screen.
+        let (text, hits) = render_hits(&params, &board, Some(CHAIN_TILE), false);
+        let col = chain_label_col(&text, "GATE");
+        assert!(
+            matches!(
+                hit_test(&hits, col, 1),
+                Some(HitTarget::ChainStage(ChainStage::Gate))
+            ),
+            "GATE at ({col},1) -> {:?}",
+            hit_test(&hits, col, 1)
+        );
+
+        // Scrolled to the master (the selection), the MASTER cell is on screen.
+        let (text, hits) = render_hits(&params, &board, Some(CHAIN_TILE), true);
+        let col = chain_label_col(&text, "MASTER");
+        assert_eq!(
+            hit_test(&hits, col, 1),
+            Some(&HitTarget::MasterCell),
+            "MASTER at ({col},1)"
+        );
     }
 
     /// The board the app actually boots with, derived from the default enabled

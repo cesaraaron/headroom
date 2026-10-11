@@ -236,6 +236,7 @@ pub(super) fn focus_practice_timeline(panels: &mut Panels, focus: &mut Option<us
 /// a stage or onto the master cell. Every applied target is remembered so a later
 /// `Tab` returns to it, exactly as if the keyboard had visited it. Timeline
 /// targets carry a track/seek the event loop owns, so they are ignored here.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn apply_hit(
     target: &HitTarget,
     focus: &mut Option<usize>,
