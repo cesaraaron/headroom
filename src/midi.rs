@@ -26,7 +26,7 @@
 
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::Ordering::Relaxed;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering::Relaxed};
 
 use midir::{Ignore, MidiInput};
 
@@ -169,6 +169,10 @@ pub struct MidiState {
     bindings: Mutex<Vec<(u8, MidiTarget)>>,
     enabled: bool,
     clock: bool,
+    /// Count of CC events seen, and the packed last one (`cc << 8 | value`) — the
+    /// learn channel. Written by the MIDI thread, polled by the UI.
+    cc_seq: AtomicU64,
+    last_cc: AtomicU32,
 }
 
 impl MidiState {
@@ -181,7 +185,33 @@ impl MidiState {
             bindings: Mutex::new(bindings),
             enabled,
             clock,
+            cc_seq: AtomicU64::new(0),
+            last_cc: AtomicU32::new(0),
         }
+    }
+
+    /// Publish a CC event to the learn channel: store the value *before* bumping
+    /// the sequence, so a reader that sees a new sequence reads a matching value.
+    fn record_cc(&self, cc: u8, value: u8) {
+        self.last_cc
+            .store((u32::from(cc) << 8) | u32::from(value), Relaxed);
+        self.cc_seq.fetch_add(1, Relaxed);
+    }
+
+    /// A token for the current CC sequence — read it when arming Learn.
+    pub fn cc_seq(&self) -> u64 {
+        self.cc_seq.load(Relaxed)
+    }
+
+    /// The first CC seen after `seq`: `(cc, value, new_seq)`, or `None` when
+    /// nothing has arrived since. Polled once per frame while learning.
+    pub fn cc_since(&self, seq: u64) -> Option<(u8, u8, u64)> {
+        let now = self.cc_seq.load(Relaxed);
+        if now == seq {
+            return None;
+        }
+        let packed = self.last_cc.load(Relaxed);
+        Some(((packed >> 8) as u8, (packed & 0xFF) as u8, now))
     }
 
     pub fn enabled(&self) -> bool {
@@ -237,6 +267,8 @@ fn default_midi_state() -> MidiState {
         bindings: Mutex::new(vec![(DEFAULT_CC, MidiTarget::WahPosition)]),
         enabled: true,
         clock: false,
+        cc_seq: AtomicU64::new(0),
+        last_cc: AtomicU32::new(0),
     }
 }
 
@@ -439,15 +471,23 @@ fn midi_config() -> MidiState {
     }
 }
 
-/// Connect to the first available MIDI input and drive the bound targets. Returns
-/// `None` (silently) if MIDI is disabled, no input exists, or the connection
-/// fails — the app must run fine without a controller.
-pub fn start(params: Arc<Params>) -> Option<MidiHandle> {
-    let state = midi_config();
-    if !state.enabled() || state.bindings().is_empty() {
+/// Build the shared state from `midi.conf` and connect if possible. The state is
+/// **always** returned (even with no controller, or MIDI disabled) so the bind
+/// screen can list and edit bindings.
+pub fn start(params: Arc<Params>) -> (Arc<MidiState>, Option<MidiHandle>) {
+    let state = Arc::new(midi_config());
+    let handle = connect(&state, params);
+    (state, handle)
+}
+
+/// Connect to the first available MIDI input and drive whatever the (live)
+/// binding table says. Returns `None` (silently) if MIDI is disabled, no input
+/// exists, or the connection fails — the app must run fine without a controller.
+/// Also the manual reconnect path for the bind screen.
+pub fn connect(state: &Arc<MidiState>, params: Arc<Params>) -> Option<MidiHandle> {
+    if !state.enabled() {
         return None;
     }
-    let bindings = state.bindings();
     let clock = state.clock();
 
     let mut input = MidiInput::new("rusty-riff").ok()?;
@@ -458,7 +498,9 @@ pub fn start(params: Arc<Params>) -> Option<MidiHandle> {
         .unwrap_or_else(|_| "unknown".to_string());
 
     let p = params.clone();
+    let bindings = state.bindings();
     let summary: Vec<String> = bindings.iter().map(|(cc, _)| format!("CC{cc}")).collect();
+    let st = state.clone();
     let mut tempo = MidiClock::new();
     let conn = input
         .connect(
@@ -480,10 +522,17 @@ pub fn start(params: Arc<Params>) -> Option<MidiHandle> {
                     return;
                 }
                 if let Some((controller, value)) = parse_cc(msg) {
+                    // Publish to the learn channel first, so a screen that is
+                    // arming sees the event even if the lock below is contended.
+                    st.record_cc(controller, value);
                     let unit = cc_to_unit(value);
-                    for &(cc, target) in &bindings {
-                        if cc == controller {
-                            target.write(&p, unit);
+                    // `try_lock` only: the MIDI thread must never block. A CC
+                    // dropped while the UI is mid-bind is inaudible.
+                    if let Ok(bindings) = st.bindings.try_lock() {
+                        for &(cc, target) in bindings.iter() {
+                            if cc == controller {
+                                target.write(&p, unit);
+                            }
                         }
                     }
                 }
@@ -494,7 +543,11 @@ pub fn start(params: Arc<Params>) -> Option<MidiHandle> {
 
     crate::audio::log_line(&format!(
         "MIDI input '{name}' bound to {}{}",
-        summary.join(", "),
+        if summary.is_empty() {
+            "(nothing yet)".to_string()
+        } else {
+            summary.join(", ")
+        },
         if clock { " + clock sync" } else { "" }
     ));
     Some(MidiHandle {
@@ -671,5 +724,35 @@ mod tests {
             b,
             vec![(11, MidiTarget::WahPosition), (7, MidiTarget::BoostGain)]
         );
+    }
+
+    #[test]
+    fn cc_since_reports_only_new_events() {
+        let s = MidiState::from_conf("");
+        assert_eq!(s.cc_since(0), None, "nothing seen yet");
+        s.record_cc(20, 100);
+        assert_eq!(s.cc_since(0), Some((20, 100, 1)));
+        assert_eq!(s.cc_since(1), None, "the same event must not re-fire");
+    }
+
+    #[test]
+    fn cc_since_returns_the_latest() {
+        let s = MidiState::from_conf("");
+        s.record_cc(20, 10);
+        s.record_cc(21, 90);
+        assert_eq!(s.cc_since(0), Some((21, 90, 2)));
+        // A reader that already saw the first event still gets the second.
+        assert_eq!(s.cc_since(1), Some((21, 90, 2)));
+    }
+
+    #[test]
+    fn start_always_returns_the_shared_state() {
+        // Even with no port (or MIDI disabled), the UI gets a state so the bind
+        // screen can list and edit bindings.
+        let (state, _handle) = start(Arc::new(Params::new()));
+        let expected = midi_config();
+        assert_eq!(state.enabled(), expected.enabled());
+        assert_eq!(state.clock(), expected.clock());
+        assert_eq!(state.bindings(), expected.bindings());
     }
 }
