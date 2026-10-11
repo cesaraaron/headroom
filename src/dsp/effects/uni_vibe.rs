@@ -1,6 +1,6 @@
 use std::f32::consts::{PI, TAU};
 
-use super::SmoothedGain;
+use super::{SmoothedGain, param_changed};
 /// Uni-Vibe: a four-stage, LFO-swept all-pass cascade with a photocell-style throb,
 /// summed with the dry signal — the "vibe" behind the DSOTM lead tones.
 ///
@@ -30,6 +30,19 @@ pub struct UniVibe {
     /// Wet/dry, smoothed so a mix move is not a step.
     mix: SmoothedGain,
     sr: f32,
+    /// Cached LFO rate (Hz): the exponential knob map runs only on change.
+    ///
+    /// NOTE: the coefficients themselves stay per-sample *deliberately*.
+    /// Control-rate + interpolated coefficients were tried (32/16/8/4-sample
+    /// windows, start- and endpoint-sampled): the sweep lingers at its
+    /// turnarounds, so any coefficient error — however small — levers into
+    /// large notch-crossing time shifts against note envelopes and moves
+    /// narrow harness LTAS bins unpredictably (+0.28/+0.59/+0.50 dB at 111 Hz
+    /// for 32/8/endpoint-32; only N=4 passed, by alignment luck). Sweeping
+    /// stages keep exact per-sample coefficients; only knob-rate values
+    /// (rate here) may be cached, and only exactly.
+    last_rate: f32,
+    rate_hz: f32,
 }
 
 /// Four cascaded all-pass stages — the Uni-Vibe's phase network.
@@ -54,6 +67,8 @@ impl UniVibe {
             // `DEFAULT_UV_MIX`.
             mix: SmoothedGain::new(0.50, sr),
             sr,
+            last_rate: -1.0,
+            rate_hz: 0.1,
         }
     }
 
@@ -61,9 +76,12 @@ impl UniVibe {
     #[inline]
     pub fn process(&mut self, x: f32, rate: f32, depth: f32, mix: f32, mode: f32) -> f32 {
         // Exponential rate map: 0.1–8 Hz, spreading the slow, musical speeds across
-        // most of the knob (mirrors the phaser/tremolo).
-        let rate_hz = 0.1 * 80.0_f32.powf(rate.clamp(0.0, 1.0));
-        self.phase = (self.phase + rate_hz / self.sr).fract();
+        // most of the knob (mirrors the phaser/tremolo). Cached: a knob-rate `powf`.
+        if param_changed(rate, self.last_rate) {
+            self.rate_hz = 0.1 * 80.0_f32.powf(rate.clamp(0.0, 1.0));
+            self.last_rate = rate;
+        }
+        self.phase = (self.phase + self.rate_hz / self.sr).fract();
 
         // Sine LFO, then the photocell's dwell-at-the-bottom shaping.
         let lfo = (0.5 - 0.5 * (self.phase * TAU).cos()).powf(LFO_SHAPE);
@@ -202,5 +220,46 @@ mod tests {
             }
         }
         assert!(differs, "vibrato mode did not run fully wet at mix = 0");
+    }
+
+    /// Changing RATE mid-stream must move the sweep promptly: one instance run
+    /// slow then fast must barely modulate in the slow half and throb in the
+    /// fast half. Pins the rate-cache invalidation through the control-rate path.
+    #[test]
+    fn rate_change_takes_effect_promptly() {
+        let mut uv = UniVibe::new(SR);
+        // Envelope range of a swept carrier, past a warm-up, over `secs`.
+        let mut n = 0usize;
+        let mut range_for = |uv: &mut UniVibe, rate: f32, secs: f32| {
+            let total = (SR * secs) as usize;
+            let peaks = window_peaks(total, 4800, 256, |_| {
+                let x = (2.0 * PI * 600.0 * n as f32 / SR).sin();
+                n += 1;
+                uv.process(x, rate, 1.0, 0.5, 0.0)
+            });
+            let hi = peaks.iter().cloned().fold(0.0f32, f32::max);
+            let lo = peaks.iter().cloned().fold(f32::INFINITY, f32::min);
+            hi - lo
+        };
+        let slow = range_for(&mut uv, 0.0, 1.2);
+        let fast = range_for(&mut uv, 1.0, 1.2);
+        assert!(fast > 0.1, "fast sweep does not throb: {fast:.3}");
+        assert!(
+            fast > slow * 2.0,
+            "rate change did not take effect: slow {slow:.3} fast {fast:.3}"
+        );
+    }
+
+    /// The cached LFO rate must equal the exponential map (pins the value the
+    /// per-sample `powf` used to compute).
+    #[test]
+    fn cached_rate_matches_the_map() {
+        let mut uv = UniVibe::new(SR);
+        uv.process(0.0, 1.0, 0.5, 0.5, 0.0);
+        assert!(
+            (uv.rate_hz - 0.1 * 80.0_f32.powf(1.0)).abs() < 1e-4,
+            "cached rate wrong: {}",
+            uv.rate_hz
+        );
     }
 }

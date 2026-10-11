@@ -1,6 +1,6 @@
 use std::f32::consts::{PI, TAU};
 
-use super::SmoothedGain;
+use super::{SmoothedGain, param_changed};
 /// Stereo phaser: a cascade of LFO-swept first-order all-pass filters summed back
 /// with the dry signal. Where the flanger sweeps a *delay* (a comb with evenly
 /// spaced notches) and the chorus sweeps a *long* delay (pitch shimmer), the phaser
@@ -35,6 +35,16 @@ pub struct Phaser {
     /// Wet/dry, smoothed. `phaser_mix` is a MIDI CC target.
     mix: SmoothedGain,
     sr: f32,
+    /// Cached LFO rate (Hz): the exponential knob map runs only on change.
+    ///
+    /// NOTE: the sweep coefficients stay per-sample *deliberately* — same
+    /// reason as the Uni-Vibe's (see its `last_rate` note): control-rate +
+    /// interpolated coefficients shift sweeping-notch crossings against note
+    /// envelopes (turnaround leverage), moving narrow harness LTAS bins by
+    /// up to 0.6 dB. No bundled preset runs the phaser wet, so the harness
+    /// cannot even catch it here — only exact caches ship on sweeping stages.
+    last_rate: f32,
+    rate_hz: f32,
 }
 
 /// Number of cascaded all-pass stages. Four stages give two sweeping notches — the
@@ -59,6 +69,8 @@ impl Phaser {
             // `DEFAULT_PH_MIX`.
             mix: SmoothedGain::new(0.50, sr),
             sr,
+            last_rate: -1.0,
+            rate_hz: 0.05,
         }
     }
 
@@ -107,8 +119,12 @@ impl Phaser {
 
         // LFO advances once per sample; exponential map spreads the slow, musical
         // rates across most of the knob's travel (mirrors the flanger/chorus).
-        let rate_hz = 0.05 * 100.0_f32.powf(rate.clamp(0.0, 1.0));
-        self.phase = (self.phase + rate_hz / self.sr).fract();
+        // Cached: a knob-rate `powf`.
+        if param_changed(rate, self.last_rate) {
+            self.rate_hz = 0.05 * 100.0_f32.powf(rate.clamp(0.0, 1.0));
+            self.last_rate = rate;
+        }
+        self.phase = (self.phase + self.rate_hz / self.sr).fract();
 
         let depth = depth.clamp(0.0, 1.0);
         let (f_min, f_max) = if phase90 {
@@ -135,6 +151,10 @@ impl Phaser {
         // the wet is what makes the pedal transparent when it is turned down.
         let m = 0.5 * (l + r);
         let (wet_in_l, wet_in_r) = if phase90 { (m, m) } else { (l, r) };
+        // Sweep coefficients stay per-sample: control-rate + interpolated
+        // coefficients shift notch crossings against note envelopes (see the
+        // `last_rate` note above), which the harness cannot catch here since no
+        // bundled preset runs the phaser wet.
         let a_l = coeff(lfo(self.phase));
         let a_r = if phase90 {
             a_l
@@ -396,6 +416,47 @@ mod tests {
         assert!(
             hi - lo > 0.1,
             "phase 90 output not modulated (env {lo:.3}..{hi:.3})"
+        );
+    }
+
+    /// Changing RATE mid-stream must move the sweep promptly: one instance run
+    /// slow then fast must cross its envelope mean more often in the fast half.
+    /// Pins the rate-cache invalidation through the control-rate path.
+    #[test]
+    fn rate_change_takes_effect_promptly() {
+        let mut p = Phaser::new(SR);
+        let crossings = |p: &mut Phaser, rate: f32, from: usize, to: usize| {
+            let peaks = window_peaks(to - from, 0, 256, |i| {
+                let n = from + i;
+                let x = (2.0 * PI * 600.0 * n as f32 / SR).sin();
+                p.process(x, x, rate, 1.0, 0.5, 0.5, 0.0).0
+            });
+            let mean = peaks.iter().sum::<f32>() / peaks.len().max(1) as f32;
+            peaks
+                .windows(2)
+                .filter(|w| (w[0] - mean).signum() != (w[1] - mean).signum())
+                .count()
+        };
+        let n = SR as usize * 2;
+        let slow = crossings(&mut p, 0.3, 0, n);
+        let fast = crossings(&mut p, 0.95, n, 2 * n);
+        assert!(fast >= 4, "fast sweep barely modulates: {fast} crossings");
+        assert!(
+            fast > slow,
+            "rate change did not take effect: slow {slow} fast {fast}"
+        );
+    }
+
+    /// The cached LFO rate must equal the exponential map (pins the value the
+    /// per-sample `powf` used to compute).
+    #[test]
+    fn cached_rate_matches_the_map() {
+        let mut p = Phaser::new(SR);
+        p.process(0.0, 0.0, 1.0, 0.5, 0.5, 0.5, 0.0);
+        assert!(
+            (p.rate_hz - 0.05 * 100.0_f32.powf(1.0)).abs() < 1e-4,
+            "cached rate wrong: {}",
+            p.rate_hz
         );
     }
 }
