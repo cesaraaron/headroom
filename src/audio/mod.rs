@@ -11,6 +11,7 @@ use crate::dsp::cab::ExternalIrCab;
 use crate::dsp::effects::db_to_lin;
 use crate::dsp::limiter::Limiter;
 use crate::dsp::metronome::{Metronome, MetronomeVoice};
+use crate::dsp::oversample::Oversampler4;
 use crate::dsp::player::{PlayerTrack, PlayerVoice, TrackKind};
 use crate::dsp::tuner::{Tuner, TunerDetector};
 use crate::dsp::{DcBlocker, DspChain, Levels, Params, StereoInsert};
@@ -758,6 +759,52 @@ fn output_stage(
     limiter.process(live_l + take_l, live_r + take_r)
 }
 
+/// True-peak hold for the OUT meter: 4× upsample-only measurement over the
+/// post-ceiling output, block max into a slow-decay hold. The old code held
+/// the *sample* peak here, which is structurally blind to inter-sample overs
+/// (a hot transient can clip the converter while every sample reads safe).
+/// A helper struct (rather than inline oversamplers on the audio state) so
+/// the hold is unit-testable without standing up an audio engine.
+struct TruePeak {
+    os_l: Oversampler4,
+    os_r: Oversampler4,
+    hold: f32,
+    decay: f32,
+}
+
+impl TruePeak {
+    fn new(sr: f32) -> Self {
+        Self {
+            os_l: Oversampler4::new(sr),
+            os_r: Oversampler4::new(sr),
+            hold: 0.0,
+            // ~1.5 s hold: instant attack, so a single transient is still
+            // visible long after it has gone — what makes a peak meter hold.
+            decay: (-1.0 / (1.5 * sr)).exp(),
+        }
+    }
+
+    /// Fold one post-ceiling stereo sample into the hold: max over the 4×
+    /// phases of both channels, kept against the decaying hold.
+    #[inline]
+    fn push(&mut self, l: f32, r: f32) {
+        let mut peak = 0.0f32;
+        for &u in self
+            .os_l
+            .upsample(l)
+            .iter()
+            .chain(self.os_r.upsample(r).iter())
+        {
+            peak = peak.max(u.abs());
+        }
+        self.hold = peak.max(self.hold * self.decay);
+    }
+
+    fn peak(&self) -> f32 {
+        self.hold
+    }
+}
+
 struct InputState {
     /// The live guitar rig.
     chain: DspChain,
@@ -773,9 +820,7 @@ struct InputState {
     in_env: f32,
     out_env: f32,
     /// True peak of the final output, held with a slow decay (see `Levels`).
-    out_peak: f32,
-    /// Per-sample decay coefficient for `out_peak`, set from a ~1.5 s hold.
-    peak_decay: f32,
+    out_peak: TruePeak,
     /// Fades to 0 when the output ceiling stops engaging.
     limit_indicator: f32,
     /// Per-callback decay for `limit_indicator` (~0.4 s to fade out).
@@ -956,7 +1001,7 @@ impl InputState {
         self.practice.store_position(self.player.cursor());
         self.levels.input.store(self.in_env, Relaxed);
         self.levels.output.store(self.out_env, Relaxed);
-        self.levels.output_peak.store(self.out_peak, Relaxed);
+        self.levels.output_peak.store(self.out_peak.peak(), Relaxed);
         // Fade rather than latch, so the indicator releases on its own. The
         // per-sample loop sets it to 1.0 whenever the ceiling engaged during
         // this callback, so this only ever decays.
@@ -1153,12 +1198,7 @@ impl InputState {
             // tracks level but does not hold a peak, and it is computed before
             // the take bus, so it structurally cannot show that this output just
             // touched the ceiling.
-            let a = out_left.abs().max(out_right.abs());
-            self.out_peak = if a > self.out_peak {
-                a
-            } else {
-                self.out_peak * self.peak_decay
-            };
+            self.out_peak.push(out_left, out_right);
             // Did the ceiling actually have to work on this sample? The knee
             // opens at 0.95, so anything the limiter changes was above that.
             if (live_l + take_l).abs() > 0.95 || (live_r + take_r).abs() > 0.95 {
@@ -1349,10 +1389,7 @@ fn build_engine(
         release,
         in_env: 0.0,
         out_env: 0.0,
-        out_peak: 0.0,
-        // ~1.5 s hold: instant attack, so a single transient is still visible
-        // long after it has gone, which is what makes a peak meter a peak meter.
-        peak_decay: (-1.0 / (1.5 * sr)).exp(),
+        out_peak: TruePeak::new(sr),
         limit_indicator: 0.0,
         limit_decay: (-1.0 / (0.4 * sr)).exp(),
         in_channels,
@@ -1585,5 +1622,37 @@ mod tests {
             block_ranges(3, 0).collect::<Vec<_>>(),
             vec![(0, 1), (1, 2), (2, 3)]
         );
+    }
+
+    /// The OUT peak hold must catch an inter-sample over: a 12 kHz tone at
+    /// 0.9 started at 45° samples at ±0.636 (a sample peak that reads safe),
+    /// while its true peak is 0.9. After enough pushes for the hold to see a
+    /// full cycle, it must report the true peak, not the sample peak.
+    #[test]
+    fn true_peak_hold_catches_an_intersample_over() {
+        let mut tp = super::TruePeak::new(SR);
+        for i in 0..1000 {
+            let x = (2.0 * std::f32::consts::PI * 12_000.0 * i as f32 / SR
+                + std::f32::consts::FRAC_PI_4)
+                .sin()
+                * 0.9;
+            tp.push(x, -x);
+        }
+        let held = tp.peak();
+        assert!(
+            held > 0.85,
+            "true peak missed the inter-sample over: {held}"
+        );
+        assert!(held < 1.0, "true peak overshoots absurdly: {held}");
+    }
+
+    /// Silence holds at exactly zero — never NaN, never creeping.
+    #[test]
+    fn true_peak_hold_stays_at_zero_on_silence() {
+        let mut tp = super::TruePeak::new(SR);
+        for _ in 0..1000 {
+            tp.push(0.0, 0.0);
+        }
+        assert_eq!(tp.peak(), 0.0, "silent peak is not zero");
     }
 }
