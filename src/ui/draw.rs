@@ -444,11 +444,12 @@ fn render_vu_row_detail(
     let db = amp_to_db(level);
     let fill = ((db + 60.0) / 60.0).clamp(0.0, 1.0) as f64;
 
-    // Reserve a 4-cell slot for the `LIM` badge next to the OUT bar, plus a
-    // fixed-width slot for the GR readout beside it.
-    let badge_w: usize = if limiting.is_some() { 4 } else { 0 };
-    let gr_w: usize = if gr_db.is_some() { 6 } else { 0 };
-    let bar_width = (area.width as usize).saturating_sub(label.len() + 2 + 10 + badge_w + gr_w);
+    // Unified meter chrome: labels padded to 8 and a fixed 10-cell trailing
+    // slot (4 for the `LIM` badge + 6 for the GR readout) reserved on EVERY
+    // row, whether or not this row renders them — so IN and OUT bars always
+    // start at the same column and run the same length. (Reserving per-row
+    // chrome made the OUT bar shrink when the readout was added.)
+    let bar_width = (area.width as usize).saturating_sub(8 + 2 + 10);
     let filled = (fill * bar_width as f64) as usize;
 
     let green_end = (bar_width as f64 * 0.72) as usize;
@@ -460,7 +461,10 @@ fn render_vu_row_detail(
         .map(|p| (((amp_to_db(p) + 60.0) / 60.0).clamp(0.0, 1.0) * bar_width as f32) as usize);
 
     let mut spans = vec![
-        Span::styled(label, Style::default().fg(shade(CHROME, METER_DIM))),
+        Span::styled(
+            format!("{label:<8}"),
+            Style::default().fg(shade(CHROME, METER_DIM)),
+        ),
         Span::styled("▐", Style::default().fg(shade(DIM, METER_DIM))),
     ];
 
