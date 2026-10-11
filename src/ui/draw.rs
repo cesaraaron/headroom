@@ -109,7 +109,7 @@ pub(super) fn draw(
     i += 1;
     if panels.amp {
         hits.push((rows[i], HitTarget::Panel(2)));
-        render_amp_panel(f, rows[i], params, focus, ext_cab, ext_amp, sr);
+        render_amp_panel(f, rows[i], params, focus, ext_cab, ext_amp, sr, &mut hits);
         i += 1;
     }
     if show_timeline {
@@ -128,7 +128,7 @@ pub(super) fn draw(
     }
     if panels.rig {
         hits.push((rows[i], HitTarget::Panel(4)));
-        render_rig(f, rows[i], params, board, focus);
+        render_rig(f, rows[i], params, board, focus, &mut hits);
         i += 1;
     }
     render_help(
@@ -520,6 +520,7 @@ fn render_vu_row_detail(
 // (tone-stack knobs, blank bottom margin, grille) and the cab box (mic knobs,
 // bottom margin, grille). Model picking lives in the `A`/`C` browser modals;
 // the titles show the active models.
+#[allow(clippy::too_many_arguments)]
 fn render_amp_panel(
     f: &mut Frame,
     area: Rect,
@@ -528,6 +529,7 @@ fn render_amp_panel(
     ext_cab: Option<&str>,
     ext_amp: Option<&str>,
     sr: f32,
+    hits: &mut HitMap,
 ) {
     let amp_active = focus.is_some_and(|i| (AMP_START..AMP_END).contains(&i));
     let mic_active = focus.is_some_and(|i| (MIC_START..MIC_END).contains(&i));
@@ -557,6 +559,7 @@ fn render_amp_panel(
         amp_box_active,
         dim(amp_box_active),
         sr,
+        hits,
     );
     render_cab_box(
         f,
@@ -566,6 +569,7 @@ fn render_amp_panel(
         ext_cab,
         cab_box_active,
         dim(cab_box_active),
+        hits,
     );
 }
 
@@ -588,6 +592,7 @@ fn render_amp_box(
     box_active: bool,
     dim: Modifier,
     sr: f32,
+    hits: &mut HitMap,
 ) {
     // The amp box reflects the active amp: a loaded AU's name (with the tone-stack
     // knobs inert) or the built-in amp model.
@@ -660,6 +665,9 @@ fn render_amp_box(
             !box_active,
             None,
         );
+        if knob_cols[i].width > 0 && knob_cols[i].height > 0 {
+            hits.push((knob_cols[i], HitTarget::Knob(ki)));
+        }
     }
     // parts[1] stays blank: bottom margin below the knobs.
     render_grille(
@@ -679,6 +687,7 @@ fn render_cab_box(
     ext_cab: Option<&str>,
     box_active: bool,
     dim: Modifier,
+    hits: &mut HitMap,
 ) {
     // The cab box reflects the active cab. An external amp supplying its own
     // cab (amp+cab mode) bypasses the whole cab stage; otherwise a loaded IR or the
@@ -758,6 +767,9 @@ fn render_cab_box(
             !box_active,
             None,
         );
+        if mic_cols[i].width > 0 && mic_cols[i].height > 0 {
+            hits.push((mic_cols[i], HitTarget::Knob(ki)));
+        }
     }
 
     // parts[1] stays blank: bottom margin mirroring the amp box.
@@ -807,7 +819,14 @@ fn rig_outer_height(rig_inner_width: u16, board: &[bool]) -> u16 {
     let tile_rows = tile_count.div_ceil(cols);
     2 + tile_rows as u16 * RIG_TILE_H + RIG_DETAIL_H
 }
-fn render_rig(f: &mut Frame, area: Rect, params: &Params, board: &[bool], focus: Option<usize>) {
+fn render_rig(
+    f: &mut Frame,
+    area: Rect,
+    params: &Params,
+    board: &[bool],
+    focus: Option<usize>,
+    hits: &mut HitMap,
+) {
     // The rig is "active" whenever focus is on one of its pedals (or the + ADD
     // tile); otherwise it recedes with the other inactive panels.
     let rig_active = focus
@@ -863,12 +882,19 @@ fn render_rig(f: &mut Frame, area: Rect, params: &Params, board: &[bool], focus:
             .constraints(vec![Constraint::Ratio(1, cols as u32); cols])
             .split(grid_rows[r]);
         for (c, cell) in cells.iter().take(n).enumerate() {
+            if cell.width == 0 || cell.height == 0 {
+                continue;
+            }
             match on_board.get(base + c) {
                 Some(&pi) => {
                     let pedal = &PEDALS[pi];
-                    render_pedal_tile(f, *cell, pedal, focus, params, !rig_active)
+                    hits.push((*cell, HitTarget::Knob(pedal.start)));
+                    render_pedal_tile(f, *cell, pedal, focus, params, !rig_active);
                 }
-                None => render_add_tile(f, *cell, focus == Some(ADD_TILE)),
+                None => {
+                    hits.push((*cell, HitTarget::Knob(ADD_TILE)));
+                    render_add_tile(f, *cell, focus == Some(ADD_TILE));
+                }
             }
         }
     }
@@ -2386,6 +2412,65 @@ mod tests {
             Some(&HitTarget::MasterCell),
             "MASTER at ({col},1)"
         );
+    }
+
+    /// The recorded rect for `target`, panicking if it was never recorded.
+    fn region(hits: &HitMap, target: HitTarget) -> Rect {
+        hits.iter()
+            .find(|(_, t)| *t == target)
+            .map(|(r, _)| *r)
+            .unwrap_or_else(|| panic!("no hit region for {target:?}"))
+    }
+
+    /// True when `inner` lies entirely within `outer`.
+    fn encloses(outer: Rect, inner: Rect) -> bool {
+        inner.x >= outer.x
+            && inner.y >= outer.y
+            && inner.x + inner.width <= outer.x + outer.width
+            && inner.y + inner.height <= outer.y + outer.height
+    }
+
+    /// A cell's region is non-empty, sits inside its panel, and a click at its
+    /// centre resolves to it (so it outranks the panel fallback behind it).
+    fn assert_cell_region(hits: &HitMap, panel: u8, target: HitTarget) {
+        let outer = region(hits, HitTarget::Panel(panel));
+        let rect = region(hits, target.clone());
+        assert!(rect.width > 0 && rect.height > 0, "{target:?} is empty");
+        assert!(
+            encloses(outer, rect),
+            "{target:?} {rect:?} escapes panel {panel} {outer:?}"
+        );
+        let col = rect.x + rect.width / 2;
+        let row = rect.y + rect.height / 2;
+        assert_eq!(hit_test(hits, col, row), Some(&target), "centre of {target:?}");
+    }
+
+    #[test]
+    fn hit_map_records_an_amp_knob() {
+        let params = Params::new();
+        let board = board_all(true);
+        let (_text, hits) = render_hits(&params, &board, Some(AMP_START), false);
+        for i in 0..params.amp_model().controls().len() {
+            assert_cell_region(&hits, 2, HitTarget::Knob(AMP_START + i));
+        }
+    }
+
+    #[test]
+    fn hit_map_records_a_pedal_tile() {
+        let params = Params::new();
+        let board = board_all(true);
+        let (_text, hits) = render_hits(&params, &board, Some(PEDALS[0].start), false);
+        for pi in [0usize, 3, PEDALS.len() - 1] {
+            assert_cell_region(&hits, 4, HitTarget::Knob(PEDALS[pi].start));
+        }
+    }
+
+    #[test]
+    fn hit_map_records_the_add_tile() {
+        let params = Params::new();
+        let board = board_all(true);
+        let (_text, hits) = render_hits(&params, &board, Some(ADD_TILE), false);
+        assert_cell_region(&hits, 4, HitTarget::Knob(ADD_TILE));
     }
 
     /// The board the app actually boots with, derived from the default enabled
