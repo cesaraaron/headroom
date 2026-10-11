@@ -49,8 +49,8 @@ use hit::{HitMap, HitTarget, hit_test};
 use input::{
     PanelMemory, add_pedal, amp_choices, apply_hit, cab_choices, cycle_panel, ensure_focus_visible,
     focus_practice_timeline, init_amp_cursor, init_cab_cursor, jump_group, move_selected_stage,
-    nudge, nudge_master, panel_of, press_number, remove_pedal, select_amp, select_cab, step_header,
-    step_knob_in_panel, toggle_pedal, toggle_stage,
+    nudge, nudge_master, panel_of, press_number, remove_pedal, reorder_warning, select_amp,
+    select_cab, step_header, step_knob_in_panel, toggle_pedal, toggle_stage,
 };
 use midi::{MidiUi, render_midi};
 use practice::{PracticeUi, SaveContext};
@@ -2176,10 +2176,20 @@ pub fn run(
                         // the master cell) is selected. The timeline's `[`/`]`
                         // arms above match first while it owns focus.
                         KeyCode::Char('[') if focus == Some(CHAIN_TILE) && !header_on_master => {
-                            move_selected_stage(&params, &board, chain_cursor, -1);
+                            let before = params.chain_slots();
+                            if move_selected_stage(&params, &board, chain_cursor, -1)
+                                && let Some(w) = reorder_warning(&before, &params.chain_slots())
+                            {
+                                save_msg = Some((w, std::time::Instant::now()));
+                            }
                         }
                         KeyCode::Char(']') if focus == Some(CHAIN_TILE) && !header_on_master => {
-                            move_selected_stage(&params, &board, chain_cursor, 1);
+                            let before = params.chain_slots();
+                            if move_selected_stage(&params, &board, chain_cursor, 1)
+                                && let Some(w) = reorder_warning(&before, &params.chain_slots())
+                            {
+                                save_msg = Some((w, std::time::Instant::now()));
+                            }
                         }
                         // Space bypasses the selected stage; on the master cell it
                         // resets the rig output to unity, the one neutral value.

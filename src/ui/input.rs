@@ -454,6 +454,35 @@ pub(super) fn nudge_master(params: &Params, delta: f32) {
 /// Move the ribbon cursor to the neighbouring rendered stage (wrapping around
 /// the ends). A stale cursor (its pedal left the board) re-anchors at the
 /// nearest end instead.
+/// Names the cost of a reorder that newly places a mono pedal after the cab,
+/// or `None` when the move introduces no such fold.
+///
+/// A mono stage after the cab sums the stereo image to dual mono for
+/// everything downstream — silent and permanent until moved back. Unlike the
+/// refused moves (cab-before-amp, stereo-before-amp) a folded chain is legal,
+/// so the move goes through with a toast instead of refusing. Only the
+/// transition warns: nudging an unrelated stage in an already-folded chain
+/// stays silent, and refused moves never reach here (their order is unchanged).
+pub(super) fn reorder_warning(before: &[u8; CHAIN_LEN], after: &[u8; CHAIN_LEN]) -> Option<String> {
+    /// First mono pedal positioned after the cab, if any.
+    fn folded(order: &[u8; CHAIN_LEN]) -> Option<ChainStage> {
+        let cab = order.iter().position(|&v| v == ChainStage::Cab as u8)?;
+        order[cab + 1..]
+            .iter()
+            .find_map(|&v| ChainStage::from_u8(v).filter(|s| s.is_mono_pedal()))
+    }
+    if folded(before).is_some() {
+        return None;
+    }
+    let offender = folded(after)?;
+    // Stable id ("wah") capitalized for the footer.
+    let mut name = offender.name().to_string();
+    if let Some(first) = name.get_mut(..1) {
+        first.make_ascii_uppercase();
+    }
+    Some(format!("{name} after cab: stereo folds to mono"))
+}
+
 /// Move the cursor's stage one rendered slot earlier (`dir < 0`, `[`) or later
 /// (`dir > 0`, `]`). The cursor follows its stage. Off-board stages hold their
 /// slots silently; the ends refuse, and a move that would place the cab before
@@ -1252,6 +1281,84 @@ mod tests {
         // …and back again.
         assert!(move_selected_stage(&p, &b, ChainStage::Comp, -1));
         assert_eq!(p.chain_slots(), ChainStage::default_order());
+    }
+
+    /// Splice `stage` to sit immediately after `target`, preserving
+    /// everything else's relative order.
+    fn moved_after(
+        order: [u8; CHAIN_LEN],
+        stage: ChainStage,
+        target: ChainStage,
+    ) -> [u8; CHAIN_LEN] {
+        let mut v = order.to_vec();
+        let from = v
+            .iter()
+            .position(|&x| x == stage as u8)
+            .expect("stage present");
+        let id = v.remove(from);
+        let to = v
+            .iter()
+            .position(|&x| x == target as u8)
+            .expect("target present");
+        v.insert(to + 1, id);
+        v.try_into().expect("same length")
+    }
+
+    /// A move that newly places a mono pedal after the cab must warn: the
+    /// fold is silent and permanent for everything downstream, unlike the
+    /// refused moves, which never happen at all.
+    #[test]
+    fn introducing_move_warns() {
+        let before = order();
+        let after = moved_after(before, ChainStage::Wah, ChainStage::Cab);
+        let w = reorder_warning(&before, &after).expect("introducing move must warn");
+        assert!(w.contains("mono"), "warning must name the cost: {w}");
+    }
+
+    /// Nudging an unrelated stage in an already-folded chain must not nag:
+    /// the fold predates the move, so there is nothing new to explain.
+    #[test]
+    fn already_folded_move_stays_silent() {
+        let folded = moved_after(order(), ChainStage::Wah, ChainStage::Cab);
+        let nudged = moved_after(folded, ChainStage::Fuzz, ChainStage::Ts);
+        assert!(
+            reorder_warning(&folded, &nudged).is_none(),
+            "pre-existing fold must not re-warn"
+        );
+    }
+
+    /// The `[`/`]` handler sequence warns once and never stacks: it diffs the
+    /// order before/after each move, so the introducing move toasts and the
+    /// next move from the already-folded state stays silent. The footer holds
+    /// a single `save_msg`, so overwrite (not stacking) is structural.
+    #[test]
+    fn repeated_introducing_moves_warn_once() {
+        let p = Params::new();
+        let b = board(true);
+        // Walk Wah rightwards until it lands after the Cab — the handler diffs
+        // each step, collecting at most one warning for the introducing step.
+        let mut warnings = 0;
+        for _ in 0..CHAIN_LEN {
+            let before = p.chain_slots();
+            if !move_selected_stage(&p, &b, ChainStage::Wah, 1) {
+                break;
+            }
+            if reorder_warning(&before, &p.chain_slots()).is_some() {
+                warnings += 1;
+            }
+        }
+        assert_eq!(warnings, 1, "must warn exactly once, got {warnings}");
+    }
+
+    /// A preset (or direct API call) that puts a mono pedal after the cab
+    /// applies unchanged — authored folds are valid; only the `[`/`]` handler
+    /// toasts, and it is wired separately.
+    #[test]
+    fn preset_mono_after_cab_applies_silently() {
+        let p = Params::new();
+        let folded = moved_after(order(), ChainStage::Wah, ChainStage::Cab);
+        p.set_chain_order(&folded);
+        assert_eq!(p.chain_slots(), folded);
     }
 
     /// Moving a stereo stage in front of the amp must be refused.
