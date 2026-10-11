@@ -1617,6 +1617,11 @@ pub(super) fn render_help_modal(f: &mut Frame) {
             "  between AMP and CAB = line-level; a full-rig AU is post-mic",
         ),
         row("  Space", "  bypass stage, pedal, or transport under focus"),
+        head("Mouse"),
+        row(
+            "  click",
+            "  focus a panel / knob / tile / row · waveform seeks · Shift+drag selects",
+        ),
         head("Play & edit"),
         row("  ↑/↓  +/−", "  knob / adjust value"),
         row("  D", "  remove pedal from the board"),

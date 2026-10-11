@@ -535,10 +535,16 @@ impl GrilleEcho {
     }
 
     /// Linear-interpolated read `d` fractional samples back from the write head.
-    /// `d ≥ 1` (both taps are > 2 samples), so this never reads the just-written x.
+    /// Both taps are fixed at construction and sit well behind the head (a few
+    /// hundred samples at any real rate), so this never reads the just-written
+    /// `x`. The assert is the tripwire if a tap is ever retuned past the buffer.
     #[inline]
     fn frac_tap(&self, d: f32) -> f32 {
         let len = self.buf.len();
+        debug_assert!(
+            d + 1.0 < len as f32,
+            "GrilleEcho tap delay {d} does not clear its {len}-sample buffer"
+        );
         let i = d.floor() as usize;
         let frac = d - i as f32;
         let a = self.buf[(self.pos + len - i) % len];

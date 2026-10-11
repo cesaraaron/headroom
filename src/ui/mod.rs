@@ -927,6 +927,9 @@ pub fn run(
             if let Some(Event::Mouse(m)) = &ev
                 && m.kind == MouseEventKind::Down(MouseButton::Left)
             {
+                // Every overlay the `terminal.draw` closure above can composite
+                // must appear here: a click must never reach the panels behind a
+                // modal. Keep this list in step with the `render_*` overlay calls.
                 let overlays = [
                     help_open,
                     preset_open,
