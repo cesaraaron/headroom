@@ -192,7 +192,8 @@ impl MidiState {
 
     /// Publish a CC event to the learn channel: store the value *before* bumping
     /// the sequence, so a reader that sees a new sequence reads a matching value.
-    fn record_cc(&self, cc: u8, value: u8) {
+    /// The MIDI thread is the producer; tests use it to simulate a controller.
+    pub(crate) fn record_cc(&self, cc: u8, value: u8) {
         self.last_cc
             .store((u32::from(cc) << 8) | u32::from(value), Relaxed);
         self.cc_seq.fetch_add(1, Relaxed);

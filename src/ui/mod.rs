@@ -7,6 +7,7 @@ mod hit;
 mod input;
 mod ir_browser;
 mod metronome;
+mod midi;
 #[cfg(feature = "clap")]
 mod plugins;
 mod practice;
