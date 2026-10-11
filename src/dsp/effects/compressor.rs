@@ -1,4 +1,4 @@
-use super::{SmoothedGain, db_to_lin, lin_to_db, param_changed};
+use super::{SmoothedGain, db_to_lin, param_changed};
 
 /// Front-of-chain feed-forward compressor — evens out picking dynamics and adds
 /// sustain, the single biggest "studio" upgrade for clean and edge-of-breakup
@@ -130,6 +130,7 @@ impl Compressor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dsp::effects::lin_to_db;
     use std::f32::consts::PI;
 
     /// The compressor must stay finite and actually reduce dynamic range: a loud
