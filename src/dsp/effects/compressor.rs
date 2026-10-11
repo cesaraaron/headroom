@@ -19,6 +19,10 @@ pub struct Compressor {
     atk: f32,
     rel: f32,
     auto_makeup: f32,
+    /// Cached `db_to_lin(thresh_db)` and `1 - 1/ratio`: the per-sample gain
+    /// computer is `(thresh_lin/env)^knee_k`, one `powf` and no `log10`.
+    thresh_lin: f32,
+    knee_k: f32,
     last_sustain: f32,
     last_attack: f32,
 
@@ -37,6 +41,8 @@ impl Compressor {
             atk: 0.0,
             rel: 0.0,
             auto_makeup: 1.0,
+            thresh_lin: 1.0,
+            knee_k: 0.0,
             last_sustain: -1.0,
             last_attack: -1.0,
             // `level` 0.5 = unity, matching the default knob position.
@@ -65,6 +71,8 @@ impl Compressor {
     fn set_sustain(&mut self, sustain: f32) {
         self.thresh_db = -6.0 - sustain * 34.0; // 0 → −6 dB, 1 → −40 dB
         self.ratio = 2.0 + sustain * 8.0; // 2:1 … 10:1
+        self.thresh_lin = db_to_lin(self.thresh_db);
+        self.knee_k = 1.0 - 1.0 / self.ratio;
         let full = db_to_lin(-self.thresh_db * (1.0 - 1.0 / self.ratio) * 0.5);
         self.auto_makeup = 1.0 + (full - 1.0) * sustain;
         self.last_sustain = sustain;
@@ -95,10 +103,13 @@ impl Compressor {
         let det_coeff = if a > self.env { self.atk } else { self.rel };
         self.env = det_coeff * self.env + (1.0 - det_coeff) * a;
 
-        // Gain computer (dB domain, hard knee).
-        let over = lin_to_db(self.env) - self.thresh_db;
-        let target = if over > 0.0 {
-            db_to_lin(-over * (1.0 - 1.0 / self.ratio))
+        // Gain computer (linear domain, hard knee): `over = lin_to_db(env) -
+        // thresh_db`, `target = db_to_lin(-over * (1 - 1/ratio))` expands to
+        // `(thresh_lin/env)^knee_k` — one `powf`, no `log10`. The linear
+        // comparison is the same branch (monotonic `lin_to_db`), and both
+        // sides are 1.0 at the knee, so it cannot step.
+        let target = if self.env > self.thresh_lin {
+            (self.thresh_lin / self.env).powf(self.knee_k)
         } else {
             1.0
         };
@@ -249,6 +260,68 @@ mod tests {
         assert!(
             worst < 0.01,
             "level knob move steps the output by {worst:.5}"
+        );
+    }
+
+    /// The linear-domain gain computer must match the dB form it replaces:
+    /// `(thresh_lin/env)^k == db_to_lin(-over*k)` for every envelope, where
+    /// `over = lin_to_db(env) - thresh_db`. This is the identity the
+    /// single-`powf` refactor relies on (dropping the per-sample `log10`).
+    #[test]
+    fn single_powf_matches_db_form() {
+        let sr = 48_000.0;
+        let mut c = Compressor::new(sr);
+        for n in 0..100 {
+            let x = (2.0 * PI * 220.0 * n as f32 / sr).sin() * 0.5;
+            c.process(x, 0.9, 0.2, 0.5);
+        }
+        // Sweep the envelope across and around the threshold.
+        for i in 0..200 {
+            let env = 10.0f32.powf(-3.0 + 3.0 * i as f32 / 199.0);
+            let over = lin_to_db(env) - c.thresh_db;
+            let old = if over > 0.0 {
+                db_to_lin(-over * c.knee_k)
+            } else {
+                1.0
+            };
+            let new = if env > c.thresh_lin {
+                (c.thresh_lin / env).powf(c.knee_k)
+            } else {
+                1.0
+            };
+            assert!(
+                (old - new).abs() < 1e-5,
+                "forms diverge at env {env}: {old} vs {new}"
+            );
+        }
+    }
+
+    /// The linear branch must be continuous through the knee: just below and
+    /// just above `thresh_lin` the target gain is 1.0 either way, so the
+    /// `env > thresh_lin` comparison can never step the gain.
+    #[test]
+    fn gain_is_continuous_through_the_knee() {
+        let sr = 48_000.0;
+        let mut c = Compressor::new(sr);
+        for n in 0..100 {
+            let x = (2.0 * PI * 220.0 * n as f32 / sr).sin() * 0.5;
+            c.process(x, 0.9, 0.2, 0.5);
+        }
+        let below = c.thresh_lin * (1.0 - 1e-6);
+        let above = c.thresh_lin * (1.0 + 1e-6);
+        let t_below = if below > c.thresh_lin {
+            (c.thresh_lin / below).powf(c.knee_k)
+        } else {
+            1.0
+        };
+        let t_above = if above > c.thresh_lin {
+            (c.thresh_lin / above).powf(c.knee_k)
+        } else {
+            1.0
+        };
+        assert!(
+            (t_below - 1.0).abs() < 1e-4 && (t_above - 1.0).abs() < 1e-4,
+            "knee discontinuity: {t_below} vs {t_above}"
         );
     }
 }
