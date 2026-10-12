@@ -110,7 +110,7 @@ pub(crate) struct SpeakerLoad {
 
 impl SpeakerLoad {
     /// `fs` resonance frequency, `q` its sharpness, `res_base` the static
-    /// resonance amount, `res_dyn` how much more the sag envelope adds, `pres_db`
+    /// resonance amount, `res_dyn` how much more drive level adds, `pres_db`
     /// the inductive high-shelf lift (at 5 kHz), and `exc_amt` the max
     /// excursion-driven resonance bloom.
     pub fn new(
@@ -160,7 +160,7 @@ impl SpeakerLoad {
     }
 
     #[inline]
-    pub fn process(&mut self, x: f32, sag: f32) -> f32 {
+    pub fn process(&mut self, x: f32, drive_level: f32) -> f32 {
         // Excursion follows bass displacement (fast attack, ~50 ms release so
         // chugs thump then recover instead of hanging over the next hit or
         // stacking into loudness).
@@ -173,7 +173,7 @@ impl SpeakerLoad {
         self.exc_env += c * (d - self.exc_env);
         let exc = (self.exc_env * self.exc_amt).min(self.exc_amt);
         let band = self.resonance.process(x);
-        let amt = self.res_base + self.res_dyn * sag + exc;
+        let amt = self.res_base + self.res_dyn * drive_level + exc;
         self.presence.process(x + band * amt)
     }
 }
