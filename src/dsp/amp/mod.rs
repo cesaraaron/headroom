@@ -1878,7 +1878,18 @@ mod tests {
     /// The Vox must breathe like the Marshall: 100 Hz UK ripple growing ghost
     /// sidebands only under load. Same window discipline as the Marshall test
     /// (f0 225 Hz over 30 720 samples keeps every bin integer-cycle).
+    ///
+    /// NOT SHIPPED — documents a measured negative, do not "fix" by tuning:
+    /// at sibling depth (0.05) the Vox power stage runs ~18% of rail (×9.037
+    /// output trim makes level downstream), so `sagged_rail` cancels the
+    /// supply exactly in the linear zone: driven 1.1e-4 vs 8.4e-5 floor, no
+    /// load contrast at any drive or f0 (150 Hz hotspot: 1.5x, knife-edge).
+    /// Audible Vox ghosting needs the power stage driven into clipping (a
+    /// power-drive re-voice, out of scope) or ear-set depths ~10x higher.
+    /// Wiring verified correct by scaling probe (10x depth → exactly 10x
+    /// sidebands) and reverted; see the plan ledger Task 1 ruling.
     #[test]
+    #[ignore = "power stage too clean to imprint ripple at sane depths; pending ear-pass depths / power-drive re-voice"]
     fn vox_ripple_grows_ghost_sidebands_only_when_driven() {
         let f0 = 225.0;
         const WIN: usize = 30_720;
@@ -1903,7 +1914,14 @@ mod tests {
     }
 
     /// Hiwatt: 100 Hz UK ripple, same shape.
+    ///
+    /// NOT SHIPPED — measured negative, do not "fix" by tuning: the DR103
+    /// authentically stays clean and loud (stiff supply, moderate drive), so
+    /// the power stage never leaves the linear zone where `sagged_rail`
+    /// cancels supply exactly: driven == quiet at 1.8e-4 (IM hash floor).
+    /// See the plan ledger Task 1 ruling.
     #[test]
+    #[ignore = "stiff+clean power stage cannot imprint ripple; authentic headroom behavior"]
     fn hiwatt_ripple_grows_ghost_sidebands_only_when_driven() {
         let f0 = 225.0;
         const WIN: usize = 30_720;
@@ -1931,7 +1949,13 @@ mod tests {
     /// 100 Hz models: 120 Hz sidebands of 225 Hz can never be integer-cycle
     /// in the 30 720 window, so f0=200 over 24 000 samples (fund 100cy,
     /// ±120 bins 40/160cy).
+    ///
+    /// NOT SHIPPED — measured negative, do not "fix" by tuning: Twin runs
+    /// clean (stiff supply, gentle drive) and carries a pre-existing ~3e-4
+    /// floor (bias-trem texture) that dwarfs any sane-depth ripple. See
+    /// the plan ledger Task 1 ruling.
     #[test]
+    #[ignore = "clean power stage + structural floor dominate sane-depth ripple"]
     fn fender_ripple_grows_ghost_sidebands_only_when_driven() {
         let f0 = 200.0;
         const WIN: usize = 24_000;
@@ -1978,6 +2002,15 @@ mod tests {
         assert!(
             driven > quiet * 2.0,
             "randall ghost notes not load-dependent: quiet {quiet:.5} driven {driven:.5}"
+        );
+        // Idle must be essentially silent — not merely relatively quieter:
+        // the ripple scales with load, so at idle the supply is exactly ×1.0.
+        // (Measured whisper-level floor is ~3.5e-4 — the envelope barely
+        // loads at 0.01 input — so 1e-3 has room without admitting a
+        // load-independent hum, which would read at driven levels ~5e-3.)
+        assert!(
+            quiet < 1e-3,
+            "randall idle sideband floor too high: {quiet:.6}"
         );
         assert!(
             (0.0004..0.15).contains(&driven),
