@@ -1875,6 +1875,147 @@ mod tests {
         );
     }
 
+    /// The Vox must breathe like the Marshall: 100 Hz UK ripple growing ghost
+    /// sidebands only under load. Same window discipline as the Marshall test
+    /// (f0 225 Hz over 30 720 samples keeps every bin integer-cycle).
+    #[test]
+    fn vox_ripple_grows_ghost_sidebands_only_when_driven() {
+        let f0 = 225.0;
+        const WIN: usize = 30_720;
+        let sidebands = |amp_in: f32, gain: f32| -> f32 {
+            let mut amp = Vox::new(SR);
+            let knobs = standard_knobs(AmpModel::Vox, gain, 0.5, 0.5, 0.6, 0.5, 0.8);
+            let out = run_tone(&mut amp, f0, amp_in, &knobs);
+            let out = &out[out.len() - WIN..];
+            let fund = goertzel(out, f0, SR).max(1e-9);
+            (goertzel(out, f0 - 100.0, SR) + goertzel(out, f0 + 100.0, SR)) / fund
+        };
+        let quiet = sidebands(0.01, 0.2);
+        let driven = sidebands(0.6, 0.9);
+        assert!(
+            driven > quiet * 2.0,
+            "vox ghost notes not load-dependent: quiet {quiet:.5} driven {driven:.5}"
+        );
+        assert!(
+            (0.0004..0.15).contains(&driven),
+            "vox driven ghost-note level out of range: {driven:.5}"
+        );
+    }
+
+    /// Hiwatt: 100 Hz UK ripple, same shape.
+    #[test]
+    fn hiwatt_ripple_grows_ghost_sidebands_only_when_driven() {
+        let f0 = 225.0;
+        const WIN: usize = 30_720;
+        let sidebands = |amp_in: f32, gain: f32| -> f32 {
+            let mut amp = Hiwatt::new(SR);
+            let knobs = standard_knobs(AmpModel::Hiwatt, gain, 0.5, 0.5, 0.6, 0.5, 0.8);
+            let out = run_tone(&mut amp, f0, amp_in, &knobs);
+            let out = &out[out.len() - WIN..];
+            let fund = goertzel(out, f0, SR).max(1e-9);
+            (goertzel(out, f0 - 100.0, SR) + goertzel(out, f0 + 100.0, SR)) / fund
+        };
+        let quiet = sidebands(0.01, 0.2);
+        let driven = sidebands(0.6, 0.9);
+        assert!(
+            driven > quiet * 2.0,
+            "hiwatt ghost notes not load-dependent: quiet {quiet:.5} driven {driven:.5}"
+        );
+        assert!(
+            (0.0004..0.15).contains(&driven),
+            "hiwatt driven ghost-note level out of range: {driven:.5}"
+        );
+    }
+
+    /// Fender: 120 Hz US ripple (like the Mesa). Window differs from the
+    /// 100 Hz models: 120 Hz sidebands of 225 Hz can never be integer-cycle
+    /// in the 30 720 window, so f0=200 over 24 000 samples (fund 100cy,
+    /// ±120 bins 40/160cy).
+    #[test]
+    fn fender_ripple_grows_ghost_sidebands_only_when_driven() {
+        let f0 = 200.0;
+        const WIN: usize = 24_000;
+        let sidebands = |amp_in: f32, gain: f32| -> f32 {
+            let mut amp = Fender::new(SR);
+            let knobs = standard_knobs(AmpModel::Fender, gain, 0.5, 0.5, 0.6, 0.5, 0.8);
+            let out = run_tone(&mut amp, f0, amp_in, &knobs);
+            let out = &out[out.len() - WIN..];
+            let fund = goertzel(out, f0, SR).max(1e-9);
+            (goertzel(out, f0 - 120.0, SR) + goertzel(out, f0 + 120.0, SR)) / fund
+        };
+        let quiet = sidebands(0.01, 0.2);
+        let driven = sidebands(0.5, 0.9);
+        assert!(
+            driven > quiet * 2.0,
+            "fender ghost notes not load-dependent: quiet {quiet:.5} driven {driven:.5}"
+        );
+        assert!(
+            (0.0004..0.15).contains(&driven),
+            "fender driven ghost-note level out of range: {driven:.5}"
+        );
+    }
+
+    /// Randall's stiff rails still breathe: 120 Hz US ripple on the rail
+    /// scale grows ghost sidebands only under load. f0=200 over 24 000
+    /// samples keeps fund (100cy), ±120 Hz bins (40/160cy) and ±50 Hz
+    /// controls (75/125cy) all integer-cycle — 120 Hz sidebands of 225 Hz
+    /// can never be integer-cycle in the 30 720 window, so the 100 Hz
+    /// models' f0 does not transfer.
+    #[test]
+    fn randall_ripple_grows_ghost_sidebands_only_when_driven() {
+        let f0 = 200.0;
+        const WIN: usize = 24_000;
+        let sidebands = |amp_in: f32, gain: f32| -> f32 {
+            let mut amp = Randall::new(SR);
+            let knobs = standard_knobs(AmpModel::Randall, gain, 0.5, 0.5, 0.6, 0.5, 0.8);
+            let out = run_tone(&mut amp, f0, amp_in, &knobs);
+            let out = &out[out.len() - WIN..];
+            let fund = goertzel(out, f0, SR).max(1e-9);
+            (goertzel(out, f0 - 120.0, SR) + goertzel(out, f0 + 120.0, SR)) / fund
+        };
+        let quiet = sidebands(0.01, 0.2);
+        let driven = sidebands(0.5, 0.9);
+        assert!(
+            driven > quiet * 2.0,
+            "randall ghost notes not load-dependent: quiet {quiet:.5} driven {driven:.5}"
+        );
+        assert!(
+            (0.0004..0.15).contains(&driven),
+            "randall driven ghost-note level out of range: {driven:.5}"
+        );
+        // The sidebands must be *ripple* products, not skirt: clearly above
+        // equally-offset control bins.
+        let mut amp = Randall::new(SR);
+        let knobs = standard_knobs(AmpModel::Randall, 0.9, 0.5, 0.5, 0.6, 0.5, 0.8);
+        let out = run_tone(&mut amp, f0, 0.5, &knobs);
+        let out = &out[out.len() - WIN..];
+        let sb = goertzel(out, f0 - 120.0, SR) + goertzel(out, f0 + 120.0, SR);
+        let ctl = goertzel(out, f0 - 50.0, SR) + goertzel(out, f0 + 50.0, SR);
+        assert!(
+            sb > ctl * 2.0,
+            "no distinct ripple sidebands: sb {sb:.6} vs control {ctl:.6}"
+        );
+    }
+
+    /// Randall's rails stay stiff: a sustained hot input must not compress
+    /// down once the envelope loads (that would be sag wearing a ripple
+    /// costume). Settled peak within 5% of the initial peak; the ±2%
+    /// ripple wobble fits inside that band.
+    #[test]
+    fn randall_rails_stay_stiff() {
+        let mut amp = Randall::new(SR);
+        let knobs = standard_knobs(AmpModel::Randall, 0.9, 0.5, 0.5, 0.6, 0.5, 0.8);
+        let out = run_tone(&mut amp, 200.0, 0.5, &knobs);
+        let peak_at = |a: usize, b: usize| out[a..b].iter().fold(0.0f32, |m, x| m.max(x.abs()));
+        let n = out.len();
+        let initial = peak_at(0, 4800);
+        let settled = peak_at(n - 4800, n);
+        assert!(
+            (settled - initial).abs() / initial < 0.05,
+            "rails sagged: peak {initial:.4} -> {settled:.4}"
+        );
+    }
+
     /// Grid conduction must produce a real **flat top**, not just a gain tilt.
     ///
     /// The old `GridBlock` only reduced gain on hard positives, so a slammed stage

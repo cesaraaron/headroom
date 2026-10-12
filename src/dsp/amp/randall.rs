@@ -1,6 +1,6 @@
 use super::{
     AMP_MAX, AmpKnob, Amplifier, Bloom, Cached, FrontEnd, GlobalNfb, MASTER_DRIVE_REF, PowerOs,
-    SpeakerLoad, ToneCache, VoiceBalance, split_gain,
+    SpeakerLoad, SupplyRipple, ToneCache, VoiceBalance, split_gain,
 };
 use crate::dsp::biquad::Biquad;
 use crate::dsp::oversample::Oversampler8;
@@ -86,6 +86,13 @@ pub struct Randall {
     power_hp: Biquad,
     power_hp2: Biquad,
     bloom: Bloom,
+    // Load-only envelope follower for the supply ripple (silicon ballistics:
+    // 0.5 ms attack, 80 ms release, like the Mesa). The rails stay stiff —
+    // this feeds NOTHING but the ripple below, never a gain computer.
+    envelope: f32,
+    // 120 Hz mains ripple on the rail scale (ghost-note sidebands), shallowest
+    // of the set: a solid-state supply barely breathes.
+    ripple: SupplyRipple,
     // Active tone stack (base rate)
     bass_shelf: Biquad,
     mid_peak: Biquad,
@@ -135,6 +142,8 @@ impl Randall {
             power_hp: Biquad::highpass(sr, 55.0, 0.707),
             power_hp2: Biquad::highpass(sr, 55.0, 0.707),
             bloom: Bloom::new(sr, 8.0, 50.0),
+            envelope: 0.0,
+            ripple: SupplyRipple::new(sr, 120.0, 0.02),
             bass_shelf: Biquad::low_shelf(sr, 80.0, 0.0),
             mid_peak: Biquad::peak_eq(sr, 500.0, 0.4, 0.0),
             treble_shelf: Biquad::high_shelf(sr, 4500.0, 0.0),
@@ -228,6 +237,20 @@ impl Amplifier for Randall {
         // Structural voicing balance: restore low-mid body, tame the upper-mid tilt.
         let x = self.voice.process(x);
 
+        // Load follower for the supply ripple only (silicon ballistics). The
+        // rails stay stiff — this envelope feeds the ripple below and no gain
+        // computer anywhere, so there is no sag compression by construction.
+        let abs_x = x.abs();
+        let coeff = if abs_x > self.envelope {
+            1.0 - (-1.0 / (0.0005 * self.sr)).exp()
+        } else {
+            1.0 - (-1.0 / (0.080 * self.sr)).exp()
+        };
+        self.envelope += coeff * (abs_x - self.envelope);
+        // 120 Hz mains ripple scales the rail (ghost-note sidebands), fading
+        // out as the load unloads at idle. Rails stiff: base scale is 1.0.
+        let supply = self.ripple.gain(1.0, self.envelope);
+
         // The solid-state power section uses stiff rails and no sag. The drive is
         // kept slightly below the raw rail-clip level so the stage stays punchy
         // without flattening every pick transient. The HP before the clipper also
@@ -243,7 +266,7 @@ impl Amplifier for Randall {
         let fb = self.nfb.feedback(self.pf_out, treble);
         let out = self
             .os_power
-            .shape(x * drive - fb, |u| (u * 1.85).tanh() * 0.5997);
+            .shape(x * drive - fb, |u| (u * 1.85).tanh() * 0.5997 * supply);
         self.pf_out = out;
         let x = out;
         let x = self.speaker.process(x, 0.0);
