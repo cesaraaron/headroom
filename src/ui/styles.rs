@@ -83,20 +83,15 @@ pub(super) fn load_theme_conf_at(path: &std::path::Path) {
         return;
     };
     for line in text.lines() {
-        let line = line.trim();
-        if let Some(v) = line.strip_prefix("theme") {
-            if let Some(v) = v.trim().strip_prefix('=') {
-                if let Ok(i) = v.trim().parse::<u8>() {
-                    set_theme(i);
-                    return;
-                }
-            }
+        if let Some(v) = line.trim().strip_prefix("theme")
+            && let Some(v) = v.trim().strip_prefix('=')
+            && let Ok(i) = v.trim().parse::<u8>()
+        {
+            set_theme(i);
+            return;
         }
     }
 }
-
-#[cfg(not(test))]
-fn load_theme_conf_at(_path: &std::path::Path) {}
 
 /// Persist the theme id atomically (temp file + rename, like `midi.conf`).
 pub(super) fn write_theme_conf() {

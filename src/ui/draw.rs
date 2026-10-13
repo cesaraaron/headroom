@@ -2558,9 +2558,6 @@ mod tests {
             longest <= 17,
             "a pedal name outgrew the tile: {longest} chars"
         );
-        let params = Params::new();
-        let levels = Levels::new();
-        let board = board_all(false);
         let available: Vec<usize> = (0..PEDALS.len()).collect();
         let mut term = Terminal::new(TestBackend::new(200, 50)).expect("test backend");
         term.draw(|f| {
