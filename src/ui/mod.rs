@@ -420,6 +420,8 @@ pub fn run(
     // Panel background: transparent (terminal default) unless `--opaque` was
     // passed. Set once here; every panel/modal reads it via `styles::panel_style`.
     styles::set_opaque(opaque);
+    // Saved palette, if any (missing file = default; set once like above).
+    styles::load_theme_conf();
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     // Mouse capture stays on for the whole run: clicks focus panels/cells. Normal
@@ -1030,6 +1032,17 @@ pub fn run(
                 }
                 if key.code == KeyCode::F(2) && !any_overlay {
                     midi_ui.open = true;
+                    continue;
+                }
+                // Theme cycle: with one built-in this is an idempotent
+                // toast + write-back; theme #2 makes it a real switch.
+                if key.code == KeyCode::F(3) && !any_overlay {
+                    styles::cycle_theme();
+                    styles::write_theme_conf();
+                    save_msg = Some((
+                        format!("Theme: {}", styles::theme_name()),
+                        std::time::Instant::now(),
+                    ));
                     continue;
                 }
 

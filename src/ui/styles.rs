@@ -52,6 +52,69 @@ pub(super) fn set_theme(index: u8) {
     THEME_INDEX.store(index, Ordering::Relaxed);
 }
 
+/// Current palette index (for the switch toast + conf write-back).
+pub(super) fn theme_index() -> u8 {
+    THEME_INDEX.load(Ordering::Relaxed)
+}
+
+/// Advance to the next palette, wrapping. With one built-in this is an
+/// idempotent toast + write-back; theme #2 makes it a real switch.
+pub(super) fn cycle_theme() {
+    set_theme(theme_index().wrapping_add(1));
+}
+
+/// `~/.config/rusty-riff/ui.conf` (mirrors the `midi.conf` shape).
+fn ui_conf_path() -> Option<std::path::PathBuf> {
+    dirs::home_dir().map(|h| h.join(".config").join("rusty-riff").join("ui.conf"))
+}
+
+/// Load a saved theme id (`theme = <n>`); missing/corrupt files mean the
+/// default — a fresh install has no config dir yet, and a forward-dated id
+/// clamps in `set_theme`.
+pub(super) fn load_theme_conf() {
+    let Some(path) = ui_conf_path() else {
+        return;
+    };
+    load_theme_conf_at(&path);
+}
+
+pub(super) fn load_theme_conf_at(path: &std::path::Path) {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(v) = line.strip_prefix("theme") {
+            if let Some(v) = v.trim().strip_prefix('=') {
+                if let Ok(i) = v.trim().parse::<u8>() {
+                    set_theme(i);
+                    return;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(test))]
+fn load_theme_conf_at(_path: &std::path::Path) {}
+
+/// Persist the theme id atomically (temp file + rename, like `midi.conf`).
+pub(super) fn write_theme_conf() {
+    let Some(path) = ui_conf_path() else {
+        return;
+    };
+    let _ = write_theme_conf_at(&path, theme_index());
+}
+
+pub(super) fn write_theme_conf_at(path: &std::path::Path, index: u8) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("conf.tmp");
+    std::fs::write(&tmp, format!("theme = {index}\n"))?;
+    std::fs::rename(&tmp, path)
+}
+
 // ── Panel background ──────────────────────────────────────────────────────────
 // Transparent by default so terminal transparency (e.g. Ghostty) shows through:
 // panels use the terminal's own background. `--opaque` restores the legacy solid
@@ -134,5 +197,28 @@ mod tests {
         set_theme(255);
         assert_eq!(theme().accent, Color::Rgb(0x5F, 0xB3, 0xB3));
         set_theme(0);
+    }
+
+    /// A missing `ui.conf` is the fresh-install case: default theme, no
+    /// error, no state change.
+    #[test]
+    fn theme_conf_missing_means_default() {
+        let dir = std::env::temp_dir().join("rusty-riff-no-such-dir-xyz");
+        load_theme_conf_at(&dir.join("ui.conf"));
+        assert_eq!(theme_name(), "default");
+    }
+
+    /// A conf round-trips: write index, read it back. Uses a temp path so
+    /// the real config dir is never touched.
+    #[test]
+    fn theme_conf_round_trips() {
+        let path = std::env::temp_dir().join("rusty-riff-theme-test-ui.conf");
+        let _ = std::fs::remove_file(&path);
+        write_theme_conf_at(&path, 0).expect("write conf");
+        set_theme(255);
+        load_theme_conf_at(&path);
+        assert_eq!(theme_name(), "default");
+        set_theme(0);
+        let _ = std::fs::remove_file(&path);
     }
 }

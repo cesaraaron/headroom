@@ -1698,6 +1698,7 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         row("  M", "  practice metronome (+/− tempo, Space on/off)"),
         row("  N", "  calibrate input level"),
         row("  F2", "  MIDI bindings: learn a controller control"),
+        row("  F3", "  cycle the UI theme"),
     ]);
     #[cfg(feature = "clap")]
     lines.push(row("  V", "  plugin browser"));
@@ -2574,6 +2575,85 @@ mod tests {
                 PEDALS[pi].name
             );
         }
+    }
+
+    /// Theme colors actually reach the screen: the help modal's titles use
+    /// the registry amber verbatim, and the OUT row's LIM badge renders in
+    /// a registry color in any state (warn/hot while engaging, dim or
+    /// shaded-dim at rest). (Borders elsewhere use faded accents,
+    /// so the exact triple is asserted on the modal title.) This guards
+    /// value drift, not switching itself — with a single theme, switching
+    /// is proven by the `set_theme`/clamp unit tests plus the flag-day
+    /// deletion (no chrome consts remain to hardcode from). Pre-existing
+    /// hardcoded colors (pedal LED, help gray) are out of scope here.
+    #[test]
+    fn theme_cells_carry_theme_colors() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let t = theme();
+        let mut scroll = 0u16;
+        let mut term = Terminal::new(TestBackend::new(100, 40)).expect("test backend");
+        term.draw(|f| {
+            render_help_modal(f, &mut scroll);
+        })
+        .expect("draw");
+        let buf = term.backend().buffer();
+        let area = buf.area();
+        let mut saw_amber = false;
+        for y in 0..area.height {
+            for x in 0..area.width {
+                if buf[(x, y)].fg == t.amber {
+                    saw_amber = true;
+                }
+            }
+        }
+        assert!(saw_amber, "no amber-colored cell in the help modal");
+
+        let params = Params::new();
+        let board = board_all(true);
+        let levels = Levels::new();
+        let mut term = Terminal::new(TestBackend::new(100, 40)).expect("test backend");
+        term.draw(|f| {
+            draw(
+                f,
+                &params,
+                &levels,
+                &InputCalibration::default(),
+                None,
+                &board,
+                false,
+                false,
+                None,
+                None,
+                None,
+                None,
+                Panels::all_visible(),
+                ChainStage::Amp,
+                false,
+                None,
+                None,
+                None,
+            );
+        })
+        .expect("draw");
+        let buf = term.backend().buffer();
+        let area = buf.area();
+        let mut saw_badge = false;
+        for y in 0..area.height {
+            for x in 0..area.width {
+                let cell = &buf[(x, y)];
+                if cell.symbol() == "M"
+                    && x >= 2
+                    && buf[(x - 1, y)].symbol() == "I"
+                    && buf[(x - 2, y)].symbol() == "L"
+                    && [t.warn, t.hot, t.dim, shade(t.dim, 0.45)].contains(&cell.fg)
+                {
+                    saw_badge = true;
+                }
+            }
+        }
+        assert!(saw_badge, "LIM badge not found in a live theme color");
     }
 
     /// Small terminals degrade gracefully: ratatui shrinks the fixed panels
