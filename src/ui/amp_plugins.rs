@@ -326,7 +326,9 @@ impl AmpBrowser {
             .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 title,
-                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme().amber)
+                    .add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
 
@@ -380,7 +382,9 @@ impl AmpBrowser {
         let status_line = match (&self.message, self.loaded_name()) {
             (Some(msg), _) => Line::from(Span::styled(
                 msg.clone(),
-                Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme().safe)
+                    .add_modifier(Modifier::BOLD),
             )),
             (None, Some(name)) => {
                 let latency_ms = self.loaded.as_ref().map_or(0.0, |p| p.live.latency_ms);
@@ -398,7 +402,10 @@ impl AmpBrowser {
                     ),
                 ])
             }
-            (None, None) => Line::from(Span::styled("no amp loaded", Style::default().fg(theme().dim))),
+            (None, None) => Line::from(Span::styled(
+                "no amp loaded",
+                Style::default().fg(theme().dim),
+            )),
         };
         f.render_widget(
             Paragraph::new(status_line).alignment(Alignment::Center),
@@ -471,7 +478,9 @@ fn param_row(p: &AuParam, selected: bool) -> Line<'static> {
     let (prefix, name_style, bar_color) = if selected {
         (
             "▶ ",
-            Style::default().fg(theme().accent).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().accent)
+                .add_modifier(Modifier::BOLD),
             theme().accent,
         )
     } else {
@@ -481,7 +490,11 @@ fn param_row(p: &AuParam, selected: bool) -> Line<'static> {
     Line::from(vec![
         Span::styled(
             prefix,
-            Style::default().fg(if selected { theme().accent } else { theme().dim }),
+            Style::default().fg(if selected {
+                theme().accent
+            } else {
+                theme().dim
+            }),
         ),
         Span::styled(format!("{:<22}", truncate(&p.name, 22)), name_style),
         Span::styled(bar, Style::default().fg(bar_color)),
@@ -516,7 +529,11 @@ fn entry(name: &str, selected: bool) -> Line<'static> {
     Line::from(vec![
         Span::styled(
             prefix.to_owned(),
-            Style::default().fg(if selected { theme().accent } else { theme().dim }),
+            Style::default().fg(if selected {
+                theme().accent
+            } else {
+                theme().dim
+            }),
         ),
         Span::styled(name.to_owned(), name_style),
     ])

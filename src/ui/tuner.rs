@@ -38,7 +38,9 @@ pub(super) fn render_tuner(f: &mut Frame, tuner: &Tuner) {
         .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             " T U N E R ",
-            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().amber)
+                .add_modifier(Modifier::BOLD),
         ))
         .title(
             Line::from(Span::styled(
@@ -83,7 +85,10 @@ pub(super) fn render_tuner(f: &mut Frame, tuner: &Tuner) {
                 "TUNE DOWN ▼"
             };
             Line::from(vec![
-                Span::styled(format!("{freq:7.2} Hz"), Style::default().fg(theme().chrome)),
+                Span::styled(
+                    format!("{freq:7.2} Hz"),
+                    Style::default().fg(theme().chrome),
+                ),
                 Span::styled("    ", Style::default()),
                 Span::styled(format!("{:+.0} cents", r.cents), Style::default().fg(color)),
                 Span::styled("    ", Style::default()),
@@ -218,7 +223,11 @@ fn render_spectrum(f: &mut Frame, area: Rect, tuner: &Tuner, freq: f32) {
             let lit = v >= threshold;
             let highlight = hot_bin == Some(bin);
             let (ch, color) = if lit {
-                let c = if highlight { theme().safe } else { theme().accent };
+                let c = if highlight {
+                    theme().safe
+                } else {
+                    theme().accent
+                };
                 ('█', c)
             } else if highlight {
                 // Keep the fundamental's column visible even where it's short.

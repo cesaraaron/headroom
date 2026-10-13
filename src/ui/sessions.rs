@@ -297,7 +297,9 @@ impl SessionBrowser {
             .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 title,
-                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme().amber)
+                    .add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
         let inner = block.inner(area);
@@ -337,7 +339,9 @@ impl SessionBrowser {
             if recovery && !last_recovery {
                 lines.push(Line::from(Span::styled(
                     "  ── recoverable takes ──",
-                    Style::default().fg(theme().warn).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme().warn)
+                        .add_modifier(Modifier::BOLD),
                 )));
             }
             last_recovery = recovery;
@@ -355,7 +359,10 @@ impl SessionBrowser {
             lines.push(Line::from(vec![
                 Span::styled(prefix.to_owned(), Style::default().fg(theme().accent)),
                 Span::styled(format!("{:<26}", row.label), style),
-                Span::styled(format!("  {}", row.detail), Style::default().fg(theme().dim)),
+                Span::styled(
+                    format!("  {}", row.detail),
+                    Style::default().fg(theme().dim),
+                ),
             ]));
         }
         let visible_lines: Vec<Line> = lines.into_iter().skip(offset).take(visible).collect();
@@ -418,7 +425,9 @@ impl SessionBrowser {
         f.render_widget(
             Paragraph::new(Span::styled(
                 "Session name:",
-                Style::default().fg(theme().accent).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme().accent)
+                    .add_modifier(Modifier::BOLD),
             )),
             rows[0],
         );

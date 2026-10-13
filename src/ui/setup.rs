@@ -211,7 +211,9 @@ fn render_list_modal(
         .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             title,
-            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().amber)
+                .add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
 
@@ -265,10 +267,16 @@ fn render_list_modal(
                     Style::default()
                         .fg(theme().accent)
                         .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-                    Style::default().fg(theme().accent).add_modifier(Modifier::REVERSED),
+                    Style::default()
+                        .fg(theme().accent)
+                        .add_modifier(Modifier::REVERSED),
                 )
             } else {
-                ("  ", Style::default().fg(theme().chrome), Style::default().fg(theme().dim))
+                (
+                    "  ",
+                    Style::default().fg(theme().chrome),
+                    Style::default().fg(theme().dim),
+                )
             };
             let label = if hint.is_empty() {
                 name.to_string()
@@ -278,7 +286,11 @@ fn render_list_modal(
             Line::from(vec![
                 Span::styled(
                     prefix,
-                    Style::default().fg(if selected { theme().accent } else { theme().dim }),
+                    Style::default().fg(if selected {
+                        theme().accent
+                    } else {
+                        theme().dim
+                    }),
                 ),
                 Span::styled(label, name_style),
                 Span::styled(hint.clone(), hint_style),
@@ -308,7 +320,10 @@ fn render_list_modal(
                     ),
                 ]
             } else {
-                vec![Span::styled(part.to_string(), Style::default().fg(theme().amber))]
+                vec![Span::styled(
+                    part.to_string(),
+                    Style::default().fg(theme().amber),
+                )]
             }
         })
         .collect();

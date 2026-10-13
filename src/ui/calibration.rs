@@ -225,7 +225,9 @@ impl CalibrationUi {
             .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 " I N P U T   C A L I B R A T I O N ",
-                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme().amber)
+                    .add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
         let inner = block.inner(area);
@@ -239,16 +241,32 @@ impl CalibrationUi {
     }
 
     fn lines(&self, cal: &InputCalibration) -> Vec<Line<'static>> {
-        let text = |s: &str| Line::from(Span::styled(s.to_string(), Style::default().fg(theme().chrome)));
-        let dim = |s: &str| Line::from(Span::styled(s.to_string(), Style::default().fg(theme().dim)));
+        let text = |s: &str| {
+            Line::from(Span::styled(
+                s.to_string(),
+                Style::default().fg(theme().chrome),
+            ))
+        };
+        let dim = |s: &str| {
+            Line::from(Span::styled(
+                s.to_string(),
+                Style::default().fg(theme().dim),
+            ))
+        };
         let hint = |pairs: &[(&str, &str)]| {
             let mut spans = Vec::new();
             for (i, (k, d)) in pairs.iter().enumerate() {
                 if i > 0 {
                     spans.push(Span::styled("  ", Style::default().fg(theme().dim)));
                 }
-                spans.push(Span::styled((*k).to_string(), Style::default().fg(theme().amber)));
-                spans.push(Span::styled(format!(" {d}"), Style::default().fg(theme().dim)));
+                spans.push(Span::styled(
+                    (*k).to_string(),
+                    Style::default().fg(theme().amber),
+                ));
+                spans.push(Span::styled(
+                    format!(" {d}"),
+                    Style::default().fg(theme().dim),
+                ));
             }
             Line::from(spans)
         };
@@ -264,7 +282,9 @@ impl CalibrationUi {
                     Span::styled("Pickup:  ", Style::default().fg(theme().dim)),
                     Span::styled(
                         format!("◀ {} ▶", self.pickup.label()),
-                        Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(theme().safe)
+                            .add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 dim(format!(
@@ -282,7 +302,9 @@ impl CalibrationUi {
                     Span::styled("Noise capture: ", Style::default().fg(theme().dim)),
                     Span::styled(
                         format!("{:.1}s", (NOISE_SECS - elapsed).max(0.0)),
-                        Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(theme().safe)
+                            .add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 Line::from(""),
@@ -298,7 +320,9 @@ impl CalibrationUi {
                         Span::styled("Capture: ", Style::default().fg(theme().dim)),
                         Span::styled(
                             format!("{:.1}s", (CAPTURE_SECS - elapsed).max(0.0)),
-                            Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(theme().safe)
+                                .add_modifier(Modifier::BOLD),
                         ),
                     ]),
                     Line::from(vec![
@@ -318,7 +342,9 @@ impl CalibrationUi {
                                 ""
                             }
                             .to_string(),
-                            Style::default().fg(theme().hot).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(theme().hot)
+                                .add_modifier(Modifier::BOLD),
                         ),
                     ]),
                     Line::from(""),
@@ -354,7 +380,9 @@ impl CalibrationUi {
                         Span::styled("Trim:         ", Style::default().fg(theme().dim)),
                         Span::styled(
                             format!("{:+.1} dB", r.trim_db),
-                            Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(theme().safe)
+                                .add_modifier(Modifier::BOLD),
                         ),
                     ]));
                     for w in &r.warnings {
@@ -379,7 +407,9 @@ impl CalibrationUi {
                 vec![
                     Line::from(Span::styled(
                         msg.to_string(),
-                        Style::default().fg(theme().hot).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(theme().hot)
+                            .add_modifier(Modifier::BOLD),
                     )),
                     Line::from(""),
                     hint(&[("R", "retry"), ("Esc", "close")]),

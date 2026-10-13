@@ -39,7 +39,9 @@ pub(super) fn render_preset_modal(
             } else {
                 format!(" P R E S E T S   filter: {filter} ")
             },
-            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().amber)
+                .add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
 
@@ -60,10 +62,16 @@ pub(super) fn render_preset_modal(
                 Style::default()
                     .fg(theme().accent)
                     .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-                Style::default().fg(theme().amber).add_modifier(Modifier::REVERSED),
+                Style::default()
+                    .fg(theme().amber)
+                    .add_modifier(Modifier::REVERSED),
             )
         } else {
-            ("  ", Style::default().fg(theme().chrome), Style::default().fg(theme().dim))
+            (
+                "  ",
+                Style::default().fg(theme().chrome),
+                Style::default().fg(theme().dim),
+            )
         };
 
         let label = if desc.is_empty() {
@@ -85,7 +93,11 @@ pub(super) fn render_preset_modal(
             ),
             Span::styled(
                 prefix.to_string(),
-                Style::default().fg(if selected { theme().accent } else { theme().dim }),
+                Style::default().fg(if selected {
+                    theme().accent
+                } else {
+                    theme().dim
+                }),
             ),
             Span::styled(label, name_style),
             Span::styled(desc.to_string(), desc_style),
@@ -400,7 +412,9 @@ pub(super) fn render_path_dialog(
         .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             title,
-            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().amber)
+                .add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
 
@@ -420,7 +434,9 @@ pub(super) fn render_path_dialog(
     f.render_widget(
         Paragraph::new(Span::styled(
             label,
-            Style::default().fg(theme().accent).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().accent)
+                .add_modifier(Modifier::BOLD),
         )),
         rows[0],
     );

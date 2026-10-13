@@ -183,7 +183,9 @@ impl IrBrowser {
             .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 " C A B I N E T   I R s ",
-                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme().amber)
+                    .add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
 
@@ -206,7 +208,9 @@ impl IrBrowser {
             f.render_widget(
                 Paragraph::new(Line::from(Span::styled(
                     format!("⚠ {AMP_ACTIVE_WARNING}"),
-                    Style::default().fg(theme().warn).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme().warn)
+                        .add_modifier(Modifier::BOLD),
                 )))
                 .alignment(Alignment::Center),
                 rows[0],
@@ -238,7 +242,9 @@ impl IrBrowser {
         let status_line = match (&self.message, self.loaded_name()) {
             (Some(msg), _) => Line::from(Span::styled(
                 msg.clone(),
-                Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme().safe)
+                    .add_modifier(Modifier::BOLD),
             )),
             (None, Some(name)) => Line::from(vec![
                 Span::styled("loaded: ", Style::default().fg(theme().dim)),
@@ -343,7 +349,11 @@ fn entry(name: &str, detail: &str, selected: bool) -> Line<'static> {
     let mut spans = vec![
         Span::styled(
             prefix.to_owned(),
-            Style::default().fg(if selected { theme().accent } else { theme().dim }),
+            Style::default().fg(if selected {
+                theme().accent
+            } else {
+                theme().dim
+            }),
         ),
         Span::styled(name.to_owned(), name_style),
     ];

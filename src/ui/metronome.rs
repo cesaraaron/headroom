@@ -18,7 +18,10 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
     let bpm = metronome.get_bpm();
 
     let status_span = if active {
-        Span::styled(" ● running — not recorded ", Style::default().fg(theme().safe))
+        Span::styled(
+            " ● running — not recorded ",
+            Style::default().fg(theme().safe),
+        )
     } else {
         Span::styled(" ○ stopped ", Style::default().fg(theme().dim))
     };
@@ -29,7 +32,9 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
         .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             " M E T R O N O M E ",
-            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().amber)
+                .add_modifier(Modifier::BOLD),
         ))
         .title(Line::from(status_span).right_aligned())
         .style(panel_style());
@@ -65,8 +70,11 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
         rows[1],
     );
     f.render_widget(
-        Paragraph::new(Line::from(Span::styled("BPM", Style::default().fg(theme().dim))))
-            .alignment(Alignment::Center),
+        Paragraph::new(Line::from(Span::styled(
+            "BPM",
+            Style::default().fg(theme().dim),
+        )))
+        .alignment(Alignment::Center),
         rows[2],
     );
 
@@ -76,7 +84,10 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(format!("{MIN_BPM}"), Style::default().fg(theme().dim)),
-            Span::styled("  slow ◀ ── tempo ── ▶ fast  ", Style::default().fg(theme().dim)),
+            Span::styled(
+                "  slow ◀ ── tempo ── ▶ fast  ",
+                Style::default().fg(theme().dim),
+            ),
             Span::styled(format!("{MAX_BPM}"), Style::default().fg(theme().dim)),
         ]))
         .alignment(Alignment::Center),
@@ -87,7 +98,9 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
     let pip = if active && blink {
         Span::styled(
             "◆ tick",
-            Style::default().fg(theme().hot).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().hot)
+                .add_modifier(Modifier::BOLD),
         )
     } else if active {
         Span::styled("◇ tick", Style::default().fg(theme().dim))
@@ -105,7 +118,10 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
             Span::styled("←/→", Style::default().fg(theme().amber)),
             Span::styled(" tempo   ", Style::default().fg(theme().dim)),
             Span::styled("Space", Style::default().fg(theme().amber)),
-            Span::styled(format!(" {toggle_hint}   "), Style::default().fg(theme().dim)),
+            Span::styled(
+                format!(" {toggle_hint}   "),
+                Style::default().fg(theme().dim),
+            ),
             Span::styled("Esc / M", Style::default().fg(theme().amber)),
             Span::styled(" close", Style::default().fg(theme().dim)),
         ]))

@@ -1773,7 +1773,11 @@ impl PracticeUi {
         if area.height < 2 || area.width < 4 {
             return;
         }
-        let focused_glyph = if focused { theme().accent } else { shade(theme().accent, 0.55) };
+        let focused_glyph = if focused {
+            theme().accent
+        } else {
+            shade(theme().accent, 0.55)
+        };
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Plain)
@@ -1930,7 +1934,9 @@ impl PracticeUi {
         ];
         for (ch, playhead) in cells {
             let style = if playhead {
-                Style::default().fg(theme().hot).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme().hot)
+                    .add_modifier(Modifier::BOLD)
             } else if ch == ' ' {
                 Style::default()
             } else if ch == 'ˌ' {
@@ -1955,7 +1961,12 @@ impl PracticeUi {
         let total = self.span_frames(practice);
         let position = practice.position().min(total);
         let state = if playing {
-            Span::styled("▶ ", Style::default().fg(theme().safe).add_modifier(Modifier::BOLD))
+            Span::styled(
+                "▶ ",
+                Style::default()
+                    .fg(theme().safe)
+                    .add_modifier(Modifier::BOLD),
+            )
         } else {
             Span::styled("⏸ ", Style::default().fg(theme().dim))
         };
@@ -1967,7 +1978,9 @@ impl PracticeUi {
             if recording && blink {
                 Span::styled(
                     "●REC ",
-                    Style::default().fg(theme().hot).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme().hot)
+                        .add_modifier(Modifier::BOLD),
                 )
             } else if recording {
                 Span::styled("○REC ", Style::default().fg(theme().hot))
@@ -2018,7 +2031,10 @@ impl PracticeUi {
             ));
         }
         if let Some(msg) = &self.message {
-            transport.push(Span::styled(msg.text.clone(), Style::default().fg(theme().warn)));
+            transport.push(Span::styled(
+                msg.text.clone(),
+                Style::default().fg(theme().warn),
+            ));
         }
         f.render_widget(Paragraph::new(Line::from(transport)), area);
     }
@@ -2046,7 +2062,9 @@ impl PracticeUi {
                             ((position - view_start) * wave_w.saturating_sub(1) / view_len.max(1))
                                 .min(wave_w - 1)
                         });
-                let line_style = Style::default().fg(theme().hot).add_modifier(Modifier::BOLD);
+                let line_style = Style::default()
+                    .fg(theme().hot)
+                    .add_modifier(Modifier::BOLD);
                 let lines: Vec<Line> = (0..area.height)
                     .map(|_| {
                         let mut spans = vec![
@@ -2237,7 +2255,10 @@ impl PracticeUi {
                     Style::default().fg(theme().warn),
                 ));
             } else if recording {
-                first.push(Span::styled(" recording…", Style::default().fg(theme().hot)));
+                first.push(Span::styled(
+                    " recording…",
+                    Style::default().fg(theme().hot),
+                ));
             }
             let mut out = vec![Line::from(first)];
             for _ in 1..height {
@@ -2311,7 +2332,12 @@ impl PracticeUi {
                 }
                 let inside = env[..cols].iter().any(|e| e.is_some());
                 let (ch, style) = if Some(col) == pos_col {
-                    ('│', Style::default().fg(theme().hot).add_modifier(Modifier::BOLD))
+                    (
+                        '│',
+                        Style::default()
+                            .fg(theme().hot)
+                            .add_modifier(Modifier::BOLD),
+                    )
                 } else if !inside {
                     if in_loop {
                         ('·', Style::default().fg(theme().hot))
@@ -2468,7 +2494,9 @@ impl PracticeUi {
             .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 title,
-                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme().amber)
+                    .add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
         let inner = block.inner(area);
@@ -2494,7 +2522,10 @@ impl PracticeUi {
             f.render_widget(
                 Paragraph::new(Line::from(vec![
                     Span::styled("filter ", Style::default().fg(theme().dim)),
-                    Span::styled(self.browser_filter.clone(), Style::default().fg(theme().chrome)),
+                    Span::styled(
+                        self.browser_filter.clone(),
+                        Style::default().fg(theme().chrome),
+                    ),
                     Span::styled("▌", Style::default().fg(theme().accent)),
                 ])),
                 rows[0],
@@ -2545,7 +2576,10 @@ impl PracticeUi {
             } else {
                 "  (no matching files)"
             };
-            lines.push(Line::from(Span::styled(text, Style::default().fg(theme().dim))));
+            lines.push(Line::from(Span::styled(
+                text,
+                Style::default().fg(theme().dim),
+            )));
         }
         let visible = rows[2].height as usize;
         let offset = self
@@ -2590,8 +2624,11 @@ impl PracticeUi {
             .map(|n| n.text.clone())
             .unwrap_or_default();
         f.render_widget(
-            Paragraph::new(Line::from(Span::styled(msg, Style::default().fg(theme().warn))))
-                .alignment(Alignment::Center),
+            Paragraph::new(Line::from(Span::styled(
+                msg,
+                Style::default().fg(theme().warn),
+            )))
+            .alignment(Alignment::Center),
             rows[4],
         );
     }
@@ -2612,7 +2649,9 @@ impl PracticeUi {
 
         let field_style = |active: bool| {
             if active {
-                Style::default().fg(theme().accent).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme().accent)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme().dim)
             }
@@ -2696,7 +2735,9 @@ impl PracticeUi {
             .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 " T R A C K   G A I N ",
-                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme().amber)
+                    .add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
         let inner = block.inner(area);
@@ -2719,12 +2760,17 @@ impl PracticeUi {
                 truncate(&track.name, inner.width as usize),
                 Style::default().fg(theme().chrome),
             )),
-            Line::from(Span::styled(kind.to_owned(), Style::default().fg(theme().dim))),
+            Line::from(Span::styled(
+                kind.to_owned(),
+                Style::default().fg(theme().dim),
+            )),
             Line::from(Span::styled(bar, Style::default().fg(theme().accent))),
             Line::from(vec![
                 Span::styled(
                     format!("{pct}%  "),
-                    Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme().amber)
+                        .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     "←/→ adjust · R reset · Enter/Esc close",
@@ -2751,7 +2797,9 @@ impl PracticeUi {
             .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 " M O V E   C L I P ",
-                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme().amber)
+                    .add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
         let inner = block.inner(area);
@@ -2772,7 +2820,9 @@ impl PracticeUi {
                 Span::styled("start ", Style::default().fg(theme().dim)),
                 Span::styled(
                     mmss(start_frames, self.sample_rate),
-                    Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme().amber)
+                        .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled("   end ", Style::default().fg(theme().dim)),
                 Span::styled(
@@ -2784,7 +2834,10 @@ impl PracticeUi {
                 "←/→ move by step · +/− change step · R to top",
                 Style::default().fg(theme().dim),
             )),
-            Line::from(Span::styled("Enter / Esc close", Style::default().fg(theme().dim))),
+            Line::from(Span::styled(
+                "Enter / Esc close",
+                Style::default().fg(theme().dim),
+            )),
         ];
         f.render_widget(Paragraph::new(text), inner);
     }
@@ -2830,10 +2883,17 @@ fn file_entry(file: &TrackFile, selected: bool) -> Line<'static> {
     Line::from(vec![
         Span::styled(
             prefix.to_owned(),
-            Style::default().fg(if selected { theme().accent } else { theme().dim }),
+            Style::default().fg(if selected {
+                theme().accent
+            } else {
+                theme().dim
+            }),
         ),
         Span::styled(file.label.clone(), style),
-        Span::styled(format!("  {}", file.detail), Style::default().fg(theme().dim)),
+        Span::styled(
+            format!("  {}", file.detail),
+            Style::default().fg(theme().dim),
+        ),
     ])
 }
 
@@ -3177,7 +3237,11 @@ fn shade(c: Color, factor: f32) -> Color {
 }
 
 fn border_style(active: bool) -> Style {
-    Style::default().fg(if active { theme().accent } else { shade(theme().accent, 0.5) })
+    Style::default().fg(if active {
+        theme().accent
+    } else {
+        shade(theme().accent, 0.5)
+    })
 }
 
 /// Dimmed accent used for the gutter/timeline divider (matches an unfocused

@@ -138,7 +138,9 @@ pub(super) fn render_midi(f: &mut Frame, ui: &MidiUi, state: &MidiState, port: O
         .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             " M I D I ",
-            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().amber)
+                .add_modifier(Modifier::BOLD),
         ))
         .title(Line::from(Span::styled(status, Style::default().fg(theme().dim))).right_aligned())
         .style(panel_style());
@@ -169,7 +171,9 @@ pub(super) fn render_midi(f: &mut Frame, ui: &MidiUi, state: &MidiState, port: O
         .map(|(i, &target)| {
             let selected = i == ui.cursor;
             let name_style = if selected {
-                Style::default().fg(theme().accent).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme().accent)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme().chrome)
             };
@@ -178,7 +182,9 @@ pub(super) fn render_midi(f: &mut Frame, ui: &MidiUi, state: &MidiState, port: O
                 Span::styled("move the control…", Style::default().fg(theme().hot))
             } else {
                 match bindings.iter().find(|(_, t)| *t == target) {
-                    Some((cc, _)) => Span::styled(format!("CC {cc}"), Style::default().fg(theme().safe)),
+                    Some((cc, _)) => {
+                        Span::styled(format!("CC {cc}"), Style::default().fg(theme().safe))
+                    }
                     None => Span::styled("—", Style::default().fg(theme().dim)),
                 }
             };
