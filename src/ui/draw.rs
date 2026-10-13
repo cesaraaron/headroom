@@ -165,7 +165,9 @@ fn render_header(
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
         .border_style(border_style(focused))
-        .title(Line::from(Span::styled("[ ] move", Style::default().fg(theme().dim))).right_aligned())
+        .title(
+            Line::from(Span::styled("[ ] move", Style::default().fg(theme().dim))).right_aligned(),
+        )
         .style(panel_style());
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -919,7 +921,11 @@ fn render_rig(
 
 /// The "+ ADD" tile: an empty slot inviting the user to add a pedal.
 fn render_add_tile(f: &mut Frame, area: Rect, focused: bool) {
-    let color = if focused { theme().accent } else { shade(theme().accent, 0.5) };
+    let color = if focused {
+        theme().accent
+    } else {
+        shade(theme().accent, 0.5)
+    };
     let dim = if focused {
         Modifier::empty()
     } else {
@@ -1140,8 +1146,11 @@ fn render_pedal_detail(
             parts[0],
         );
         f.render_widget(
-            Paragraph::new(Line::from(Span::styled(hint, Style::default().fg(theme().dim))))
-                .alignment(Alignment::Center),
+            Paragraph::new(Line::from(Span::styled(
+                hint,
+                Style::default().fg(theme().dim),
+            )))
+            .alignment(Alignment::Center),
             parts[1],
         );
         return;
@@ -1200,7 +1209,11 @@ fn knob_cell(f: &mut Frame, area: Rect, focused: bool) -> Rect {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Plain)
-            .border_style(Style::default().fg(theme().accent).add_modifier(Modifier::BOLD))
+            .border_style(
+                Style::default()
+                    .fg(theme().accent)
+                    .add_modifier(Modifier::BOLD),
+            )
             .style(panel_style());
         f.render_widget(block, frame);
     }
@@ -1457,7 +1470,9 @@ fn render_help(
     let centre = match status {
         Some(msg) => Paragraph::new(Line::from(Span::styled(
             format!(" {msg} "),
-            Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().safe)
+                .add_modifier(Modifier::BOLD),
         ))),
         None => Paragraph::new(Line::from(vec![
             Span::styled("K", Style::default().fg(theme().amber)),
@@ -1532,7 +1547,9 @@ pub(super) fn render_unsaved_prompt(f: &mut Frame, prompt: &UnsavedPrompt) {
                 )),
                 Line::from(Span::styled(
                     format!(" {text}_"),
-                    Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme().amber)
+                        .add_modifier(Modifier::BOLD),
                 )),
                 Line::from(vec![
                     Span::styled("Enter", Style::default().fg(theme().amber)),
@@ -1550,7 +1567,9 @@ pub(super) fn render_unsaved_prompt(f: &mut Frame, prompt: &UnsavedPrompt) {
         .border_style(Style::default().fg(theme().warn))
         .title(Span::styled(
             title,
-            Style::default().fg(theme().warn).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().warn)
+                .add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
     let inner = block.inner(rect);
@@ -1581,7 +1600,9 @@ pub(super) fn render_export_progress(f: &mut Frame, percent: u32) {
         .border_style(Style::default().fg(theme().safe))
         .title(Span::styled(
             " E X P O R T I N G ",
-            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().amber)
+                .add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
     let inner = block.inner(rect);
@@ -1596,7 +1617,10 @@ pub(super) fn render_export_progress(f: &mut Frame, percent: u32) {
             Style::default().add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(bar, Style::default().fg(theme().safe))),
-        Line::from(Span::styled("Esc to cancel", Style::default().fg(theme().dim))),
+        Line::from(Span::styled(
+            "Esc to cancel",
+            Style::default().fg(theme().dim),
+        )),
     ];
     f.render_widget(Paragraph::new(text), inner);
 }
@@ -1611,7 +1635,9 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
     let head = |h: &'static str| {
         Line::from(vec![Span::styled(
             h,
-            Style::default().fg(theme().accent).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().accent)
+                .add_modifier(Modifier::BOLD),
         )])
     };
     let row = |k: &'static str, d: &'static str| Line::from(vec![key(k), desc(d)]);
@@ -1737,7 +1763,9 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             " K E Y B I N D I N G S ",
-            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().amber)
+                .add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
     let inner = block.inner(area);
@@ -1786,7 +1814,9 @@ pub(super) fn render_add_pedal_modal(f: &mut Frame, available: &[usize], cursor:
         .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             " A D D   P E D A L ",
-            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().amber)
+                .add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
     let inner = block.inner(area);
@@ -1826,7 +1856,11 @@ pub(super) fn render_add_pedal_modal(f: &mut Frame, available: &[usize], cursor:
                 Line::from(vec![
                     Span::styled(
                         prefix,
-                        Style::default().fg(if selected { theme().accent } else { theme().dim }),
+                        Style::default().fg(if selected {
+                            theme().accent
+                        } else {
+                            theme().dim
+                        }),
                     ),
                     Span::styled(p.name, style),
                 ])
@@ -1873,7 +1907,9 @@ fn picker_shell(f: &mut Frame, title: &str, rows: usize) -> Rect {
         .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             title.to_owned(),
-            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme().amber)
+                .add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
     let inner = block.inner(area);
@@ -1919,7 +1955,11 @@ fn picker_row(label: String, color: Color, selected: bool, dimmed: bool) -> Line
     Line::from(vec![
         Span::styled(
             prefix.to_owned(),
-            Style::default().fg(if selected { theme().accent } else { theme().dim }),
+            Style::default().fg(if selected {
+                theme().accent
+            } else {
+                theme().dim
+            }),
         ),
         Span::styled(label, style),
     ])
@@ -1942,7 +1982,14 @@ pub(super) fn render_amp_modal(
     let lines: Vec<Line> = AmpModel::ALL
         .iter()
         .enumerate()
-        .map(|(i, m)| picker_row(m.name().to_owned(), theme().amber, i == cursor, amp_ext_active))
+        .map(|(i, m)| {
+            picker_row(
+                m.name().to_owned(),
+                theme().amber,
+                i == cursor,
+                amp_ext_active,
+            )
+        })
         .chain(au_loaded.then(|| {
             picker_row(
                 format!("AU: {}", au_name.unwrap_or("external amp")),
@@ -2073,7 +2120,9 @@ fn shade(c: Color, factor: f32) -> Color {
 /// region stands out.
 fn border_style(active: bool) -> Style {
     if active {
-        Style::default().fg(theme().accent).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(theme().accent)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
             .fg(shade(theme().accent, 0.35))
@@ -2083,7 +2132,11 @@ fn border_style(active: bool) -> Style {
 
 /// Accent color for a region's on-border glyphs (titles), matching [`border_style`].
 fn border_glyph(active: bool) -> Color {
-    if active { theme().accent } else { shade(theme().accent, 0.35) }
+    if active {
+        theme().accent
+    } else {
+        shade(theme().accent, 0.35)
+    }
 }
 
 /// Whether an external amp is active *and* supplying its own cab (amp+cab mode), so the
@@ -2174,7 +2227,17 @@ mod tests {
     fn knob_text(focused: bool) -> String {
         let mut term = Terminal::new(TestBackend::new(24, 8)).expect("test backend");
         term.draw(|f| {
-            render_compact_knob(f, f.area(), "GAIN", 0.5, focused, true, theme().amber, false, None);
+            render_compact_knob(
+                f,
+                f.area(),
+                "GAIN",
+                0.5,
+                focused,
+                true,
+                theme().amber,
+                false,
+                None,
+            );
         })
         .expect("draw");
         screen_text(&term)
@@ -2185,7 +2248,17 @@ mod tests {
     fn knob_text_wide(focused: bool) -> String {
         let mut term = Terminal::new(TestBackend::new(120, 8)).expect("test backend");
         term.draw(|f| {
-            render_compact_knob(f, f.area(), "GAIN", 0.5, focused, true, theme().amber, false, None);
+            render_compact_knob(
+                f,
+                f.area(),
+                "GAIN",
+                0.5,
+                focused,
+                true,
+                theme().amber,
+                false,
+                None,
+            );
         })
         .expect("draw");
         screen_text(&term)
@@ -2461,6 +2534,44 @@ mod tests {
             assert!(
                 text.contains("[ ] move") && text.contains("──▶"),
                 "{w}x{h}: the chain ribbon did not render: {text}"
+            );
+        }
+    }
+
+    /// Every pedal tile name renders untruncated: the +ADD modal lists each
+    /// by name, and border titles clip rather than wrap — so a rename that
+    /// outgrows its row would silently lose characters. Plus a hard bound so
+    /// no future rename exceeds the tile capacity the small-terminal layout
+    /// assumes ("TREMOLO / VIBRATO", 17, is today's longest).
+    #[test]
+    fn longest_pedal_name_fits_narrow_terminal() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let longest = PEDALS
+            .iter()
+            .map(|p| p.name.chars().count())
+            .max()
+            .unwrap_or(0);
+        assert!(
+            longest <= 17,
+            "a pedal name outgrew the tile: {longest} chars"
+        );
+        let params = Params::new();
+        let levels = Levels::new();
+        let board = board_all(false);
+        let available: Vec<usize> = (0..PEDALS.len()).collect();
+        let mut term = Terminal::new(TestBackend::new(200, 50)).expect("test backend");
+        term.draw(|f| {
+            render_add_pedal_modal(f, &available, 0);
+        })
+        .expect("draw");
+        let text = screen_text(&term);
+        for &pi in &available {
+            assert!(
+                text.contains(PEDALS[pi].name),
+                "pedal name missing from the picker: {}",
+                PEDALS[pi].name
             );
         }
     }

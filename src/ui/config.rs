@@ -479,7 +479,7 @@ pub(super) const PEDALS: &[Pedal] = &[
         ui: PedalUi::Knobs,
     },
     Pedal {
-        name: "WAH",
+        name: "CRY BABY",
         color: PEDAL_ORCHID,
         start: WAH_START,
         end: WAH_END,
@@ -487,7 +487,7 @@ pub(super) const PEDALS: &[Pedal] = &[
         ui: PedalUi::Knobs,
     },
     Pedal {
-        name: "COMP",
+        name: "DYNA COMP",
         color: PEDAL_GOLD,
         start: CMP_START,
         end: CMP_END,
@@ -495,7 +495,7 @@ pub(super) const PEDALS: &[Pedal] = &[
         ui: PedalUi::Knobs,
     },
     Pedal {
-        name: "FUZZ",
+        name: "BIG MUFF",
         color: PEDAL_RED,
         start: FUZZ_START,
         end: FUZZ_END,
@@ -543,7 +543,7 @@ pub(super) const PEDALS: &[Pedal] = &[
         ui: PedalUi::Knobs,
     },
     Pedal {
-        name: "CLEAN BOOST",
+        name: "POWER BOOST",
         color: PEDAL_MINT,
         start: BOOST_START,
         end: BOOST_END,
@@ -552,7 +552,7 @@ pub(super) const PEDALS: &[Pedal] = &[
     },
     // Post-cab rack (after the cab), in signal order.
     Pedal {
-        name: "GRAPHIC EQ",
+        name: "GE-7",
         color: PEDAL_SAND,
         start: GEQ_START,
         end: GEQ_END,
@@ -576,7 +576,7 @@ pub(super) const PEDALS: &[Pedal] = &[
         ui: PedalUi::Knobs,
     },
     Pedal {
-        name: "CHORUS",
+        name: "CE-2",
         color: PEDAL_PINK,
         start: CH_START,
         end: CH_END,
