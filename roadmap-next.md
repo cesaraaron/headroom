@@ -14,68 +14,47 @@ Each item states **why**, **scope**, **audio-thread constraints**, and
 
 ---
 
-## Handoff — current state (2026-10-11)
+## Handoff — current state (2026-10-12)
 
-**A fresh agent should be able to continue from this section alone.** It records
-what just shipped, exactly what to do next, the known deferred minors, and the
-working conventions.
+**A fresh agent should be able to continue from this section alone.** The
+off-path roadmap is DONE except blocked Phase 3. What shipped, what remains,
+and the working conventions.
 
 ### Just shipped (on `main`, pushed)
 
 | Area | Commits | Where |
 | --- | --- | --- |
-| Mouse click-to-focus | `cd2c734`…`72520fc` | spec/plan `docs/superpowers/{specs,plans}/2026-10-10-mouse-click-focus*` |
-| MIDI learn/bind screen (`F2`) | `05c565a`…`f4014d2` | spec/plan `…/2026-10-10-midi-learn-screen*` |
-| Timeline loop `[` → end of the last-ending track | `efaefcb` | `src/ui/practice.rs::set_loop_start` |
-| Preset + session filters match the **name only** | `ef436dd` | `src/ui/presets.rs::preset_matches`, `src/ui/sessions.rs::visible_rows` |
-| Tall overlays scroll on a short terminal | `80b1785` `c0c7bde` | `viewport()` in `src/ui/mod.rs`; `src/ui/midi.rs`, `draw.rs`; scrollable `K` |
+| DSP perf batch (Item 2) | `803d96e`…`932cec8` | `src/dsp/effects/*` caches, `src/dsp/cab/ir.rs` recurrence + sparse taps; `CabBank::new` 221→24 ms; spec/plan `docs/superpowers/{specs,plans}/2026-10-11-dsp-perf-batch*` |
+| F1 limiter remainder | `ab05e93`…`597b6de` | 4× true-peak detector + oversampled clamp (`src/dsp/limiter.rs`), GR readout on OUT row, true-peak hold; baseline re-blessed; `…/2026-10-11-f1-limiter*` |
+| Reorder safety (B2/B4/B5) | `3b2b005`…`292e449` | mono-after-cab toast (`src/ui/input.rs`), feedback-tail clear on reorder (`DspChain::snapshot_order`); B4 verified-and-closed; `…/2026-10-11-reorder*` |
+| Amp gaps remainder (C2–C5) | `1edf712`…`c83b89a` | Randall load-only ripple, `SpeakerLoad` rename; Vox/Hiwatt/Fender ripple measured inaudible and reverted (tests `#[ignore]`d); no re-bless needed; `…/2026-10-11-amps*` |
+| Palette + pedal rename (3.3) | `2177d70`…`f23db93` | `Theme` registry (single default), F3 + `ui.conf`, product tile names; `…/2026-10-12-palette*` (spec) / `2026-10-11-amps.md`-dated plans live under `docs/superpowers/plans/` |
+| Equal IN/OUT meter chrome | `03b166b` | `src/ui/draw.rs` unified meter chrome |
 
-Implementation pointers: `draw` returns a `HitMap`; `src/ui/hit.rs` holds
-`HitTarget`/`hit_test`/`TimelineAxis`; `src/ui/input.rs::apply_hit` applies a click
-and `dispatch_hit` (`src/ui/mod.rs`) routes it. `src/midi.rs` owns the live binding
-table, the learn channel (`cc_seq`/`cc_since`) and `midi.conf` write-back;
-`src/ui/midi.rs` is the modal.
+Key findings to not re-derive: sweeping-notch stages keep exact
+per-sample coefficients (control-rate interpolation moves LTAS bins —
+see `uni_vibe.rs::last_rate` note); `sagged_rail` cancels supply exactly
+in the linear zone (clean power stages can't imprint ripple); 120 Hz
+sidebands need f0=200/WIN=24000 bins (never integer-cycle at 225/30720);
+fidelity `--check` is NaN-blind (needs an `is_finite` guard, Track-4).
 
-### Next up (in this order)
+### Remaining
 
-**Item 2 — DSP perf batch (tone-neutral, measurable). Start here.**
+- **Blocked:** fidelity Phase 3 (measured-IR / cab-capture match) needs
+  re-amp + mic captures — do not start.
+- **If wanted:** theme #2+ (infrastructure in place — data entry +
+  eyeball); Vox power-drive re-voice (×9 trim leaves the power stage
+  clean — no grind/ghosts; new project, re-blesses); `is_finite` harness
+  guard; the deferred minors listed in each batch's ledger (now in git
+  history — `git log` for `Ruling:`/`minor (deferred)` lines).
+- **Owed by the human:** palette manual checklist (F3 toast, restart
+  restore, modal tour, narrow terminal); amp listening pass (Randall hot,
+  Vox cranked, mother_solo/stairway A/B from F1).
 
-- **E3 — per-sample transcendentals.** `src/dsp/effects/uni_vibe.rs` runs ~11
-  sin/cos per sample (`:64,73,74`), `phaser.rs` 7, `compressor.rs` `log10` + 2
-  `powf`, `noise_gate.rs:35` `powf`, `pitch.rs:85` `exp2` + 2 `cos`. The four
-  uni-vibe/phaser stage frequencies change at ≤8 Hz, so a coefficient/oscillator
-  recurrence is exact enough. Verify with `examples/bench.rs` (µs/block, % of the
-  10 ms budget) and the fidelity harness; expect **no** LUFS/LTAS movement.
-- **D7 remainder.**
-  - `src/dsp/cab/ir.rs:138-146` calls `exp()`/`sin()` per mode *per sample*
-    (~10.5 M pairs) — the bulk of the measured ~221 ms `CabBank::new`. Replace
-    with a complex-oscillator recurrence.
-  - `src/dsp/cab/mod.rs:592` indexes `ribbon_l`/`room_l` with `close_l.len()` as
-    the bound — a ragged IR would panic **on the audio thread**. Make it ignore.
-  - `DEFAULT_MIC_BLEND = 0.0` / `DEFAULT_MIC_ROOM = 0.0` (`src/dsp/mod.rs`) mean a
-    fresh start builds 6 synthesized IRs per cab and uses 2. Decide (change the
-    default, or stop building the unused ones).
-  - *(Already done: the `GrilleEcho::frac_tap` `debug_assert`, `ef66756`.)*
-- **Palette/theming refactor** — the rest of 3.3; see its entry below. Large and
-  cosmetic; keep it separate from the DSP batch.
+### Next up
 
-**Item 3 — DSP tone batch (re-blesses the baseline; needs a listening pass).**
-
-- **F1 remainder** — true-peak / inter-sample-peak detection, an audio-thread-safe
-  stereo-linked gain-reduction readout, and oversampling the limiter's own corner.
-  `src/dsp/limiter.rs`; rationale in `docs/fidelity-implement.md` § *"Still open
-  (F1 remainder), deliberately"*.
-- **B2 / B4 / B5** — reorder behaviour decisions (`docs/dsp-findings-2026-09.md`):
-  warn or refuse moves that collapse stereo / feed post-mic signal to line effects
-  (B2); gain compensation on reorder (B4); whether to reset feedback-loop state
-  (reverb/delay/flanger/phaser) on reorder (B5). Touch `src/ui/input.rs` (the
-  `[`/`]` move) and `src/dsp/mod.rs::set_chain_order`. **B3 is already fixed** —
-  `set_chain_order` sanitises at runtime in every build.
-- **C2–C5 amp gaps** — no negative feedback (C2), sag model inverted (C3), one
-  clipper for five tube types (C4), per-model defects (C5). `src/dsp/amp/`. Each is
-  independently listenable and re-blessable.
-- Re-bless `docs/fidelity/baseline-synth-48k.toml` per `CONTRIBUTING.md` →
-  "Fidelity harness" whenever tone moves.
+Nothing scheduled. The off-path roadmap is complete; play the rig and
+file new work as it earns it.
 
 **Blocked:** fidelity Phase 3 (measured-IR / cab-capture match) needs re-amp + mic
 captures — do not start.
@@ -283,18 +262,16 @@ layout. Keep the ratatui snapshot tests meaningful.
 
 **Acceptance.** Screenshots/snapshots per theme; no clipping at a small size.
 
-**Status — narrow-width done; palette still deferred.** The narrow-width half
-landed 2026-10-11: the tall overlays now scroll on a short terminal
-(`80b1785`), and the panel layout already degrades gracefully (ratatui shrinks the
-fixed panels proportionally — locked by `the_panels_fit_a_small_terminal`). A
-"compact mode" was prototyped and **reverted**: measurement showed there was no
-defect to fix. The **palette** remains: making it runtime-selectable means threading
-a theme through ~630 colour-constant uses across `src/ui/**`
-(`rg -o '\bACCENT\b' src/ui | wc -l` → 95, `AMBER` 150, `DIM` 232, `CHROME` 60, …),
-and `src/ui/config.rs`'s `PEDALS` is a `const` array embedding 19 `PEDAL_*` colours,
-so it cannot stay `const`. That is a large, mostly mechanical refactor with real
-regression risk for a cosmetic win, so it stays deferred to its own dedicated
-change.
+**Status — done 2026-10-12 (infrastructure + rename, single theme).**
+The narrow-width half landed 2026-10-11; the palette half landed 2026-10-12
+(`2177d70`…`f23db93`, spec `docs/superpowers/specs/2026-10-12-palette-design.md`):
+a `Theme` registry in `src/ui/styles.rs` (single default palette,
+value-for-value legacy — all existing snapshots pass unmodified), ~400 call
+sites migrated flag-day, F3 cycle + `~/.config/rusty-riff/ui.conf` write-back,
+and pedal tiles renamed to product names (CRY BABY, DYNA COMP, BIG MUFF,
+POWER BOOST, GE-7, CE-2; multi-kind pedals stay generic). Verified by
+TestBackend cell-color assertions (snapshots are glyphs-only). Theme #2 is
+now data entry + eyeball.
 
 ### 3.4 UI quality-of-life (rolling)
 
@@ -376,19 +353,12 @@ site was not re-added.
 
 ## Recommended order
 
-_Done: 4.1 CI, 4.2 benchmarks, 4.3 guide, 3.1 presets, 3.2 onboarding profiles,
-3.4 UI QoL, 1.1 MIDI expression + CC→knob config, **1.1 MIDI learn/bind screen
-(`F2`)** and the **3.3 narrow-width half**, 1.2 tap-tempo + MIDI clock, 2.1 looper,
-2.2 timeline UX, 2.3 loop-region export, plus **mouse click-to-focus**. See above
-and the handoff section at the top._
+_Done: everything below plus all earlier items — the off-path roadmap is
+complete (see the handoff section at the top)._
 
-Remaining, in order (detail in the handoff section):
-
-1. **DSP perf batch** — E3 (per-sample transcendentals) and D7's IR-build
-   `exp`/`sin` plus the ragged-IR bound. Measurable, tone-neutral.
-2. **DSP tone batch** — F1 remainder, B2/B4/B5 reorder decisions, C2–C5 amp gaps.
-   Re-blesses the fidelity baseline; wants a listening pass.
-3. **3.3 palette refactor** — the last cosmetic piece of 3.3, parked deliberately.
+Nothing remaining except blocked Phase 3 (measured-IR / cab-capture match —
+needs re-amp + mic captures) and optional follow-ups (theme #2+, Vox
+power-drive re-voice, `is_finite` harness guard).
 
 The **fidelity path is closed**: the amp effects loop (Phase 2 item 5) was
 retired as out-of-scope, the TS-808 was corrected against the circuit (no 340 Hz

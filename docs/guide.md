@@ -67,9 +67,9 @@ Recalibrate with `N` whenever you change the interface gain, guitar, or pickups.
 The default order is:
 
 ```text
-NOISE GATE → WHAMMY → WAH → COMP → FUZZ → TS-808 → DS-1 → ML-2 METAL CORE
-  → PRE-AMP EQ → UNI-VIBE → CLEAN BOOST → AMP → CAB
-  → GRAPHIC EQ → PARAMETRIC EQ → FLANGER → CHORUS → PHASER → TREMOLO/VIBRATO
+NOISE GATE → WHAMMY → CRY BABY → DYNA COMP → BIG MUFF → TS-808 → DS-1 → ML-2 METAL CORE
+  → PRE-AMP EQ → UNI-VIBE → POWER BOOST → AMP → CAB
+  → GE-7 → PARAMETRIC EQ → FLANGER → CE-2 → PHASER → TREMOLO/VIBRATO
   → DELAY → SPRING REVERB
 ```
 
@@ -97,6 +97,11 @@ track, the metronome, or the looper, which is what makes it useful for balancing
 the guitar against a backing track. The top of its range reaches the output
 limiter, so turning it up past the point where the signal is already loud engages
 soft limiting — just as winding up a real power amp does.
+
+The **OUT** meter shows the true peak (held tick) plus the limiter's gain
+reduction in dB beside the `LIM` badge, so you can see exactly how hard the
+ceiling is working. Press **`F3`** to cycle the UI theme; the choice is saved
+and restored on restart.
 
 `W` toggles the master-bus stereo width (neutral / wide).
 
