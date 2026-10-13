@@ -47,9 +47,11 @@ pub(super) fn theme_name() -> &'static str {
     THEMES[(THEME_INDEX.load(Ordering::Relaxed) as usize) % THEMES.len()].0
 }
 
-/// Select a palette by index; out-of-range clamps (forward-compat).
+/// Select a palette by index; out-of-range clamps (forward-compat), so the
+/// stored value is always canonical — a conf of e.g. 47 resolves to a real
+/// theme instead of drifting when theme #2 lands.
 pub(super) fn set_theme(index: u8) {
-    THEME_INDEX.store(index, Ordering::Relaxed);
+    THEME_INDEX.store((index as usize % THEMES.len()) as u8, Ordering::Relaxed);
 }
 
 /// Current palette index (for the switch toast + conf write-back).
@@ -215,5 +217,22 @@ mod tests {
         assert_eq!(theme_name(), "default");
         set_theme(0);
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Cycling with one built-in stays on index 0 (and the written conf says
+    /// `theme = 0`, not a drifting counter): the store clamps, so a conf of
+    /// e.g. 47 resolves canonically when theme #2 lands.
+    #[test]
+    fn cycle_theme_with_single_theme_stays_at_zero() {
+        set_theme(0);
+        cycle_theme();
+        assert_eq!(theme_index(), 0, "cycle drifted the stored index");
+        let path = std::env::temp_dir().join("rusty-riff-theme-cycle-test-ui.conf");
+        let _ = std::fs::remove_file(&path);
+        write_theme_conf_at(&path, theme_index()).expect("write conf");
+        let body = std::fs::read_to_string(&path).expect("read conf");
+        assert_eq!(body, "theme = 0\n", "conf drifted: {body:?}");
+        let _ = std::fs::remove_file(&path);
+        set_theme(0);
     }
 }
