@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
 };
 
-use super::styles::{ACCENT, AMBER, CHROME, DIM, panel_style};
+use super::styles::{panel_style, theme};
 use std::collections::HashSet;
 
 use crate::preset::{Preset, PresetSource};
@@ -32,14 +32,14 @@ pub(super) fn render_preset_modal(
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(ACCENT))
+        .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             if filter.is_empty() {
                 " P R E S E T S ".to_string()
             } else {
                 format!(" P R E S E T S   filter: {filter} ")
             },
-            Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
 
@@ -58,12 +58,12 @@ pub(super) fn render_preset_modal(
             (
                 "▶ ",
                 Style::default()
-                    .fg(ACCENT)
+                    .fg(theme().accent)
                     .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-                Style::default().fg(AMBER).add_modifier(Modifier::REVERSED),
+                Style::default().fg(theme().amber).add_modifier(Modifier::REVERSED),
             )
         } else {
-            ("  ", Style::default().fg(CHROME), Style::default().fg(DIM))
+            ("  ", Style::default().fg(theme().chrome), Style::default().fg(theme().dim))
         };
 
         let label = if desc.is_empty() {
@@ -76,7 +76,7 @@ pub(super) fn render_preset_modal(
             Span::styled(
                 if fav { "★ " } else { "  " },
                 Style::default()
-                    .fg(if fav { AMBER } else { DIM })
+                    .fg(if fav { theme().amber } else { theme().dim })
                     .add_modifier(if fav {
                         Modifier::BOLD
                     } else {
@@ -85,7 +85,7 @@ pub(super) fn render_preset_modal(
             ),
             Span::styled(
                 prefix.to_string(),
-                Style::default().fg(if selected { ACCENT } else { DIM }),
+                Style::default().fg(if selected { theme().accent } else { theme().dim }),
             ),
             Span::styled(label, name_style),
             Span::styled(desc.to_string(), desc_style),
@@ -146,22 +146,22 @@ pub(super) fn render_preset_modal(
         .split(rows[1]);
 
     let mut footer_spans = vec![
-        Span::styled("↑/↓", Style::default().fg(AMBER)),
-        Span::styled(" navigate  ", Style::default().fg(DIM)),
-        Span::styled("/", Style::default().fg(AMBER)),
-        Span::styled(" search  ", Style::default().fg(DIM)),
-        Span::styled("Enter", Style::default().fg(AMBER)),
-        Span::styled(" apply  ", Style::default().fg(DIM)),
-        Span::styled("S", Style::default().fg(AMBER)),
-        Span::styled(" save  ", Style::default().fg(DIM)),
-        Span::styled("E", Style::default().fg(AMBER)),
-        Span::styled(" export  ", Style::default().fg(DIM)),
-        Span::styled("I", Style::default().fg(AMBER)),
-        Span::styled(" import  ", Style::default().fg(DIM)),
-        Span::styled("F", Style::default().fg(AMBER)),
-        Span::styled(" favorite  ", Style::default().fg(DIM)),
-        Span::styled("X", Style::default().fg(AMBER)),
-        Span::styled(" A/B  ", Style::default().fg(DIM)),
+        Span::styled("↑/↓", Style::default().fg(theme().amber)),
+        Span::styled(" navigate  ", Style::default().fg(theme().dim)),
+        Span::styled("/", Style::default().fg(theme().amber)),
+        Span::styled(" search  ", Style::default().fg(theme().dim)),
+        Span::styled("Enter", Style::default().fg(theme().amber)),
+        Span::styled(" apply  ", Style::default().fg(theme().dim)),
+        Span::styled("S", Style::default().fg(theme().amber)),
+        Span::styled(" save  ", Style::default().fg(theme().dim)),
+        Span::styled("E", Style::default().fg(theme().amber)),
+        Span::styled(" export  ", Style::default().fg(theme().dim)),
+        Span::styled("I", Style::default().fg(theme().amber)),
+        Span::styled(" import  ", Style::default().fg(theme().dim)),
+        Span::styled("F", Style::default().fg(theme().amber)),
+        Span::styled(" favorite  ", Style::default().fg(theme().dim)),
+        Span::styled("X", Style::default().fg(theme().amber)),
+        Span::styled(" A/B  ", Style::default().fg(theme().dim)),
     ];
     if on_user_preset {
         footer_spans.push(Span::styled(
@@ -170,10 +170,10 @@ pub(super) fn render_preset_modal(
                 .fg(ratatui::style::Color::Red)
                 .add_modifier(Modifier::BOLD),
         ));
-        footer_spans.push(Span::styled(" delete  ", Style::default().fg(DIM)));
+        footer_spans.push(Span::styled(" delete  ", Style::default().fg(theme().dim)));
     }
-    footer_spans.push(Span::styled("Esc / P", Style::default().fg(AMBER)));
-    footer_spans.push(Span::styled(" close", Style::default().fg(DIM)));
+    footer_spans.push(Span::styled("Esc / P", Style::default().fg(theme().amber)));
+    footer_spans.push(Span::styled(" close", Style::default().fg(theme().dim)));
 
     f.render_widget(
         Paragraph::new(Line::from(footer_spans)).alignment(Alignment::Center),
@@ -183,7 +183,7 @@ pub(super) fn render_preset_modal(
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("● ", Style::default().fg(GREEN)),
-            Span::styled("user preset", Style::default().fg(DIM)),
+            Span::styled("user preset", Style::default().fg(theme().dim)),
         ]))
         .alignment(Alignment::Center),
         footer[1],
@@ -275,7 +275,7 @@ pub(super) fn render_save_dialog(
                 .fg(ratatui::style::Color::White)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(CHROME)
+            Style::default().fg(theme().chrome)
         }
     };
 
@@ -283,7 +283,7 @@ pub(super) fn render_save_dialog(
         if active {
             Style::default().fg(GREEN).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(DIM)
+            Style::default().fg(theme().dim)
         }
     };
 
@@ -305,7 +305,7 @@ pub(super) fn render_save_dialog(
             if active_field == 0 {
                 Style::default().fg(GREEN)
             } else {
-                Style::default().fg(DIM)
+                Style::default().fg(theme().dim)
             },
         )),
         rows[1],
@@ -332,7 +332,7 @@ pub(super) fn render_save_dialog(
             if active_field == 1 {
                 Style::default().fg(GREEN)
             } else {
-                Style::default().fg(DIM)
+                Style::default().fg(theme().dim)
             },
         )),
         rows[4],
@@ -352,12 +352,12 @@ pub(super) fn render_save_dialog(
 
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("Tab", Style::default().fg(AMBER)),
-            Span::styled(" next field  ", Style::default().fg(DIM)),
-            Span::styled("Enter", Style::default().fg(AMBER)),
-            Span::styled(" save  ", Style::default().fg(DIM)),
-            Span::styled("Esc", Style::default().fg(AMBER)),
-            Span::styled(" cancel", Style::default().fg(DIM)),
+            Span::styled("Tab", Style::default().fg(theme().amber)),
+            Span::styled(" next field  ", Style::default().fg(theme().dim)),
+            Span::styled("Enter", Style::default().fg(theme().amber)),
+            Span::styled(" save  ", Style::default().fg(theme().dim)),
+            Span::styled("Esc", Style::default().fg(theme().amber)),
+            Span::styled(" cancel", Style::default().fg(theme().dim)),
         ]))
         .alignment(Alignment::Center),
         rows[6],
@@ -397,10 +397,10 @@ pub(super) fn render_path_dialog(
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(ACCENT))
+        .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             title,
-            Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
 
@@ -420,7 +420,7 @@ pub(super) fn render_path_dialog(
     f.render_widget(
         Paragraph::new(Span::styled(
             label,
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().accent).add_modifier(Modifier::BOLD),
         )),
         rows[0],
     );
@@ -435,7 +435,7 @@ pub(super) fn render_path_dialog(
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
-                .border_style(Style::default().fg(ACCENT)),
+                .border_style(Style::default().fg(theme().accent)),
         ),
         rows[1],
     );
@@ -452,26 +452,26 @@ pub(super) fn render_path_dialog(
         );
     } else if let Some(range) = range {
         f.render_widget(
-            Paragraph::new(Span::styled(range, Style::default().fg(CHROME))),
+            Paragraph::new(Span::styled(range, Style::default().fg(theme().chrome))),
             rows[2],
         );
     }
 
     let footer = if range.is_some() {
         Line::from(vec![
-            Span::styled("Enter", Style::default().fg(AMBER)),
-            Span::styled(" confirm  ", Style::default().fg(DIM)),
-            Span::styled("Tab", Style::default().fg(AMBER)),
-            Span::styled(" range  ", Style::default().fg(DIM)),
-            Span::styled("Esc", Style::default().fg(AMBER)),
-            Span::styled(" cancel", Style::default().fg(DIM)),
+            Span::styled("Enter", Style::default().fg(theme().amber)),
+            Span::styled(" confirm  ", Style::default().fg(theme().dim)),
+            Span::styled("Tab", Style::default().fg(theme().amber)),
+            Span::styled(" range  ", Style::default().fg(theme().dim)),
+            Span::styled("Esc", Style::default().fg(theme().amber)),
+            Span::styled(" cancel", Style::default().fg(theme().dim)),
         ])
     } else {
         Line::from(vec![
-            Span::styled("Enter", Style::default().fg(AMBER)),
-            Span::styled(" confirm  ", Style::default().fg(DIM)),
-            Span::styled("Esc", Style::default().fg(AMBER)),
-            Span::styled(" cancel", Style::default().fg(DIM)),
+            Span::styled("Enter", Style::default().fg(theme().amber)),
+            Span::styled(" confirm  ", Style::default().fg(theme().dim)),
+            Span::styled("Esc", Style::default().fg(theme().amber)),
+            Span::styled(" cancel", Style::default().fg(theme().dim)),
         ])
     };
 

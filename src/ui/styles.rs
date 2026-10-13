@@ -1,18 +1,56 @@
 use ratatui::style::{Color, Style};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
-pub(super) const AMBER: Color = Color::Rgb(255, 200, 60);
-// Primary structural/focus accent (teal). Panels, frames and modal borders use
-// this; active regions render it full-bright, inactive ones are dimmed.
-pub(super) const ACCENT: Color = Color::Rgb(0x5F, 0xB3, 0xB3);
-pub(super) const DIM: Color = Color::Rgb(80, 80, 80);
-pub(super) const CHROME: Color = Color::Rgb(180, 180, 190);
-// Subdued grey for the timeline ruler's tick labels (present, not distracting).
-pub(super) const GRID: Color = Color::Rgb(118, 118, 128);
-pub(super) const HOT: Color = Color::Rgb(220, 30, 30);
-pub(super) const SAFE: Color = Color::Rgb(40, 180, 40);
-pub(super) const WARN: Color = Color::Rgb(220, 180, 0);
-pub(super) const OFF: Color = Color::Rgb(50, 50, 50);
+// ── Theme registry ──────────────────────────────────────────────────────────
+// All UI chrome colors live in a `Theme` so palettes are runtime-selectable.
+// Pattern mirrors `OPAQUE_BACKGROUND` below: set from the UI thread, read
+// while rendering (never on the audio thread). Index 0 is the legacy palette,
+// value-for-value, so every existing snapshot passes unchanged.
+
+/// Everything a palette owns. Pedal liveries are deliberately NOT here —
+/// stompbox colors are fixed real-world liveries (`PEDAL_*` below).
+pub(super) struct Theme {
+    pub amber: Color,
+    pub accent: Color,
+    pub dim: Color,
+    pub chrome: Color,
+    pub grid: Color,
+    pub hot: Color,
+    pub safe: Color,
+    pub warn: Color,
+    pub off: Color,
+}
+
+const DEFAULT: Theme = Theme {
+    amber: Color::Rgb(255, 200, 60),
+    accent: Color::Rgb(0x5F, 0xB3, 0xB3),
+    dim: Color::Rgb(80, 80, 80),
+    chrome: Color::Rgb(180, 180, 190),
+    grid: Color::Rgb(118, 118, 128),
+    hot: Color::Rgb(220, 30, 30),
+    safe: Color::Rgb(40, 180, 40),
+    warn: Color::Rgb(220, 180, 0),
+    off: Color::Rgb(50, 50, 50),
+};
+
+/// Built-in palettes: (id, theme). One entry today; theme #2 lands here.
+static THEMES: [(&str, Theme); 1] = [("default", DEFAULT)];
+static THEME_INDEX: AtomicU8 = AtomicU8::new(0);
+
+/// The active palette.
+pub(super) fn theme() -> &'static Theme {
+    &THEMES[(THEME_INDEX.load(Ordering::Relaxed) as usize) % THEMES.len()].1
+}
+
+/// Name of the active palette (for the switch toast + conf write-back).
+pub(super) fn theme_name() -> &'static str {
+    THEMES[(THEME_INDEX.load(Ordering::Relaxed) as usize) % THEMES.len()].0
+}
+
+/// Select a palette by index; out-of-range clamps (forward-compat).
+pub(super) fn set_theme(index: u8) {
+    THEME_INDEX.store(index, Ordering::Relaxed);
+}
 
 // ── Panel background ──────────────────────────────────────────────────────────
 // Transparent by default so terminal transparency (e.g. Ghostty) shows through:
@@ -69,5 +107,32 @@ mod tests {
         set_opaque(true);
         assert_eq!(panel_style(), Style::default().bg(Color::Black));
         set_opaque(false);
+    }
+
+    /// The default theme is value-for-value the legacy palette: every field
+    /// equals the pre-refactor `Rgb` triple. Any drift here breaks every UI
+    /// snapshot, so the triples are spelled out, not derived.
+    #[test]
+    fn default_theme_matches_legacy_triples() {
+        let t = theme();
+        assert_eq!(t.amber, Color::Rgb(255, 200, 60));
+        assert_eq!(t.accent, Color::Rgb(0x5F, 0xB3, 0xB3));
+        assert_eq!(t.dim, Color::Rgb(80, 80, 80));
+        assert_eq!(t.chrome, Color::Rgb(180, 180, 190));
+        assert_eq!(t.grid, Color::Rgb(118, 118, 128));
+        assert_eq!(t.hot, Color::Rgb(220, 30, 30));
+        assert_eq!(t.safe, Color::Rgb(40, 180, 40));
+        assert_eq!(t.warn, Color::Rgb(220, 180, 0));
+        assert_eq!(t.off, Color::Rgb(50, 50, 50));
+    }
+
+    /// An out-of-range theme id clamps into the registry (forward-compat for
+    /// theme #2 files naming ids this build doesn't know). Resets to 0 so no
+    /// state leaks into other tests.
+    #[test]
+    fn theme_index_clamps() {
+        set_theme(255);
+        assert_eq!(theme().accent, Color::Rgb(0x5F, 0xB3, 0xB3));
+        set_theme(0);
     }
 }

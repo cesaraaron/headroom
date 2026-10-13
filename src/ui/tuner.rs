@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering::Relaxed;
 
 use crate::dsp::tuner::{SPECTRUM_BINS, Tuner, note_of, spectrum_bin_freq};
 
-use super::styles::{ACCENT, AMBER, CHROME, DIM, HOT, SAFE, WARN, panel_style};
+use super::styles::{panel_style, theme};
 
 /// Cents window (±) treated as "in tune".
 const IN_TUNE_CENTS: f32 = 5.0;
@@ -20,11 +20,11 @@ const CLOSE_CENTS: f32 = 15.0;
 fn tune_color(cents: f32) -> Color {
     let c = cents.abs();
     if c <= IN_TUNE_CENTS {
-        SAFE
+        theme().safe
     } else if c <= CLOSE_CENTS {
-        WARN
+        theme().warn
     } else {
-        HOT
+        theme().hot
     }
 }
 
@@ -35,15 +35,15 @@ pub(super) fn render_tuner(f: &mut Frame, tuner: &Tuner) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(ACCENT))
+        .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             " T U N E R ",
-            Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
         ))
         .title(
             Line::from(Span::styled(
                 " rig bypassed — clean signal ",
-                Style::default().fg(DIM),
+                Style::default().fg(theme().dim),
             ))
             .right_aligned(),
         )
@@ -83,7 +83,7 @@ pub(super) fn render_tuner(f: &mut Frame, tuner: &Tuner) {
                 "TUNE DOWN ▼"
             };
             Line::from(vec![
-                Span::styled(format!("{freq:7.2} Hz"), Style::default().fg(CHROME)),
+                Span::styled(format!("{freq:7.2} Hz"), Style::default().fg(theme().chrome)),
                 Span::styled("    ", Style::default()),
                 Span::styled(format!("{:+.0} cents", r.cents), Style::default().fg(color)),
                 Span::styled("    ", Style::default()),
@@ -95,7 +95,7 @@ pub(super) fn render_tuner(f: &mut Frame, tuner: &Tuner) {
         }
         None => Line::from(Span::styled(
             "— play a single note —",
-            Style::default().fg(DIM),
+            Style::default().fg(theme().dim),
         )),
     };
     f.render_widget(Paragraph::new(status).alignment(Alignment::Center), rows[2]);
@@ -105,8 +105,8 @@ pub(super) fn render_tuner(f: &mut Frame, tuner: &Tuner) {
 
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("Esc / T", Style::default().fg(AMBER)),
-            Span::styled(" close", Style::default().fg(DIM)),
+            Span::styled("Esc / T", Style::default().fg(theme().amber)),
+            Span::styled(" close", Style::default().fg(theme().dim)),
         ]))
         .alignment(Alignment::Center),
         rows[6],
@@ -117,7 +117,7 @@ pub(super) fn render_tuner(f: &mut Frame, tuner: &Tuner) {
 fn render_big_note(f: &mut Frame, area: Rect, reading: Option<&crate::dsp::tuner::NoteReading>) {
     let (text, color) = match reading {
         Some(r) => (format!("  {}{}  ", r.name, r.octave), tune_color(r.cents)),
-        None => ("  --  ".to_string(), DIM),
+        None => ("  --  ".to_string(), theme().dim),
     };
 
     let lines = vec![
@@ -144,12 +144,12 @@ fn render_cents_meter(f: &mut Frame, area: Rect, cents: Option<f32>) {
     let track = w.saturating_sub(6);
     let center = track / 2;
 
-    let mut cells = vec![('·', DIM); track];
+    let mut cells = vec![('·', theme().dim); track];
     if track > 0 {
-        cells[center] = ('│', CHROME);
+        cells[center] = ('│', theme().chrome);
     }
 
-    let mut spans = vec![Span::styled("♭ ", Style::default().fg(DIM))];
+    let mut spans = vec![Span::styled("♭ ", Style::default().fg(theme().dim))];
     if let Some(c) = cents {
         let clamped = c.clamp(-50.0, 50.0);
         let pos = (center as f32 + clamped / 50.0 * center as f32)
@@ -172,7 +172,7 @@ fn render_cents_meter(f: &mut Frame, area: Rect, cents: Option<f32>) {
             spans.push(Span::styled(ch.to_string(), Style::default().fg(*col)));
         }
     }
-    spans.push(Span::styled(" ♯", Style::default().fg(DIM)));
+    spans.push(Span::styled(" ♯", Style::default().fg(theme().dim)));
 
     f.render_widget(
         Paragraph::new(Line::from(spans)).alignment(Alignment::Center),
@@ -218,13 +218,13 @@ fn render_spectrum(f: &mut Frame, area: Rect, tuner: &Tuner, freq: f32) {
             let lit = v >= threshold;
             let highlight = hot_bin == Some(bin);
             let (ch, color) = if lit {
-                let c = if highlight { SAFE } else { ACCENT };
+                let c = if highlight { theme().safe } else { theme().accent };
                 ('█', c)
             } else if highlight {
                 // Keep the fundamental's column visible even where it's short.
-                ('│', ACCENT)
+                ('│', theme().accent)
             } else {
-                (' ', DIM)
+                (' ', theme().dim)
             };
             spans.push(Span::styled(ch.to_string(), Style::default().fg(color)));
         }
@@ -239,12 +239,12 @@ fn render_axis(f: &mut Frame, area: Rect) {
     let hi = spectrum_bin_freq(SPECTRUM_BINS - 1);
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(format!("{lo:.0} Hz"), Style::default().fg(DIM)),
+            Span::styled(format!("{lo:.0} Hz"), Style::default().fg(theme().dim)),
             Span::styled(
                 "  ◀ low ── note spectrum ── high ▶  ",
-                Style::default().fg(DIM),
+                Style::default().fg(theme().dim),
             ),
-            Span::styled(format!("{hi:.0} Hz"), Style::default().fg(DIM)),
+            Span::styled(format!("{hi:.0} Hz"), Style::default().fg(theme().dim)),
         ]))
         .alignment(Alignment::Center),
         area,

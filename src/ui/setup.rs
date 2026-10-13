@@ -16,7 +16,7 @@ use crate::audio::DeviceInfo;
 use crate::dsp::{Levels, Params};
 
 use super::draw::draw;
-use super::styles::{ACCENT, AMBER, CHROME, DIM, panel_style};
+use super::styles::{panel_style, theme};
 
 pub struct Selection {
     pub input_idx: usize,
@@ -208,10 +208,10 @@ fn render_list_modal(
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(ACCENT))
+        .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             title,
-            Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
 
@@ -263,12 +263,12 @@ fn render_list_modal(
                 (
                     "▶ ",
                     Style::default()
-                        .fg(ACCENT)
+                        .fg(theme().accent)
                         .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-                    Style::default().fg(ACCENT).add_modifier(Modifier::REVERSED),
+                    Style::default().fg(theme().accent).add_modifier(Modifier::REVERSED),
                 )
             } else {
-                ("  ", Style::default().fg(CHROME), Style::default().fg(DIM))
+                ("  ", Style::default().fg(theme().chrome), Style::default().fg(theme().dim))
             };
             let label = if hint.is_empty() {
                 name.to_string()
@@ -278,7 +278,7 @@ fn render_list_modal(
             Line::from(vec![
                 Span::styled(
                     prefix,
-                    Style::default().fg(if selected { ACCENT } else { DIM }),
+                    Style::default().fg(if selected { theme().accent } else { theme().dim }),
                 ),
                 Span::styled(label, name_style),
                 Span::styled(hint.clone(), hint_style),
@@ -297,18 +297,18 @@ fn render_list_modal(
                 let key = &part[..pos];
                 let desc = &part[pos..];
                 vec![
-                    Span::styled(key.to_string(), Style::default().fg(AMBER)),
+                    Span::styled(key.to_string(), Style::default().fg(theme().amber)),
                     Span::styled(
                         if i == 0 {
                             desc.to_string()
                         } else {
                             format!("  {desc}")
                         },
-                        Style::default().fg(DIM),
+                        Style::default().fg(theme().dim),
                     ),
                 ]
             } else {
-                vec![Span::styled(part.to_string(), Style::default().fg(AMBER))]
+                vec![Span::styled(part.to_string(), Style::default().fg(theme().amber))]
             }
         })
         .collect();

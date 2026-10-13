@@ -18,7 +18,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
 };
 
-use super::styles::{ACCENT, AMBER, CHROME, DIM, SAFE, WARN, panel_style};
+use super::styles::{panel_style, theme};
 use crate::audio::AudioEngine;
 use crate::dsp::Params;
 use crate::dsp::cab::{ExternalIrCab, LIVE_MAX_IR_LEN, load_ir};
@@ -180,10 +180,10 @@ impl IrBrowser {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(ACCENT))
+            .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 " C A B I N E T   I R s ",
-                Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
 
@@ -206,7 +206,7 @@ impl IrBrowser {
             f.render_widget(
                 Paragraph::new(Line::from(Span::styled(
                     format!("⚠ {AMP_ACTIVE_WARNING}"),
-                    Style::default().fg(WARN).add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme().warn).add_modifier(Modifier::BOLD),
                 )))
                 .alignment(Alignment::Center),
                 rows[0],
@@ -221,14 +221,14 @@ impl IrBrowser {
             .split(rows[2]);
 
         let hint = vec![
-            Span::styled("↑/↓", Style::default().fg(AMBER)),
-            Span::styled(" navigate  ", Style::default().fg(DIM)),
-            Span::styled("Enter", Style::default().fg(AMBER)),
-            Span::styled(" load/clear  ", Style::default().fg(DIM)),
-            Span::styled("X", Style::default().fg(AMBER)),
-            Span::styled(" A/B  ", Style::default().fg(DIM)),
-            Span::styled("Esc / I", Style::default().fg(AMBER)),
-            Span::styled(" close", Style::default().fg(DIM)),
+            Span::styled("↑/↓", Style::default().fg(theme().amber)),
+            Span::styled(" navigate  ", Style::default().fg(theme().dim)),
+            Span::styled("Enter", Style::default().fg(theme().amber)),
+            Span::styled(" load/clear  ", Style::default().fg(theme().dim)),
+            Span::styled("X", Style::default().fg(theme().amber)),
+            Span::styled(" A/B  ", Style::default().fg(theme().dim)),
+            Span::styled("Esc / I", Style::default().fg(theme().amber)),
+            Span::styled(" close", Style::default().fg(theme().dim)),
         ];
         f.render_widget(
             Paragraph::new(Line::from(hint)).alignment(Alignment::Center),
@@ -238,15 +238,15 @@ impl IrBrowser {
         let status_line = match (&self.message, self.loaded_name()) {
             (Some(msg), _) => Line::from(Span::styled(
                 msg.clone(),
-                Style::default().fg(SAFE).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
             )),
             (None, Some(name)) => Line::from(vec![
-                Span::styled("loaded: ", Style::default().fg(DIM)),
-                Span::styled(name.to_owned(), Style::default().fg(CHROME)),
+                Span::styled("loaded: ", Style::default().fg(theme().dim)),
+                Span::styled(name.to_owned(), Style::default().fg(theme().chrome)),
             ]),
             (None, None) => Line::from(Span::styled(
                 "no IR loaded — using built-in cabs",
-                Style::default().fg(DIM),
+                Style::default().fg(theme().dim),
             )),
         };
         f.render_widget(
@@ -269,7 +269,7 @@ impl IrBrowser {
         if self.files.is_empty() {
             lines.push(Line::from(Span::styled(
                 "  (no .wav IRs found — drop files in ./irs or ~/.config/rusty-riff/irs)",
-                Style::default().fg(DIM),
+                Style::default().fg(theme().dim),
             )));
         }
 
@@ -334,23 +334,23 @@ fn entry(name: &str, detail: &str, selected: bool) -> Line<'static> {
         (
             "▶ ",
             Style::default()
-                .fg(ACCENT)
+                .fg(theme().accent)
                 .add_modifier(Modifier::BOLD | Modifier::REVERSED),
         )
     } else {
-        ("  ", Style::default().fg(CHROME))
+        ("  ", Style::default().fg(theme().chrome))
     };
     let mut spans = vec![
         Span::styled(
             prefix.to_owned(),
-            Style::default().fg(if selected { ACCENT } else { DIM }),
+            Style::default().fg(if selected { theme().accent } else { theme().dim }),
         ),
         Span::styled(name.to_owned(), name_style),
     ];
     if !detail.is_empty() {
         spans.push(Span::styled(
             format!("  {detail}"),
-            Style::default().fg(DIM),
+            Style::default().fg(theme().dim),
         ));
     }
     Line::from(spans)

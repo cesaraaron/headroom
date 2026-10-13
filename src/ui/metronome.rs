@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::dsp::metronome::{MAX_BPM, MIN_BPM, Metronome};
 
-use super::styles::{ACCENT, AMBER, CHROME, DIM, HOT, SAFE, panel_style};
+use super::styles::{panel_style, theme};
 
 pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool) {
     let area = centered_rect(60, 45, f.area());
@@ -18,18 +18,18 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
     let bpm = metronome.get_bpm();
 
     let status_span = if active {
-        Span::styled(" ● running — not recorded ", Style::default().fg(SAFE))
+        Span::styled(" ● running — not recorded ", Style::default().fg(theme().safe))
     } else {
-        Span::styled(" ○ stopped ", Style::default().fg(DIM))
+        Span::styled(" ○ stopped ", Style::default().fg(theme().dim))
     };
 
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(ACCENT))
+        .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             " M E T R O N O M E ",
-            Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
         ))
         .title(Line::from(status_span).right_aligned())
         .style(panel_style());
@@ -53,7 +53,7 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
         .split(inner);
 
     // Big tempo number, tinted when running.
-    let bpm_color = if active { SAFE } else { CHROME };
+    let bpm_color = if active { theme().safe } else { theme().chrome };
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
             format!("  {bpm}  "),
@@ -65,7 +65,7 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
         rows[1],
     );
     f.render_widget(
-        Paragraph::new(Line::from(Span::styled("BPM", Style::default().fg(DIM))))
+        Paragraph::new(Line::from(Span::styled("BPM", Style::default().fg(theme().dim))))
             .alignment(Alignment::Center),
         rows[2],
     );
@@ -75,9 +75,9 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
     // Range end labels beneath the slider.
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(format!("{MIN_BPM}"), Style::default().fg(DIM)),
-            Span::styled("  slow ◀ ── tempo ── ▶ fast  ", Style::default().fg(DIM)),
-            Span::styled(format!("{MAX_BPM}"), Style::default().fg(DIM)),
+            Span::styled(format!("{MIN_BPM}"), Style::default().fg(theme().dim)),
+            Span::styled("  slow ◀ ── tempo ── ▶ fast  ", Style::default().fg(theme().dim)),
+            Span::styled(format!("{MAX_BPM}"), Style::default().fg(theme().dim)),
         ]))
         .alignment(Alignment::Center),
         rows[5],
@@ -87,12 +87,12 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
     let pip = if active && blink {
         Span::styled(
             "◆ tick",
-            Style::default().fg(HOT).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().hot).add_modifier(Modifier::BOLD),
         )
     } else if active {
-        Span::styled("◇ tick", Style::default().fg(DIM))
+        Span::styled("◇ tick", Style::default().fg(theme().dim))
     } else {
-        Span::styled("— stopped —", Style::default().fg(DIM))
+        Span::styled("— stopped —", Style::default().fg(theme().dim))
     };
     f.render_widget(
         Paragraph::new(Line::from(pip)).alignment(Alignment::Center),
@@ -102,12 +102,12 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
     let toggle_hint = if active { "stop" } else { "start" };
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("←/→", Style::default().fg(AMBER)),
-            Span::styled(" tempo   ", Style::default().fg(DIM)),
-            Span::styled("Space", Style::default().fg(AMBER)),
-            Span::styled(format!(" {toggle_hint}   "), Style::default().fg(DIM)),
-            Span::styled("Esc / M", Style::default().fg(AMBER)),
-            Span::styled(" close", Style::default().fg(DIM)),
+            Span::styled("←/→", Style::default().fg(theme().amber)),
+            Span::styled(" tempo   ", Style::default().fg(theme().dim)),
+            Span::styled("Space", Style::default().fg(theme().amber)),
+            Span::styled(format!(" {toggle_hint}   "), Style::default().fg(theme().dim)),
+            Span::styled("Esc / M", Style::default().fg(theme().amber)),
+            Span::styled(" close", Style::default().fg(theme().dim)),
         ]))
         .alignment(Alignment::Center),
         rows[9],
@@ -126,7 +126,7 @@ fn render_slider(f: &mut Frame, area: Rect, bpm: u32, active: bool) {
     }
     let frac = (bpm - MIN_BPM) as f32 / (MAX_BPM - MIN_BPM) as f32;
     let pos = (frac * (track - 1) as f32).round() as usize;
-    let fill_color = if active { SAFE } else { ACCENT };
+    let fill_color = if active { theme().safe } else { theme().accent };
 
     let mut spans = vec![Span::styled("  ", Style::default())];
     for i in 0..track {
@@ -135,7 +135,7 @@ fn render_slider(f: &mut Frame, area: Rect, bpm: u32, active: bool) {
         } else if i < pos {
             ('─', fill_color)
         } else {
-            ('·', DIM)
+            ('·', theme().dim)
         };
         spans.push(Span::styled(
             ch.to_string(),

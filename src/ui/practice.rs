@@ -25,7 +25,7 @@ use ratatui::{
 };
 use std::sync::atomic::Ordering::Relaxed;
 
-use super::styles::{ACCENT, AMBER, CHROME, DIM, GRID, HOT, SAFE, WARN, panel_style};
+use super::styles::{panel_style, theme};
 use crate::audio::AudioEngine;
 use crate::audio::calibration::{InputCalibration, REFERENCE_VERSION};
 use crate::dsp::Params;
@@ -1773,7 +1773,7 @@ impl PracticeUi {
         if area.height < 2 || area.width < 4 {
             return;
         }
-        let focused_glyph = if focused { ACCENT } else { shade(ACCENT, 0.55) };
+        let focused_glyph = if focused { theme().accent } else { shade(theme().accent, 0.55) };
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Plain)
@@ -1930,13 +1930,13 @@ impl PracticeUi {
         ];
         for (ch, playhead) in cells {
             let style = if playhead {
-                Style::default().fg(HOT).add_modifier(Modifier::BOLD)
+                Style::default().fg(theme().hot).add_modifier(Modifier::BOLD)
             } else if ch == ' ' {
                 Style::default()
             } else if ch == 'ˌ' {
-                Style::default().fg(DIM)
+                Style::default().fg(theme().dim)
             } else {
-                Style::default().fg(GRID)
+                Style::default().fg(theme().grid)
             };
             spans.push(Span::styled(ch.to_string(), style));
         }
@@ -1955,9 +1955,9 @@ impl PracticeUi {
         let total = self.span_frames(practice);
         let position = practice.position().min(total);
         let state = if playing {
-            Span::styled("▶ ", Style::default().fg(SAFE).add_modifier(Modifier::BOLD))
+            Span::styled("▶ ", Style::default().fg(theme().safe).add_modifier(Modifier::BOLD))
         } else {
-            Span::styled("⏸ ", Style::default().fg(DIM))
+            Span::styled("⏸ ", Style::default().fg(theme().dim))
         };
         let loop_on = practice.loop_enabled.load(Relaxed);
         let mut transport = vec![
@@ -1967,10 +1967,10 @@ impl PracticeUi {
             if recording && blink {
                 Span::styled(
                     "●REC ",
-                    Style::default().fg(HOT).add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme().hot).add_modifier(Modifier::BOLD),
                 )
             } else if recording {
-                Span::styled("○REC ", Style::default().fg(HOT))
+                Span::styled("○REC ", Style::default().fg(theme().hot))
             } else {
                 Span::raw("     ")
             },
@@ -1980,16 +1980,16 @@ impl PracticeUi {
                     mmss_precise(position, self.sample_rate),
                     mmss(total, self.sample_rate)
                 ),
-                Style::default().fg(CHROME),
+                Style::default().fg(theme().chrome),
             ),
             Span::styled(
                 format!("{}s ", format_step(self.session.seek_seconds())),
-                Style::default().fg(AMBER),
+                Style::default().fg(theme().amber),
             ),
             if let Some(secs) = self.view_secs {
                 Span::styled(
                     format!("view {}s ", format_step(secs as f32)),
-                    Style::default().fg(ACCENT),
+                    Style::default().fg(theme().accent),
                 )
             } else {
                 Span::raw("")
@@ -1997,7 +1997,7 @@ impl PracticeUi {
             Span::styled(
                 if loop_on { "LOOP " } else { "loop " },
                 Style::default()
-                    .fg(if loop_on { HOT } else { DIM })
+                    .fg(if loop_on { theme().hot } else { theme().dim })
                     .add_modifier(if loop_on {
                         Modifier::BOLD
                     } else {
@@ -2014,11 +2014,11 @@ impl PracticeUi {
                     mmss(a, self.sample_rate),
                     mmss(b, self.sample_rate)
                 ),
-                Style::default().fg(HOT),
+                Style::default().fg(theme().hot),
             ));
         }
         if let Some(msg) = &self.message {
-            transport.push(Span::styled(msg.text.clone(), Style::default().fg(WARN)));
+            transport.push(Span::styled(msg.text.clone(), Style::default().fg(theme().warn)));
         }
         f.render_widget(Paragraph::new(Line::from(transport)), area);
     }
@@ -2046,7 +2046,7 @@ impl PracticeUi {
                             ((position - view_start) * wave_w.saturating_sub(1) / view_len.max(1))
                                 .min(wave_w - 1)
                         });
-                let line_style = Style::default().fg(HOT).add_modifier(Modifier::BOLD);
+                let line_style = Style::default().fg(theme().hot).add_modifier(Modifier::BOLD);
                 let lines: Vec<Line> = (0..area.height)
                     .map(|_| {
                         let mut spans = vec![
@@ -2071,11 +2071,11 @@ impl PracticeUi {
             // Center the empty-state hint in the pane.
             if area.height > 0 {
                 let hint = Line::from(vec![
-                    Span::styled("no tracks — press ", Style::default().fg(DIM)),
-                    Span::styled("B", Style::default().fg(AMBER)),
-                    Span::styled(" to import, ", Style::default().fg(DIM)),
-                    Span::styled("R", Style::default().fg(AMBER)),
-                    Span::styled(" to record a raw take", Style::default().fg(DIM)),
+                    Span::styled("no tracks — press ", Style::default().fg(theme().dim)),
+                    Span::styled("B", Style::default().fg(theme().amber)),
+                    Span::styled(" to import, ", Style::default().fg(theme().dim)),
+                    Span::styled("R", Style::default().fg(theme().amber)),
+                    Span::styled(" to record a raw take", Style::default().fg(theme().dim)),
                 ]);
                 let mid = Rect {
                     x: area.x,
@@ -2234,10 +2234,10 @@ impl PracticeUi {
             if let TrackLifecycle::Error(e) = &track.lifecycle {
                 first.push(Span::styled(
                     format!(" {}", truncate(e, wave_w.max(4))),
-                    Style::default().fg(WARN),
+                    Style::default().fg(theme().warn),
                 ));
             } else if recording {
-                first.push(Span::styled(" recording…", Style::default().fg(HOT)));
+                first.push(Span::styled(" recording…", Style::default().fg(theme().hot)));
             }
             let mut out = vec![Line::from(first)];
             for _ in 1..height {
@@ -2311,12 +2311,12 @@ impl PracticeUi {
                 }
                 let inside = env[..cols].iter().any(|e| e.is_some());
                 let (ch, style) = if Some(col) == pos_col {
-                    ('│', Style::default().fg(HOT).add_modifier(Modifier::BOLD))
+                    ('│', Style::default().fg(theme().hot).add_modifier(Modifier::BOLD))
                 } else if !inside {
                     if in_loop {
-                        ('·', Style::default().fg(HOT))
+                        ('·', Style::default().fg(theme().hot))
                     } else {
-                        (' ', Style::default().fg(CHROME))
+                        (' ', Style::default().fg(theme().chrome))
                     }
                 } else {
                     let mut cells = 0u32;
@@ -2334,12 +2334,12 @@ impl PracticeUi {
                     if cells != 0 {
                         (
                             glyphs.glyph(cells),
-                            Style::default().fg(if in_loop { HOT } else { CHROME }),
+                            Style::default().fg(if in_loop { theme().hot } else { theme().chrome }),
                         )
                     } else if line == mid {
-                        ('·', Style::default().fg(DIM))
+                        ('·', Style::default().fg(theme().dim))
                     } else {
-                        (' ', Style::default().fg(CHROME))
+                        (' ', Style::default().fg(theme().chrome))
                     }
                 };
                 if run_style != Some(style) {
@@ -2371,40 +2371,40 @@ impl PracticeUi {
         active: bool,
     ) -> Vec<Span<'a>> {
         let (tag, tag_color) = match track.kind {
-            TrackKind::Import => ("IMP ", CHROME),
-            TrackKind::RawTake => ("TAKE", CHROME),
+            TrackKind::Import => ("IMP ", theme().chrome),
+            TrackKind::RawTake => ("TAKE", theme().chrome),
         };
         // A raw take captured before calibration carries no input trim.
         let uncal = matches!(track.kind, TrackKind::RawTake) && track.input_trim_db.is_none();
         let recording = matches!(track.lifecycle, TrackLifecycle::Recording);
         let led = if track.muted {
-            Span::styled("○ ", Style::default().fg(DIM))
+            Span::styled("○ ", Style::default().fg(theme().dim))
         } else if recording {
-            Span::styled("◉ ", Style::default().fg(HOT))
+            Span::styled("◉ ", Style::default().fg(theme().hot))
         } else if active {
-            Span::styled("● ", Style::default().fg(SAFE))
+            Span::styled("● ", Style::default().fg(theme().safe))
         } else {
-            Span::styled("· ", Style::default().fg(DIM))
+            Span::styled("· ", Style::default().fg(theme().dim))
         };
         let name_w = 13usize;
         let gain = format!("{:>3}%", (track.gain * 100.0).round() as i32);
         vec![
             Span::styled(
                 if focused { "▌" } else { " " }.to_owned(),
-                Style::default().fg(ACCENT),
+                Style::default().fg(theme().accent),
             ),
             led,
             Span::styled(tag.to_owned(), Style::default().fg(tag_color)),
             Span::styled(
                 if uncal { "!" } else { " " }.to_owned(),
-                Style::default().fg(AMBER),
+                Style::default().fg(theme().amber),
             ),
             Span::raw(" "),
             Span::styled(
                 format!("{:<name_w$}", truncate(&track.name, name_w)),
-                Style::default().fg(if active { CHROME } else { DIM }),
+                Style::default().fg(if active { theme().chrome } else { theme().dim }),
             ),
-            Span::styled(gain, Style::default().fg(AMBER)),
+            Span::styled(gain, Style::default().fg(theme().amber)),
             Span::styled("│", divider_style()),
         ]
     }
@@ -2412,37 +2412,37 @@ impl PracticeUi {
     fn render_hint(&self, f: &mut Frame, area: Rect, focused: bool) {
         let hint = if focused {
             Line::from(vec![
-                Span::styled("Space", Style::default().fg(AMBER)),
-                Span::styled(" play/pause  ", Style::default().fg(DIM)),
-                Span::styled("M", Style::default().fg(AMBER)),
-                Span::styled(" mute  ", Style::default().fg(DIM)),
-                Span::styled("Enter", Style::default().fg(AMBER)),
-                Span::styled(" start  ", Style::default().fg(DIM)),
-                Span::styled("←/→", Style::default().fg(AMBER)),
-                Span::styled(" seek  ", Style::default().fg(DIM)),
-                Span::styled("+/-", Style::default().fg(AMBER)),
-                Span::styled(" step  ", Style::default().fg(DIM)),
-                Span::styled("G", Style::default().fg(AMBER)),
-                Span::styled(" gain  ", Style::default().fg(DIM)),
-                Span::styled("H", Style::default().fg(AMBER)),
-                Span::styled(" move  ", Style::default().fg(DIM)),
-                Span::styled("z", Style::default().fg(AMBER)),
-                Span::styled(" zoom  ", Style::default().fg(DIM)),
-                Span::styled("[ ] L", Style::default().fg(AMBER)),
-                Span::styled(" loop  ", Style::default().fg(DIM)),
-                Span::styled("Del", Style::default().fg(AMBER)),
-                Span::styled(" remove  ", Style::default().fg(DIM)),
-                Span::styled("R", Style::default().fg(AMBER)),
-                Span::styled(" rec", Style::default().fg(DIM)),
+                Span::styled("Space", Style::default().fg(theme().amber)),
+                Span::styled(" play/pause  ", Style::default().fg(theme().dim)),
+                Span::styled("M", Style::default().fg(theme().amber)),
+                Span::styled(" mute  ", Style::default().fg(theme().dim)),
+                Span::styled("Enter", Style::default().fg(theme().amber)),
+                Span::styled(" start  ", Style::default().fg(theme().dim)),
+                Span::styled("←/→", Style::default().fg(theme().amber)),
+                Span::styled(" seek  ", Style::default().fg(theme().dim)),
+                Span::styled("+/-", Style::default().fg(theme().amber)),
+                Span::styled(" step  ", Style::default().fg(theme().dim)),
+                Span::styled("G", Style::default().fg(theme().amber)),
+                Span::styled(" gain  ", Style::default().fg(theme().dim)),
+                Span::styled("H", Style::default().fg(theme().amber)),
+                Span::styled(" move  ", Style::default().fg(theme().dim)),
+                Span::styled("z", Style::default().fg(theme().amber)),
+                Span::styled(" zoom  ", Style::default().fg(theme().dim)),
+                Span::styled("[ ] L", Style::default().fg(theme().amber)),
+                Span::styled(" loop  ", Style::default().fg(theme().dim)),
+                Span::styled("Del", Style::default().fg(theme().amber)),
+                Span::styled(" remove  ", Style::default().fg(theme().dim)),
+                Span::styled("R", Style::default().fg(theme().amber)),
+                Span::styled(" rec", Style::default().fg(theme().dim)),
             ])
         } else {
             Line::from(vec![
-                Span::styled("3", Style::default().fg(AMBER)),
-                Span::styled(" focus the timeline  ·  ", Style::default().fg(DIM)),
-                Span::styled("B", Style::default().fg(AMBER)),
-                Span::styled(" import  ·  ", Style::default().fg(DIM)),
-                Span::styled("R", Style::default().fg(AMBER)),
-                Span::styled(" record", Style::default().fg(DIM)),
+                Span::styled("3", Style::default().fg(theme().amber)),
+                Span::styled(" focus the timeline  ·  ", Style::default().fg(theme().dim)),
+                Span::styled("B", Style::default().fg(theme().amber)),
+                Span::styled(" import  ·  ", Style::default().fg(theme().dim)),
+                Span::styled("R", Style::default().fg(theme().amber)),
+                Span::styled(" record", Style::default().fg(theme().dim)),
             ])
         };
         f.render_widget(Paragraph::new(hint).alignment(Alignment::Left), area);
@@ -2465,10 +2465,10 @@ impl PracticeUi {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(ACCENT))
+            .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 title,
-                Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
         let inner = block.inner(area);
@@ -2493,19 +2493,19 @@ impl PracticeUi {
         if self.searching {
             f.render_widget(
                 Paragraph::new(Line::from(vec![
-                    Span::styled("filter ", Style::default().fg(DIM)),
-                    Span::styled(self.browser_filter.clone(), Style::default().fg(CHROME)),
-                    Span::styled("▌", Style::default().fg(ACCENT)),
+                    Span::styled("filter ", Style::default().fg(theme().dim)),
+                    Span::styled(self.browser_filter.clone(), Style::default().fg(theme().chrome)),
+                    Span::styled("▌", Style::default().fg(theme().accent)),
                 ])),
                 rows[0],
             );
         } else {
             f.render_widget(
                 Paragraph::new(Line::from(vec![
-                    Span::styled("Enter", Style::default().fg(AMBER)),
+                    Span::styled("Enter", Style::default().fg(theme().amber)),
                     Span::styled(
                         " adds the file as a new track at the playhead",
-                        Style::default().fg(DIM),
+                        Style::default().fg(theme().dim),
                     ),
                 ])),
                 rows[0],
@@ -2515,7 +2515,7 @@ impl PracticeUi {
         let path_focus = if self.field == 1 { "▌" } else { " " };
         f.render_widget(
             Paragraph::new(Line::from(vec![
-                Span::styled("path ", Style::default().fg(DIM)),
+                Span::styled("path ", Style::default().fg(theme().dim)),
                 Span::styled(
                     if self.path_input.is_empty() {
                         "(type a file path…)".to_owned()
@@ -2523,12 +2523,12 @@ impl PracticeUi {
                         self.path_input.clone()
                     },
                     Style::default().fg(if self.path_input.is_empty() {
-                        DIM
+                        theme().dim
                     } else {
-                        CHROME
+                        theme().chrome
                     }),
                 ),
-                Span::styled(path_focus.to_owned(), Style::default().fg(ACCENT)),
+                Span::styled(path_focus.to_owned(), Style::default().fg(theme().accent)),
             ])),
             rows[1],
         );
@@ -2545,7 +2545,7 @@ impl PracticeUi {
             } else {
                 "  (no matching files)"
             };
-            lines.push(Line::from(Span::styled(text, Style::default().fg(DIM))));
+            lines.push(Line::from(Span::styled(text, Style::default().fg(theme().dim))));
         }
         let visible = rows[2].height as usize;
         let offset = self
@@ -2558,25 +2558,25 @@ impl PracticeUi {
 
         let footer = if self.searching {
             vec![
-                Span::styled("type", Style::default().fg(AMBER)),
-                Span::styled(" filter  ", Style::default().fg(DIM)),
-                Span::styled("Backspace", Style::default().fg(AMBER)),
-                Span::styled(" edit  ", Style::default().fg(DIM)),
-                Span::styled("Esc", Style::default().fg(AMBER)),
-                Span::styled(" clear", Style::default().fg(DIM)),
+                Span::styled("type", Style::default().fg(theme().amber)),
+                Span::styled(" filter  ", Style::default().fg(theme().dim)),
+                Span::styled("Backspace", Style::default().fg(theme().amber)),
+                Span::styled(" edit  ", Style::default().fg(theme().dim)),
+                Span::styled("Esc", Style::default().fg(theme().amber)),
+                Span::styled(" clear", Style::default().fg(theme().dim)),
             ]
         } else {
             vec![
-                Span::styled("↑/↓", Style::default().fg(AMBER)),
-                Span::styled(" files  ", Style::default().fg(DIM)),
-                Span::styled("/", Style::default().fg(AMBER)),
-                Span::styled(" search  ", Style::default().fg(DIM)),
-                Span::styled("Tab", Style::default().fg(AMBER)),
-                Span::styled(" path  ", Style::default().fg(DIM)),
-                Span::styled("L", Style::default().fg(AMBER)),
-                Span::styled(" library  ", Style::default().fg(DIM)),
-                Span::styled("Esc / B", Style::default().fg(AMBER)),
-                Span::styled(" close", Style::default().fg(DIM)),
+                Span::styled("↑/↓", Style::default().fg(theme().amber)),
+                Span::styled(" files  ", Style::default().fg(theme().dim)),
+                Span::styled("/", Style::default().fg(theme().amber)),
+                Span::styled(" search  ", Style::default().fg(theme().dim)),
+                Span::styled("Tab", Style::default().fg(theme().amber)),
+                Span::styled(" path  ", Style::default().fg(theme().dim)),
+                Span::styled("L", Style::default().fg(theme().amber)),
+                Span::styled(" library  ", Style::default().fg(theme().dim)),
+                Span::styled("Esc / B", Style::default().fg(theme().amber)),
+                Span::styled(" close", Style::default().fg(theme().dim)),
             ]
         };
         f.render_widget(
@@ -2590,7 +2590,7 @@ impl PracticeUi {
             .map(|n| n.text.clone())
             .unwrap_or_default();
         f.render_widget(
-            Paragraph::new(Line::from(Span::styled(msg, Style::default().fg(WARN))))
+            Paragraph::new(Line::from(Span::styled(msg, Style::default().fg(theme().warn))))
                 .alignment(Alignment::Center),
             rows[4],
         );
@@ -2612,9 +2612,9 @@ impl PracticeUi {
 
         let field_style = |active: bool| {
             if active {
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
+                Style::default().fg(theme().accent).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(DIM)
+                Style::default().fg(theme().dim)
             }
         };
 
@@ -2633,16 +2633,16 @@ impl PracticeUi {
                     self.library_path.clone()
                 },
                 Style::default().fg(if self.library_path.is_empty() {
-                    DIM
+                    theme().dim
                 } else {
-                    CHROME
+                    theme().chrome
                 }),
             ))
             .block(Block::default().borders(Borders::BOTTOM).border_style(
                 if self.library_field == 0 {
-                    Style::default().fg(ACCENT)
+                    Style::default().fg(theme().accent)
                 } else {
-                    Style::default().fg(DIM)
+                    Style::default().fg(theme().dim)
                 },
             )),
             rows[1],
@@ -2666,14 +2666,14 @@ impl PracticeUi {
 
         f.render_widget(
             Paragraph::new(Line::from(vec![
-                Span::styled("↑/↓", Style::default().fg(AMBER)),
-                Span::styled(" field  ", Style::default().fg(DIM)),
-                Span::styled("Space", Style::default().fg(AMBER)),
-                Span::styled(" toggle  ", Style::default().fg(DIM)),
-                Span::styled("Enter", Style::default().fg(AMBER)),
-                Span::styled(" save  ", Style::default().fg(DIM)),
-                Span::styled("Esc", Style::default().fg(AMBER)),
-                Span::styled(" cancel", Style::default().fg(DIM)),
+                Span::styled("↑/↓", Style::default().fg(theme().amber)),
+                Span::styled(" field  ", Style::default().fg(theme().dim)),
+                Span::styled("Space", Style::default().fg(theme().amber)),
+                Span::styled(" toggle  ", Style::default().fg(theme().dim)),
+                Span::styled("Enter", Style::default().fg(theme().amber)),
+                Span::styled(" save  ", Style::default().fg(theme().dim)),
+                Span::styled("Esc", Style::default().fg(theme().amber)),
+                Span::styled(" cancel", Style::default().fg(theme().dim)),
             ]))
             .alignment(Alignment::Center),
             rows[5],
@@ -2693,10 +2693,10 @@ impl PracticeUi {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(ACCENT))
+            .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 " T R A C K   G A I N ",
-                Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
         let inner = block.inner(area);
@@ -2717,18 +2717,18 @@ impl PracticeUi {
         let text = vec![
             Line::from(Span::styled(
                 truncate(&track.name, inner.width as usize),
-                Style::default().fg(CHROME),
+                Style::default().fg(theme().chrome),
             )),
-            Line::from(Span::styled(kind.to_owned(), Style::default().fg(DIM))),
-            Line::from(Span::styled(bar, Style::default().fg(ACCENT))),
+            Line::from(Span::styled(kind.to_owned(), Style::default().fg(theme().dim))),
+            Line::from(Span::styled(bar, Style::default().fg(theme().accent))),
             Line::from(vec![
                 Span::styled(
                     format!("{pct}%  "),
-                    Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     "←/→ adjust · R reset · Enter/Esc close",
-                    Style::default().fg(DIM),
+                    Style::default().fg(theme().dim),
                 ),
             ]),
         ];
@@ -2748,10 +2748,10 @@ impl PracticeUi {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(ACCENT))
+            .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 " M O V E   C L I P ",
-                Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
         let inner = block.inner(area);
@@ -2766,25 +2766,25 @@ impl PracticeUi {
         let text = vec![
             Line::from(Span::styled(
                 truncate(&track.name, inner.width as usize),
-                Style::default().fg(CHROME),
+                Style::default().fg(theme().chrome),
             )),
             Line::from(vec![
-                Span::styled("start ", Style::default().fg(DIM)),
+                Span::styled("start ", Style::default().fg(theme().dim)),
                 Span::styled(
                     mmss(start_frames, self.sample_rate),
-                    Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("   end ", Style::default().fg(DIM)),
+                Span::styled("   end ", Style::default().fg(theme().dim)),
                 Span::styled(
                     mmss(start_frames + length_frames, self.sample_rate),
-                    Style::default().fg(CHROME),
+                    Style::default().fg(theme().chrome),
                 ),
             ]),
             Line::from(Span::styled(
                 "←/→ move by step · +/− change step · R to top",
-                Style::default().fg(DIM),
+                Style::default().fg(theme().dim),
             )),
-            Line::from(Span::styled("Enter / Esc close", Style::default().fg(DIM))),
+            Line::from(Span::styled("Enter / Esc close", Style::default().fg(theme().dim))),
         ];
         f.render_widget(Paragraph::new(text), inner);
     }
@@ -2821,19 +2821,19 @@ fn file_entry(file: &TrackFile, selected: bool) -> Line<'static> {
         (
             "▶ ",
             Style::default()
-                .fg(ACCENT)
+                .fg(theme().accent)
                 .add_modifier(Modifier::BOLD | Modifier::REVERSED),
         )
     } else {
-        ("  ", Style::default().fg(CHROME))
+        ("  ", Style::default().fg(theme().chrome))
     };
     Line::from(vec![
         Span::styled(
             prefix.to_owned(),
-            Style::default().fg(if selected { ACCENT } else { DIM }),
+            Style::default().fg(if selected { theme().accent } else { theme().dim }),
         ),
         Span::styled(file.label.clone(), style),
-        Span::styled(format!("  {}", file.detail), Style::default().fg(DIM)),
+        Span::styled(format!("  {}", file.detail), Style::default().fg(theme().dim)),
     ])
 }
 
@@ -3177,13 +3177,13 @@ fn shade(c: Color, factor: f32) -> Color {
 }
 
 fn border_style(active: bool) -> Style {
-    Style::default().fg(if active { ACCENT } else { shade(ACCENT, 0.5) })
+    Style::default().fg(if active { theme().accent } else { shade(theme().accent, 0.5) })
 }
 
 /// Dimmed accent used for the gutter/timeline divider (matches an unfocused
 /// pane border).
 fn divider_style() -> Style {
-    Style::default().fg(shade(ACCENT, 0.5))
+    Style::default().fg(shade(theme().accent, 0.5))
 }
 
 #[cfg(test)]

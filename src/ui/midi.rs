@@ -18,7 +18,7 @@ use ratatui::{
 
 use crate::midi::{MidiState, MidiTarget};
 
-use super::styles::{ACCENT, AMBER, CHROME, DIM, HOT, SAFE, panel_style};
+use super::styles::{panel_style, theme};
 
 /// What the modal is waiting for: nothing, or a physical control to move.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -135,12 +135,12 @@ pub(super) fn render_midi(f: &mut Frame, ui: &MidiUi, state: &MidiState, port: O
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(ACCENT))
+        .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             " M I D I ",
-            Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
         ))
-        .title(Line::from(Span::styled(status, Style::default().fg(DIM))).right_aligned())
+        .title(Line::from(Span::styled(status, Style::default().fg(theme().dim))).right_aligned())
         .style(panel_style());
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -156,7 +156,7 @@ pub(super) fn render_midi(f: &mut Frame, ui: &MidiUi, state: &MidiState, port: O
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
             " ↑↓ · Enter bind · D unbind · R reconnect · Esc",
-            Style::default().fg(DIM),
+            Style::default().fg(theme().dim),
         ))),
         rows[0],
     );
@@ -169,17 +169,17 @@ pub(super) fn render_midi(f: &mut Frame, ui: &MidiUi, state: &MidiState, port: O
         .map(|(i, &target)| {
             let selected = i == ui.cursor;
             let name_style = if selected {
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
+                Style::default().fg(theme().accent).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(CHROME)
+                Style::default().fg(theme().chrome)
             };
             let marker = if selected { "▶" } else { " " };
             let right = if learning == Some(target) {
-                Span::styled("move the control…", Style::default().fg(HOT))
+                Span::styled("move the control…", Style::default().fg(theme().hot))
             } else {
                 match bindings.iter().find(|(_, t)| *t == target) {
-                    Some((cc, _)) => Span::styled(format!("CC {cc}"), Style::default().fg(SAFE)),
-                    None => Span::styled("—", Style::default().fg(DIM)),
+                    Some((cc, _)) => Span::styled(format!("CC {cc}"), Style::default().fg(theme().safe)),
+                    None => Span::styled("—", Style::default().fg(theme().dim)),
                 }
             };
             Line::from(vec![
@@ -196,7 +196,7 @@ pub(super) fn render_midi(f: &mut Frame, ui: &MidiUi, state: &MidiState, port: O
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
             "bound to ~/.config/rusty-riff/midi.conf",
-            Style::default().fg(DIM),
+            Style::default().fg(theme().dim),
         )))
         .alignment(Alignment::Center),
         rows[2],

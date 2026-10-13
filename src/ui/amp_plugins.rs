@@ -13,7 +13,7 @@ use ratatui::{
 
 use std::sync::atomic::Ordering::Relaxed;
 
-use super::styles::{ACCENT, AMBER, CHROME, DIM, SAFE, panel_style};
+use super::styles::{panel_style, theme};
 use crate::audio::AudioEngine;
 use crate::dsp::Params;
 use crate::host::au::{self, AuParam, DiscoveredAu, LoadedAu};
@@ -323,10 +323,10 @@ impl AmpBrowser {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(ACCENT))
+            .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 title,
-                Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
 
@@ -350,26 +350,26 @@ impl AmpBrowser {
 
         let hint = match self.view {
             View::Browse => vec![
-                Span::styled("↑/↓", Style::default().fg(AMBER)),
-                Span::styled(" navigate  ", Style::default().fg(DIM)),
-                Span::styled("Enter", Style::default().fg(AMBER)),
-                Span::styled(" load/clear  ", Style::default().fg(DIM)),
-                Span::styled("Tab", Style::default().fg(AMBER)),
-                Span::styled(" params  ", Style::default().fg(DIM)),
-                Span::styled("C", Style::default().fg(AMBER)),
-                Span::styled(" cab  ", Style::default().fg(DIM)),
-                Span::styled("Esc / U", Style::default().fg(AMBER)),
-                Span::styled(" close", Style::default().fg(DIM)),
+                Span::styled("↑/↓", Style::default().fg(theme().amber)),
+                Span::styled(" navigate  ", Style::default().fg(theme().dim)),
+                Span::styled("Enter", Style::default().fg(theme().amber)),
+                Span::styled(" load/clear  ", Style::default().fg(theme().dim)),
+                Span::styled("Tab", Style::default().fg(theme().amber)),
+                Span::styled(" params  ", Style::default().fg(theme().dim)),
+                Span::styled("C", Style::default().fg(theme().amber)),
+                Span::styled(" cab  ", Style::default().fg(theme().dim)),
+                Span::styled("Esc / U", Style::default().fg(theme().amber)),
+                Span::styled(" close", Style::default().fg(theme().dim)),
             ],
             View::Edit => vec![
-                Span::styled("↑/↓", Style::default().fg(AMBER)),
-                Span::styled(" select  ", Style::default().fg(DIM)),
-                Span::styled("←/→", Style::default().fg(AMBER)),
-                Span::styled(" adjust  ", Style::default().fg(DIM)),
-                Span::styled("Tab", Style::default().fg(AMBER)),
-                Span::styled(" browse  ", Style::default().fg(DIM)),
-                Span::styled("Esc / U", Style::default().fg(AMBER)),
-                Span::styled(" close", Style::default().fg(DIM)),
+                Span::styled("↑/↓", Style::default().fg(theme().amber)),
+                Span::styled(" select  ", Style::default().fg(theme().dim)),
+                Span::styled("←/→", Style::default().fg(theme().amber)),
+                Span::styled(" adjust  ", Style::default().fg(theme().dim)),
+                Span::styled("Tab", Style::default().fg(theme().amber)),
+                Span::styled(" browse  ", Style::default().fg(theme().dim)),
+                Span::styled("Esc / U", Style::default().fg(theme().amber)),
+                Span::styled(" close", Style::default().fg(theme().dim)),
             ],
         };
         f.render_widget(
@@ -380,7 +380,7 @@ impl AmpBrowser {
         let status_line = match (&self.message, self.loaded_name()) {
             (Some(msg), _) => Line::from(Span::styled(
                 msg.clone(),
-                Style::default().fg(SAFE).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
             )),
             (None, Some(name)) => {
                 let latency_ms = self.loaded.as_ref().map_or(0.0, |p| p.live.latency_ms);
@@ -390,15 +390,15 @@ impl AmpBrowser {
                     "plugin cab"
                 };
                 Line::from(vec![
-                    Span::styled("active: ", Style::default().fg(DIM)),
-                    Span::styled(name.to_owned(), Style::default().fg(CHROME)),
+                    Span::styled("active: ", Style::default().fg(theme().dim)),
+                    Span::styled(name.to_owned(), Style::default().fg(theme().chrome)),
                     Span::styled(
                         format!("   {latency_ms:.1} ms · {cab}"),
-                        Style::default().fg(DIM),
+                        Style::default().fg(theme().dim),
                     ),
                 ])
             }
-            (None, None) => Line::from(Span::styled("no amp loaded", Style::default().fg(DIM))),
+            (None, None) => Line::from(Span::styled("no amp loaded", Style::default().fg(theme().dim))),
         };
         f.render_widget(
             Paragraph::new(status_line).alignment(Alignment::Center),
@@ -415,7 +415,7 @@ impl AmpBrowser {
         if self.plugins.is_empty() {
             lines.push(Line::from(Span::styled(
                 "  (no Audio Units found)",
-                Style::default().fg(DIM),
+                Style::default().fg(theme().dim),
             )));
         }
 
@@ -434,7 +434,7 @@ impl AmpBrowser {
             f.render_widget(
                 Paragraph::new(Span::styled(
                     "  (this plugin exposes no parameters)",
-                    Style::default().fg(DIM),
+                    Style::default().fg(theme().dim),
                 )),
                 area,
             );
@@ -471,23 +471,23 @@ fn param_row(p: &AuParam, selected: bool) -> Line<'static> {
     let (prefix, name_style, bar_color) = if selected {
         (
             "▶ ",
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ACCENT,
+            Style::default().fg(theme().accent).add_modifier(Modifier::BOLD),
+            theme().accent,
         )
     } else {
-        ("  ", Style::default().fg(CHROME), DIM)
+        ("  ", Style::default().fg(theme().chrome), theme().dim)
     };
 
     Line::from(vec![
         Span::styled(
             prefix,
-            Style::default().fg(if selected { ACCENT } else { DIM }),
+            Style::default().fg(if selected { theme().accent } else { theme().dim }),
         ),
         Span::styled(format!("{:<22}", truncate(&p.name, 22)), name_style),
         Span::styled(bar, Style::default().fg(bar_color)),
         Span::styled(
             format!("  {}", p.display_value()),
-            Style::default().fg(AMBER),
+            Style::default().fg(theme().amber),
         ),
     ])
 }
@@ -507,16 +507,16 @@ fn entry(name: &str, selected: bool) -> Line<'static> {
         (
             "▶ ",
             Style::default()
-                .fg(ACCENT)
+                .fg(theme().accent)
                 .add_modifier(Modifier::BOLD | Modifier::REVERSED),
         )
     } else {
-        ("  ", Style::default().fg(CHROME))
+        ("  ", Style::default().fg(theme().chrome))
     };
     Line::from(vec![
         Span::styled(
             prefix.to_owned(),
-            Style::default().fg(if selected { ACCENT } else { DIM }),
+            Style::default().fg(if selected { theme().accent } else { theme().dim }),
         ),
         Span::styled(name.to_owned(), name_style),
     ])

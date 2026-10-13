@@ -23,7 +23,7 @@ use crate::audio::calibration::{
     PickupClass, REFERENCE_VERSION, WindowStat, compute_calibration,
 };
 
-use super::styles::{ACCENT, AMBER, CHROME, DIM, HOT, SAFE, WARN, panel_style};
+use super::styles::{panel_style, theme};
 
 /// Seconds the noise-floor capture runs.
 const NOISE_SECS: f32 = 2.0;
@@ -222,10 +222,10 @@ impl CalibrationUi {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(ACCENT))
+            .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 " I N P U T   C A L I B R A T I O N ",
-                Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
         let inner = block.inner(area);
@@ -239,16 +239,16 @@ impl CalibrationUi {
     }
 
     fn lines(&self, cal: &InputCalibration) -> Vec<Line<'static>> {
-        let text = |s: &str| Line::from(Span::styled(s.to_string(), Style::default().fg(CHROME)));
-        let dim = |s: &str| Line::from(Span::styled(s.to_string(), Style::default().fg(DIM)));
+        let text = |s: &str| Line::from(Span::styled(s.to_string(), Style::default().fg(theme().chrome)));
+        let dim = |s: &str| Line::from(Span::styled(s.to_string(), Style::default().fg(theme().dim)));
         let hint = |pairs: &[(&str, &str)]| {
             let mut spans = Vec::new();
             for (i, (k, d)) in pairs.iter().enumerate() {
                 if i > 0 {
-                    spans.push(Span::styled("  ", Style::default().fg(DIM)));
+                    spans.push(Span::styled("  ", Style::default().fg(theme().dim)));
                 }
-                spans.push(Span::styled((*k).to_string(), Style::default().fg(AMBER)));
-                spans.push(Span::styled(format!(" {d}"), Style::default().fg(DIM)));
+                spans.push(Span::styled((*k).to_string(), Style::default().fg(theme().amber)));
+                spans.push(Span::styled(format!(" {d}"), Style::default().fg(theme().dim)));
             }
             Line::from(spans)
         };
@@ -261,10 +261,10 @@ impl CalibrationUi {
                 dim("Guitar volume 10, bridge pickup."),
                 Line::from(""),
                 Line::from(vec![
-                    Span::styled("Pickup:  ", Style::default().fg(DIM)),
+                    Span::styled("Pickup:  ", Style::default().fg(theme().dim)),
                     Span::styled(
                         format!("◀ {} ▶", self.pickup.label()),
-                        Style::default().fg(SAFE).add_modifier(Modifier::BOLD),
+                        Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 dim(format!(
@@ -279,10 +279,10 @@ impl CalibrationUi {
                 text("Don't play — mute the strings."),
                 Line::from(""),
                 Line::from(vec![
-                    Span::styled("Noise capture: ", Style::default().fg(DIM)),
+                    Span::styled("Noise capture: ", Style::default().fg(theme().dim)),
                     Span::styled(
                         format!("{:.1}s", (NOISE_SECS - elapsed).max(0.0)),
-                        Style::default().fg(SAFE).add_modifier(Modifier::BOLD),
+                        Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 Line::from(""),
@@ -295,21 +295,21 @@ impl CalibrationUi {
                     text("Strum open E hard, four times, let it ring."),
                     Line::from(""),
                     Line::from(vec![
-                        Span::styled("Capture: ", Style::default().fg(DIM)),
+                        Span::styled("Capture: ", Style::default().fg(theme().dim)),
                         Span::styled(
                             format!("{:.1}s", (CAPTURE_SECS - elapsed).max(0.0)),
-                            Style::default().fg(SAFE).add_modifier(Modifier::BOLD),
+                            Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
                         ),
                     ]),
                     Line::from(vec![
-                        Span::styled("Level:   ", Style::default().fg(DIM)),
+                        Span::styled("Level:   ", Style::default().fg(theme().dim)),
                         Span::styled(
                             if peak > 0.0 {
                                 format!("{:.1} dBFS", db(peak))
                             } else {
                                 "—".to_string()
                             },
-                            Style::default().fg(CHROME),
+                            Style::default().fg(theme().chrome),
                         ),
                         Span::styled(
                             if clip {
@@ -318,7 +318,7 @@ impl CalibrationUi {
                                 ""
                             }
                             .to_string(),
-                            Style::default().fg(HOT).add_modifier(Modifier::BOLD),
+                            Style::default().fg(theme().hot).add_modifier(Modifier::BOLD),
                         ),
                     ]),
                     Line::from(""),
@@ -330,37 +330,37 @@ impl CalibrationUi {
                 let mut lines = vec![text("Calibration measured."), Line::from("")];
                 if let Some(r) = r {
                     lines.push(Line::from(vec![
-                        Span::styled("Measured P99: ", Style::default().fg(DIM)),
+                        Span::styled("Measured P99: ", Style::default().fg(theme().dim)),
                         Span::styled(
                             format!("{:.1} dBFS", r.measured_peak_dbfs),
-                            Style::default().fg(CHROME),
+                            Style::default().fg(theme().chrome),
                         ),
                     ]));
                     lines.push(Line::from(vec![
-                        Span::styled("Noise floor:  ", Style::default().fg(DIM)),
+                        Span::styled("Noise floor:  ", Style::default().fg(theme().dim)),
                         Span::styled(
                             format!("{:.1} dBFS", r.noise_floor_dbfs),
-                            Style::default().fg(CHROME),
+                            Style::default().fg(theme().chrome),
                         ),
                     ]));
                     lines.push(Line::from(vec![
-                        Span::styled("Target:       ", Style::default().fg(DIM)),
+                        Span::styled("Target:       ", Style::default().fg(theme().dim)),
                         Span::styled(
                             format!("{:.1} dBFS", r.target_peak_dbfs),
-                            Style::default().fg(CHROME),
+                            Style::default().fg(theme().chrome),
                         ),
                     ]));
                     lines.push(Line::from(vec![
-                        Span::styled("Trim:         ", Style::default().fg(DIM)),
+                        Span::styled("Trim:         ", Style::default().fg(theme().dim)),
                         Span::styled(
                             format!("{:+.1} dB", r.trim_db),
-                            Style::default().fg(SAFE).add_modifier(Modifier::BOLD),
+                            Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
                         ),
                     ]));
                     for w in &r.warnings {
                         lines.push(Line::from(Span::styled(
                             format!("⚠ {}", warning_text(*w)),
-                            Style::default().fg(WARN),
+                            Style::default().fg(theme().warn),
                         )));
                     }
                 }
@@ -379,7 +379,7 @@ impl CalibrationUi {
                 vec![
                     Line::from(Span::styled(
                         msg.to_string(),
-                        Style::default().fg(HOT).add_modifier(Modifier::BOLD),
+                        Style::default().fg(theme().hot).add_modifier(Modifier::BOLD),
                     )),
                     Line::from(""),
                     hint(&[("R", "retry"), ("Esc", "close")]),

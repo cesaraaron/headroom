@@ -165,7 +165,7 @@ fn render_header(
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
         .border_style(border_style(focused))
-        .title(Line::from(Span::styled("[ ] move", Style::default().fg(DIM))).right_aligned())
+        .title(Line::from(Span::styled("[ ] move", Style::default().fg(theme().dim))).right_aligned())
         .style(panel_style());
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -189,7 +189,7 @@ fn render_header(
         }
     };
 
-    let arrow = Span::styled(" ──▶ ", Style::default().fg(DIM));
+    let arrow = Span::styled(" ──▶ ", Style::default().fg(theme().dim));
     // Reversed + bold, mirroring the selected amp-model chip.
     let selected = |color: Color| {
         Style::default()
@@ -219,8 +219,8 @@ fn render_header(
     for &(_, slot_stage) in &rendered_stages(&params.chain_slots(), board) {
         let selected_here = focused && !master_selected && cursor == slot_stage;
         let (label, lit, color) = match slot_stage {
-            ChainStage::Amp => (amp_label.clone(), true, AMBER),
-            ChainStage::Cab => (cab_label.clone(), !cab_from_amp, AMBER),
+            ChainStage::Amp => (amp_label.clone(), true, theme().amber),
+            ChainStage::Cab => (cab_label.clone(), !cab_from_amp, theme().amber),
             _ => {
                 let Some((label, on)) = pedal_stage_state(params, slot_stage) else {
                     continue;
@@ -228,7 +228,7 @@ fn render_header(
                 if !on && !focused {
                     continue;
                 }
-                (label.to_owned(), on, ACCENT)
+                (label.to_owned(), on, theme().accent)
             }
         };
         let style = if selected_here {
@@ -236,7 +236,7 @@ fn render_header(
         } else if lit {
             Style::default().fg(color)
         } else {
-            Style::default().fg(DIM)
+            Style::default().fg(theme().dim)
         };
         push_stage(
             &mut chain,
@@ -251,7 +251,7 @@ fn render_header(
         push_stage(
             &mut chain,
             format!("🔌 {name}"),
-            Style::default().fg(AMBER),
+            Style::default().fg(theme().amber),
             false,
             None,
         );
@@ -262,9 +262,9 @@ fn render_header(
     let db = master_output_db(params.master_output.load(Relaxed));
     let master_sel = focused && master_selected;
     let master_style = if master_sel {
-        selected(ACCENT)
+        selected(theme().accent)
     } else {
-        Style::default().fg(CHROME)
+        Style::default().fg(theme().chrome)
     };
     push_stage(
         &mut chain,
@@ -276,7 +276,7 @@ fn render_header(
     push_stage(
         &mut chain,
         "OUTPUT".to_owned(),
-        Style::default().fg(CHROME),
+        Style::default().fg(theme().chrome),
         // Grouped with the master for scrolling, so revealing the level also reveals
         // what it feeds. Styling comes from the span, so OUTPUT is not highlighted.
         master_sel,
@@ -365,7 +365,7 @@ fn render_chain_row(
     if area.width == 0 {
         return;
     }
-    let ellipsis = Style::default().fg(DIM);
+    let ellipsis = Style::default().fg(theme().dim);
     if offset > 0 {
         f.buffer_mut().set_string(area.x, area.y, "…", ellipsis);
     }
@@ -463,9 +463,9 @@ fn render_vu_row_detail(
     let mut spans = vec![
         Span::styled(
             format!("{label:<8}"),
-            Style::default().fg(shade(CHROME, METER_DIM)),
+            Style::default().fg(shade(theme().chrome, METER_DIM)),
         ),
-        Span::styled("▐", Style::default().fg(shade(DIM, METER_DIM))),
+        Span::styled("▐", Style::default().fg(shade(theme().dim, METER_DIM))),
     ];
 
     for i in 0..bar_width {
@@ -483,19 +483,19 @@ fn render_vu_row_detail(
             // Bright when the peak is near the ceiling, so it reads as a
             // warning rather than just a mark.
             if i >= yellow_end {
-                HOT
+                theme().hot
             } else if i >= green_end {
-                WARN
+                theme().warn
             } else {
-                CHROME
+                theme().chrome
             }
         } else if i < filled {
             if i < green_end {
-                shade(SAFE, METER_DIM)
+                shade(theme().safe, METER_DIM)
             } else if i < yellow_end {
-                shade(WARN, METER_DIM)
+                shade(theme().warn, METER_DIM)
             } else {
-                shade(HOT, METER_DIM)
+                shade(theme().hot, METER_DIM)
             }
         } else {
             shade(Color::Rgb(30, 30, 30), METER_DIM)
@@ -504,15 +504,15 @@ fn render_vu_row_detail(
     }
     spans.push(Span::styled(
         "▌",
-        Style::default().fg(shade(DIM, METER_DIM)),
+        Style::default().fg(shade(theme().dim, METER_DIM)),
     ));
     if let Some(l) = limiting {
         // "LIM" lights hot while the ceiling is engaging and fades with it.
         let on = l > 0.35;
         let style = Style::default().fg(if on {
-            if l > 0.8 { HOT } else { WARN }
+            if l > 0.8 { theme().hot } else { theme().warn }
         } else {
-            shade(DIM, METER_DIM)
+            shade(theme().dim, METER_DIM)
         });
         spans.push(Span::styled("LIM", style));
     }
@@ -521,9 +521,9 @@ fn render_vu_row_detail(
         // limiter is open). Warns whenever it reads anything at all — the
         // badge already carries the hot/cold scale.
         let style = Style::default().fg(if db < -0.05 {
-            WARN
+            theme().warn
         } else {
-            shade(DIM, METER_DIM)
+            shade(theme().dim, METER_DIM)
         });
         spans.push(Span::styled(format!("{db:>5.1}"), style));
     }
@@ -626,13 +626,13 @@ fn render_amp_box(
             Span::styled(
                 amp_name,
                 Style::default()
-                    .fg(AMBER)
+                    .fg(theme().amber)
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(dim),
             ),
             Span::styled(
                 format!("  {:.1} ms ", builtin_latency_ms(sr)),
-                Style::default().fg(DIM).add_modifier(dim),
+                Style::default().fg(theme().dim).add_modifier(dim),
             ),
             Span::styled("├", Style::default().fg(border_color)),
         ]))
@@ -676,7 +676,7 @@ fn render_amp_box(
             val,
             focus == Some(ki),
             amp_live,
-            AMBER,
+            theme().amber,
             !box_active,
             None,
         );
@@ -688,7 +688,7 @@ fn render_amp_box(
     render_grille(
         f,
         parts[2],
-        shade(ACCENT, if box_active { 0.45 } else { 0.18 }),
+        shade(theme().accent, if box_active { 0.45 } else { 0.18 }),
     );
 }
 
@@ -728,7 +728,7 @@ fn render_cab_box(
                 Span::styled(
                     cab_name,
                     Style::default()
-                        .fg(CHROME)
+                        .fg(theme().chrome)
                         .add_modifier(Modifier::BOLD)
                         .add_modifier(dim),
                 ),
@@ -778,7 +778,7 @@ fn render_cab_box(
             val,
             focus == Some(ki),
             live,
-            CHROME,
+            theme().chrome,
             !box_active,
             None,
         );
@@ -791,7 +791,7 @@ fn render_cab_box(
     render_grille(
         f,
         parts[2],
-        shade(ACCENT, if box_active { 0.45 } else { 0.18 }),
+        shade(theme().accent, if box_active { 0.45 } else { 0.18 }),
     );
 }
 
@@ -919,7 +919,7 @@ fn render_rig(
 
 /// The "+ ADD" tile: an empty slot inviting the user to add a pedal.
 fn render_add_tile(f: &mut Frame, area: Rect, focused: bool) {
-    let color = if focused { ACCENT } else { shade(ACCENT, 0.5) };
+    let color = if focused { theme().accent } else { shade(theme().accent, 0.5) };
     let dim = if focused {
         Modifier::empty()
     } else {
@@ -952,7 +952,7 @@ fn render_add_tile(f: &mut Frame, area: Rect, focused: bool) {
             ),
             Span::styled(
                 if focused { "  Enter" } else { "" },
-                Style::default().fg(DIM).add_modifier(dim),
+                Style::default().fg(theme().dim).add_modifier(dim),
             ),
         ]))
         .alignment(Alignment::Center),
@@ -1007,7 +1007,7 @@ fn render_pedal_tile(
                 .add_modifier(dim),
         )
     } else {
-        Span::styled("○", Style::default().fg(OFF).add_modifier(dim))
+        Span::styled("○", Style::default().fg(theme().off).add_modifier(dim))
     };
 
     let title = Line::from(vec![
@@ -1042,7 +1042,7 @@ fn render_pedal_tile(
     } else if on {
         shade(pedal.color, 0.8)
     } else {
-        OFF
+        theme().off
     };
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
@@ -1094,7 +1094,7 @@ fn render_pedal_detail(
         .find(|p| focus.is_some_and(|i| (p.start..p.end).contains(&i)));
 
     // The editor takes on the focused pedal's livery; otherwise it stays dim.
-    let border_color = pedal.map_or(DIM, |p| p.color);
+    let border_color = pedal.map_or(theme().dim, |p| p.color);
     let adding = focus == Some(ADD_TILE);
 
     let block = Block::default()
@@ -1135,12 +1135,12 @@ fn render_pedal_detail(
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 label,
-                Style::default().fg(if adding { AMBER } else { DIM }),
+                Style::default().fg(if adding { theme().amber } else { theme().dim }),
             ))),
             parts[0],
         );
         f.render_widget(
-            Paragraph::new(Line::from(Span::styled(hint, Style::default().fg(DIM))))
+            Paragraph::new(Line::from(Span::styled(hint, Style::default().fg(theme().dim))))
                 .alignment(Alignment::Center),
             parts[1],
         );
@@ -1200,7 +1200,7 @@ fn knob_cell(f: &mut Frame, area: Rect, focused: bool) -> Rect {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Plain)
-            .border_style(Style::default().fg(ACCENT).add_modifier(Modifier::BOLD))
+            .border_style(Style::default().fg(theme().accent).add_modifier(Modifier::BOLD))
             .style(panel_style());
         f.render_widget(block, frame);
     }
@@ -1249,11 +1249,11 @@ fn render_compact_knob(
         .split(area);
 
     let dial_color = if focused {
-        ACCENT
+        theme().accent
     } else if active {
         accent
     } else {
-        OFF
+        theme().off
     };
 
     let dial_h = (rows[0].height as usize).clamp(2, 5);
@@ -1270,18 +1270,18 @@ fn render_compact_knob(
 
     let num = num.unwrap_or_else(|| format!("{:.1}", value * 10.0));
     let label_color = if focused {
-        ACCENT
+        theme().accent
     } else if active {
-        DIM
+        theme().dim
     } else {
-        OFF
+        theme().off
     };
     let value_color = if focused {
-        ACCENT
+        theme().accent
     } else if active {
         accent
     } else {
-        OFF
+        theme().off
     };
 
     let label_line = Line::from(vec![
@@ -1336,11 +1336,11 @@ fn render_compact_fader(
         .split(area);
 
     let track_color = if focused {
-        ACCENT
+        theme().accent
     } else if active {
         accent
     } else {
-        OFF
+        theme().off
     };
 
     // Fixed editor height: cap the track like the dial so extra space (e.g. a
@@ -1359,18 +1359,18 @@ fn render_compact_fader(
 
     let num = value * 10.0;
     let label_color = if focused {
-        ACCENT
+        theme().accent
     } else if active {
-        DIM
+        theme().dim
     } else {
-        OFF
+        theme().off
     };
     let value_color = if focused {
-        ACCENT
+        theme().accent
     } else if active {
         accent
     } else {
-        OFF
+        theme().off
     };
     let label_line = Line::from(vec![
         Span::styled(
@@ -1447,7 +1447,7 @@ fn render_help(
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 label,
-                Style::default().fg(if dirty { WARN } else { DIM }),
+                Style::default().fg(if dirty { theme().warn } else { theme().dim }),
             )))
             .style(panel_style()),
             cols[0],
@@ -1457,13 +1457,13 @@ fn render_help(
     let centre = match status {
         Some(msg) => Paragraph::new(Line::from(Span::styled(
             format!(" {msg} "),
-            Style::default().fg(SAFE).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().safe).add_modifier(Modifier::BOLD),
         ))),
         None => Paragraph::new(Line::from(vec![
-            Span::styled("K", Style::default().fg(AMBER)),
-            Span::styled(" keybindings  ", Style::default().fg(DIM)),
-            Span::styled("Q", Style::default().fg(AMBER)),
-            Span::styled(" quit", Style::default().fg(DIM)),
+            Span::styled("K", Style::default().fg(theme().amber)),
+            Span::styled(" keybindings  ", Style::default().fg(theme().dim)),
+            Span::styled("Q", Style::default().fg(theme().amber)),
+            Span::styled(" quit", Style::default().fg(theme().dim)),
         ])),
     }
     .alignment(Alignment::Center)
@@ -1472,9 +1472,9 @@ fn render_help(
 
     if let Some(bpm) = midi_bpm {
         let clock = Paragraph::new(Line::from(vec![
-            Span::styled("MIDI CLK ", Style::default().fg(DIM)),
-            Span::styled(format!("{bpm:.0}"), Style::default().fg(AMBER)),
-            Span::styled(" ", Style::default().fg(DIM)),
+            Span::styled("MIDI CLK ", Style::default().fg(theme().dim)),
+            Span::styled(format!("{bpm:.0}"), Style::default().fg(theme().amber)),
+            Span::styled(" ", Style::default().fg(theme().dim)),
         ]))
         .alignment(Alignment::Right)
         .style(panel_style());
@@ -1510,16 +1510,16 @@ pub(super) fn render_unsaved_prompt(f: &mut Frame, prompt: &UnsavedPrompt) {
             vec![
                 Line::from(Span::styled(
                     format!("{action} with unsaved changes?"),
-                    Style::default().fg(CHROME),
+                    Style::default().fg(theme().chrome),
                 )),
                 Line::from(""),
                 Line::from(vec![
-                    Span::styled("S", Style::default().fg(AMBER)),
-                    Span::styled(" save  ", Style::default().fg(DIM)),
-                    Span::styled("D", Style::default().fg(AMBER)),
-                    Span::styled(" discard  ", Style::default().fg(DIM)),
-                    Span::styled("Esc", Style::default().fg(AMBER)),
-                    Span::styled(" cancel", Style::default().fg(DIM)),
+                    Span::styled("S", Style::default().fg(theme().amber)),
+                    Span::styled(" save  ", Style::default().fg(theme().dim)),
+                    Span::styled("D", Style::default().fg(theme().amber)),
+                    Span::styled(" discard  ", Style::default().fg(theme().dim)),
+                    Span::styled("Esc", Style::default().fg(theme().amber)),
+                    Span::styled(" cancel", Style::default().fg(theme().dim)),
                 ]),
             ],
         ),
@@ -1528,17 +1528,17 @@ pub(super) fn render_unsaved_prompt(f: &mut Frame, prompt: &UnsavedPrompt) {
             vec![
                 Line::from(Span::styled(
                     "Name this session:",
-                    Style::default().fg(CHROME),
+                    Style::default().fg(theme().chrome),
                 )),
                 Line::from(Span::styled(
                     format!(" {text}_"),
-                    Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
                 )),
                 Line::from(vec![
-                    Span::styled("Enter", Style::default().fg(AMBER)),
-                    Span::styled(" save  ", Style::default().fg(DIM)),
-                    Span::styled("Esc", Style::default().fg(AMBER)),
-                    Span::styled(" back", Style::default().fg(DIM)),
+                    Span::styled("Enter", Style::default().fg(theme().amber)),
+                    Span::styled(" save  ", Style::default().fg(theme().dim)),
+                    Span::styled("Esc", Style::default().fg(theme().amber)),
+                    Span::styled(" back", Style::default().fg(theme().dim)),
                 ]),
             ],
         ),
@@ -1547,10 +1547,10 @@ pub(super) fn render_unsaved_prompt(f: &mut Frame, prompt: &UnsavedPrompt) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(WARN))
+        .border_style(Style::default().fg(theme().warn))
         .title(Span::styled(
             title,
-            Style::default().fg(WARN).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().warn).add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
     let inner = block.inner(rect);
@@ -1578,10 +1578,10 @@ pub(super) fn render_export_progress(f: &mut Frame, percent: u32) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(SAFE))
+        .border_style(Style::default().fg(theme().safe))
         .title(Span::styled(
             " E X P O R T I N G ",
-            Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
     let inner = block.inner(rect);
@@ -1595,8 +1595,8 @@ pub(super) fn render_export_progress(f: &mut Frame, percent: u32) {
             format!("{percent:>3}%"),
             Style::default().add_modifier(Modifier::BOLD),
         )),
-        Line::from(Span::styled(bar, Style::default().fg(SAFE))),
-        Line::from(Span::styled("Esc to cancel", Style::default().fg(DIM))),
+        Line::from(Span::styled(bar, Style::default().fg(theme().safe))),
+        Line::from(Span::styled("Esc to cancel", Style::default().fg(theme().dim))),
     ];
     f.render_widget(Paragraph::new(text), inner);
 }
@@ -1606,12 +1606,12 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
     // near-invisible on black at this size) but still a step below `CHROME`
     // so the key → description hierarchy survives.
     const HELP_DESC: Color = Color::Rgb(0xA6, 0xA6, 0xA6);
-    let key = |k: &'static str| Span::styled(k, Style::default().fg(AMBER));
+    let key = |k: &'static str| Span::styled(k, Style::default().fg(theme().amber));
     let desc = |d: &'static str| Span::styled(d, Style::default().fg(HELP_DESC));
     let head = |h: &'static str| {
         Line::from(vec![Span::styled(
             h,
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().accent).add_modifier(Modifier::BOLD),
         )])
     };
     let row = |k: &'static str, d: &'static str| Line::from(vec![key(k), desc(d)]);
@@ -1734,10 +1734,10 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(ACCENT))
+        .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             " K E Y B I N D I N G S ",
-            Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
     let inner = block.inner(area);
@@ -1754,9 +1754,9 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
     f.render_widget(Paragraph::new(lines).scroll((*scroll, 0)), rows[0]);
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("↑/↓  PgUp/PgDn", Style::default().fg(AMBER)),
+            Span::styled("↑/↓  PgUp/PgDn", Style::default().fg(theme().amber)),
             Span::styled(" scroll  ·  ", Style::default().fg(HELP_DESC)),
-            Span::styled("Esc / K", Style::default().fg(AMBER)),
+            Span::styled("Esc / K", Style::default().fg(theme().amber)),
             Span::styled(" close", Style::default().fg(HELP_DESC)),
         ]))
         .alignment(Alignment::Center),
@@ -1783,10 +1783,10 @@ pub(super) fn render_add_pedal_modal(f: &mut Frame, available: &[usize], cursor:
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(ACCENT))
+        .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             " A D D   P E D A L ",
-            Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
     let inner = block.inner(area);
@@ -1801,7 +1801,7 @@ pub(super) fn render_add_pedal_modal(f: &mut Frame, available: &[usize], cursor:
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 "All pedals are on the board.",
-                Style::default().fg(DIM),
+                Style::default().fg(theme().dim),
             )))
             .alignment(Alignment::Center),
             rows[0],
@@ -1826,7 +1826,7 @@ pub(super) fn render_add_pedal_modal(f: &mut Frame, available: &[usize], cursor:
                 Line::from(vec![
                     Span::styled(
                         prefix,
-                        Style::default().fg(if selected { ACCENT } else { DIM }),
+                        Style::default().fg(if selected { theme().accent } else { theme().dim }),
                     ),
                     Span::styled(p.name, style),
                 ])
@@ -1840,12 +1840,12 @@ pub(super) fn render_add_pedal_modal(f: &mut Frame, available: &[usize], cursor:
 
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("↑/↓", Style::default().fg(AMBER)),
-            Span::styled(" navigate  ", Style::default().fg(DIM)),
-            Span::styled("Enter", Style::default().fg(AMBER)),
-            Span::styled(" add  ", Style::default().fg(DIM)),
-            Span::styled("Esc", Style::default().fg(AMBER)),
-            Span::styled(" close", Style::default().fg(DIM)),
+            Span::styled("↑/↓", Style::default().fg(theme().amber)),
+            Span::styled(" navigate  ", Style::default().fg(theme().dim)),
+            Span::styled("Enter", Style::default().fg(theme().amber)),
+            Span::styled(" add  ", Style::default().fg(theme().dim)),
+            Span::styled("Esc", Style::default().fg(theme().amber)),
+            Span::styled(" close", Style::default().fg(theme().dim)),
         ]))
         .alignment(Alignment::Center),
         rows[1],
@@ -1870,10 +1870,10 @@ fn picker_shell(f: &mut Frame, title: &str, rows: usize) -> Rect {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(ACCENT))
+        .border_style(Style::default().fg(theme().accent))
         .title(Span::styled(
             title.to_owned(),
-            Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
         ))
         .style(panel_style());
     let inner = block.inner(area);
@@ -1885,12 +1885,12 @@ fn picker_shell(f: &mut Frame, title: &str, rows: usize) -> Rect {
         .split(inner);
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("↑/↓", Style::default().fg(AMBER)),
-            Span::styled(" navigate  ", Style::default().fg(DIM)),
-            Span::styled("Enter", Style::default().fg(AMBER)),
-            Span::styled(" select  ", Style::default().fg(DIM)),
-            Span::styled("Esc", Style::default().fg(AMBER)),
-            Span::styled(" close", Style::default().fg(DIM)),
+            Span::styled("↑/↓", Style::default().fg(theme().amber)),
+            Span::styled(" navigate  ", Style::default().fg(theme().dim)),
+            Span::styled("Enter", Style::default().fg(theme().amber)),
+            Span::styled(" select  ", Style::default().fg(theme().dim)),
+            Span::styled("Esc", Style::default().fg(theme().amber)),
+            Span::styled(" close", Style::default().fg(theme().dim)),
         ]))
         .alignment(Alignment::Center),
         rows[1],
@@ -1919,7 +1919,7 @@ fn picker_row(label: String, color: Color, selected: bool, dimmed: bool) -> Line
     Line::from(vec![
         Span::styled(
             prefix.to_owned(),
-            Style::default().fg(if selected { ACCENT } else { DIM }),
+            Style::default().fg(if selected { theme().accent } else { theme().dim }),
         ),
         Span::styled(label, style),
     ])
@@ -1942,11 +1942,11 @@ pub(super) fn render_amp_modal(
     let lines: Vec<Line> = AmpModel::ALL
         .iter()
         .enumerate()
-        .map(|(i, m)| picker_row(m.name().to_owned(), AMBER, i == cursor, amp_ext_active))
+        .map(|(i, m)| picker_row(m.name().to_owned(), theme().amber, i == cursor, amp_ext_active))
         .chain(au_loaded.then(|| {
             picker_row(
                 format!("AU: {}", au_name.unwrap_or("external amp")),
-                AMBER,
+                theme().amber,
                 AmpModel::ALL.len() == cursor,
                 false,
             )
@@ -1974,11 +1974,11 @@ pub(super) fn render_cab_modal(
     let lines: Vec<Line> = CabModel::ALL
         .iter()
         .enumerate()
-        .map(|(i, m)| picker_row(m.name().to_owned(), CHROME, i == cursor, bypassed))
+        .map(|(i, m)| picker_row(m.name().to_owned(), theme().chrome, i == cursor, bypassed))
         .chain(ir_loaded.then(|| {
             picker_row(
                 format!("IR: {}", ir_name.unwrap_or("external IR")),
-                CHROME,
+                theme().chrome,
                 CabModel::ALL.len() == cursor,
                 false,
             )
@@ -1986,7 +1986,7 @@ pub(super) fn render_cab_modal(
         .chain(bypassed.then(|| {
             Line::from(Span::styled(
                 " external amp supplies the cab — picks apply on return",
-                Style::default().fg(DIM),
+                Style::default().fg(theme().dim),
             ))
         }))
         .collect();
@@ -2073,17 +2073,17 @@ fn shade(c: Color, factor: f32) -> Color {
 /// region stands out.
 fn border_style(active: bool) -> Style {
     if active {
-        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
+        Style::default().fg(theme().accent).add_modifier(Modifier::BOLD)
     } else {
         Style::default()
-            .fg(shade(ACCENT, 0.35))
+            .fg(shade(theme().accent, 0.35))
             .add_modifier(Modifier::DIM)
     }
 }
 
 /// Accent color for a region's on-border glyphs (titles), matching [`border_style`].
 fn border_glyph(active: bool) -> Color {
-    if active { ACCENT } else { shade(ACCENT, 0.35) }
+    if active { theme().accent } else { shade(theme().accent, 0.35) }
 }
 
 /// Whether an external amp is active *and* supplying its own cab (amp+cab mode), so the
@@ -2174,7 +2174,7 @@ mod tests {
     fn knob_text(focused: bool) -> String {
         let mut term = Terminal::new(TestBackend::new(24, 8)).expect("test backend");
         term.draw(|f| {
-            render_compact_knob(f, f.area(), "GAIN", 0.5, focused, true, AMBER, false, None);
+            render_compact_knob(f, f.area(), "GAIN", 0.5, focused, true, theme().amber, false, None);
         })
         .expect("draw");
         screen_text(&term)
@@ -2185,7 +2185,7 @@ mod tests {
     fn knob_text_wide(focused: bool) -> String {
         let mut term = Terminal::new(TestBackend::new(120, 8)).expect("test backend");
         term.draw(|f| {
-            render_compact_knob(f, f.area(), "GAIN", 0.5, focused, true, AMBER, false, None);
+            render_compact_knob(f, f.area(), "GAIN", 0.5, focused, true, theme().amber, false, None);
         })
         .expect("draw");
         screen_text(&term)
@@ -2308,16 +2308,16 @@ mod tests {
     fn editor_top_edge_is_a_full_rule() {
         use ratatui::layout::Rect;
         assert_eq!(
-            line_text(editor_top_edge(Rect::new(30, 0, 20, 1), ACCENT)),
+            line_text(editor_top_edge(Rect::new(30, 0, 20, 1), theme().accent)),
             "├──────────────────┤"
         );
         // Degenerate widths still emit a sane, non-panicking glyph.
         assert_eq!(
-            line_text(editor_top_edge(Rect::new(0, 0, 0, 1), ACCENT)),
+            line_text(editor_top_edge(Rect::new(0, 0, 0, 1), theme().accent)),
             ""
         );
         assert_eq!(
-            line_text(editor_top_edge(Rect::new(0, 0, 1, 1), ACCENT)),
+            line_text(editor_top_edge(Rect::new(0, 0, 1, 1), theme().accent)),
             "├"
         );
     }

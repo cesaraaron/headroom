@@ -20,7 +20,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
 };
 
-use super::styles::{ACCENT, AMBER, CHROME, DIM, HOT, SAFE, WARN, panel_style};
+use super::styles::{panel_style, theme};
 use crate::project::{self, RecoveryTake, SessionEntry};
 
 /// Which page is showing.
@@ -294,10 +294,10 @@ impl SessionBrowser {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(ACCENT))
+            .border_style(Style::default().fg(theme().accent))
             .title(Span::styled(
                 title,
-                Style::default().fg(AMBER).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme().amber).add_modifier(Modifier::BOLD),
             ))
             .style(panel_style());
         let inner = block.inner(area);
@@ -320,12 +320,12 @@ impl SessionBrowser {
         if self.rows.is_empty() {
             lines.push(Line::from(Span::styled(
                 "  (no saved sessions — press S to save the current one)",
-                Style::default().fg(DIM),
+                Style::default().fg(theme().dim),
             )));
         } else if visible_idx.is_empty() {
             lines.push(Line::from(Span::styled(
                 "  (no matching sessions)",
-                Style::default().fg(DIM),
+                Style::default().fg(theme().dim),
             )));
         }
         let visible = rows[0].height as usize;
@@ -337,7 +337,7 @@ impl SessionBrowser {
             if recovery && !last_recovery {
                 lines.push(Line::from(Span::styled(
                     "  ── recoverable takes ──",
-                    Style::default().fg(WARN).add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme().warn).add_modifier(Modifier::BOLD),
                 )));
             }
             last_recovery = recovery;
@@ -346,16 +346,16 @@ impl SessionBrowser {
                 (
                     "▶ ",
                     Style::default()
-                        .fg(ACCENT)
+                        .fg(theme().accent)
                         .add_modifier(Modifier::BOLD | Modifier::REVERSED),
                 )
             } else {
-                ("  ", Style::default().fg(CHROME))
+                ("  ", Style::default().fg(theme().chrome))
             };
             lines.push(Line::from(vec![
-                Span::styled(prefix.to_owned(), Style::default().fg(ACCENT)),
+                Span::styled(prefix.to_owned(), Style::default().fg(theme().accent)),
                 Span::styled(format!("{:<26}", row.label), style),
-                Span::styled(format!("  {}", row.detail), Style::default().fg(DIM)),
+                Span::styled(format!("  {}", row.detail), Style::default().fg(theme().dim)),
             ]));
         }
         let visible_lines: Vec<Line> = lines.into_iter().skip(offset).take(visible).collect();
@@ -367,36 +367,36 @@ impl SessionBrowser {
             .split(rows[1]);
         f.render_widget(
             Paragraph::new(Line::from(vec![
-                Span::styled("↑/↓", Style::default().fg(AMBER)),
-                Span::styled(" navigate  ", Style::default().fg(DIM)),
-                Span::styled("Enter", Style::default().fg(AMBER)),
-                Span::styled(" load/restore  ", Style::default().fg(DIM)),
-                Span::styled("N", Style::default().fg(AMBER)),
-                Span::styled(" new  ", Style::default().fg(DIM)),
-                Span::styled("S", Style::default().fg(AMBER)),
-                Span::styled(" save  ", Style::default().fg(DIM)),
-                Span::styled("A", Style::default().fg(AMBER)),
-                Span::styled(" save as  ", Style::default().fg(DIM)),
-                Span::styled("D", Style::default().fg(HOT)),
-                Span::styled(" delete/discard  ", Style::default().fg(DIM)),
-                Span::styled("/", Style::default().fg(AMBER)),
-                Span::styled(" search  ", Style::default().fg(DIM)),
-                Span::styled("Esc / J", Style::default().fg(AMBER)),
-                Span::styled(" close", Style::default().fg(DIM)),
+                Span::styled("↑/↓", Style::default().fg(theme().amber)),
+                Span::styled(" navigate  ", Style::default().fg(theme().dim)),
+                Span::styled("Enter", Style::default().fg(theme().amber)),
+                Span::styled(" load/restore  ", Style::default().fg(theme().dim)),
+                Span::styled("N", Style::default().fg(theme().amber)),
+                Span::styled(" new  ", Style::default().fg(theme().dim)),
+                Span::styled("S", Style::default().fg(theme().amber)),
+                Span::styled(" save  ", Style::default().fg(theme().dim)),
+                Span::styled("A", Style::default().fg(theme().amber)),
+                Span::styled(" save as  ", Style::default().fg(theme().dim)),
+                Span::styled("D", Style::default().fg(theme().hot)),
+                Span::styled(" delete/discard  ", Style::default().fg(theme().dim)),
+                Span::styled("/", Style::default().fg(theme().amber)),
+                Span::styled(" search  ", Style::default().fg(theme().dim)),
+                Span::styled("Esc / J", Style::default().fg(theme().amber)),
+                Span::styled(" close", Style::default().fg(theme().dim)),
             ]))
             .alignment(Alignment::Center),
             footer[0],
         );
         let status = if self.searching {
             Line::from(vec![
-                Span::styled("filter ", Style::default().fg(DIM)),
-                Span::styled(self.filter.clone(), Style::default().fg(CHROME)),
-                Span::styled("▌", Style::default().fg(ACCENT)),
+                Span::styled("filter ", Style::default().fg(theme().dim)),
+                Span::styled(self.filter.clone(), Style::default().fg(theme().chrome)),
+                Span::styled("▌", Style::default().fg(theme().accent)),
             ])
         } else {
             Line::from(Span::styled(
                 self.message.clone().unwrap_or_default(),
-                Style::default().fg(SAFE),
+                Style::default().fg(theme().safe),
             ))
         };
         f.render_widget(
@@ -418,7 +418,7 @@ impl SessionBrowser {
         f.render_widget(
             Paragraph::new(Span::styled(
                 "Session name:",
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme().accent).add_modifier(Modifier::BOLD),
             )),
             rows[0],
         );
@@ -432,22 +432,22 @@ impl SessionBrowser {
             .block(
                 Block::default()
                     .borders(Borders::BOTTOM)
-                    .border_style(Style::default().fg(ACCENT)),
+                    .border_style(Style::default().fg(theme().accent)),
             ),
             rows[1],
         );
         if let Some(msg) = &self.message {
             f.render_widget(
-                Paragraph::new(Span::styled(msg.clone(), Style::default().fg(HOT))),
+                Paragraph::new(Span::styled(msg.clone(), Style::default().fg(theme().hot))),
                 rows[2],
             );
         }
         f.render_widget(
             Paragraph::new(Line::from(vec![
-                Span::styled("Enter", Style::default().fg(AMBER)),
-                Span::styled(" save  ", Style::default().fg(DIM)),
-                Span::styled("Esc", Style::default().fg(AMBER)),
-                Span::styled(" back", Style::default().fg(DIM)),
+                Span::styled("Enter", Style::default().fg(theme().amber)),
+                Span::styled(" save  ", Style::default().fg(theme().dim)),
+                Span::styled("Esc", Style::default().fg(theme().amber)),
+                Span::styled(" back", Style::default().fg(theme().dim)),
             ]))
             .alignment(Alignment::Center),
             rows[3],
