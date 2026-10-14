@@ -1689,7 +1689,7 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
     lines.extend([
         head("Tools"),
         row("  P", "  preset browser (rig snapshot)"),
-        row("  S", "  save current rig as preset"),
+        row("  S", "  save session (asks for a name when new)"),
         row(
             "  J",
             "  session browser: new / save / save as / load (/ search)",

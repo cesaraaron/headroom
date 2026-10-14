@@ -105,6 +105,10 @@ and restored on restart.
 
 `W` toggles the master-bus stereo width (neutral / wide).
 
+`S` saves the session to its folder; when the session is new the session
+browser opens asking for a name. (Saving the rig as a preset lives on `S`
+inside the preset browser.)
+
 ## Expression pedal (MIDI)
 
 MIDI is on by default: rusty-riff connects to the first MIDI input and binds the

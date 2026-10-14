@@ -11,25 +11,24 @@ threshold = 0.10
 release   = 0.45
 
 # ── Compressor ────────────────────────────────────────────────────────────────
-# An always-on compressor — Dyna-Comp-style in character (the DSP is a generic
-# peak-follower): evens the picking and holds the note up so the lead sings,
-# without squashing the dynamics that give it life.
+# Was 0.52 — eased to 0.45 so the low strings stop slamming the Muff first.
+# Keeps the singing sustain without the low-E heaviness.
 [compressor]
 enabled = true
-sustain = 0.52
+sustain = 0.45
 attack  = 0.36
 level   = 0.52
 
 # ── Big Muff (Fuzz) ───────────────────────────────────────────────────────────
-# Barely a wall here — the first solo is mostly clean amp with the Muff adding
-# warmth and sustain under the note. A bright tone keeps it from turning to wool.
+# Was fuzz 0.40 / level 0.30: fully squared but quiet into the amp. 0.34 backs
+# the square off, 0.42 restores drive so it sings louder with less mush.
 # Phase 7 joint re-voice: level pulled back so the leaned stack stays a voice.
 [fuzz]
 enabled = true
 type    = 0.0   # 0 = Big Muff (the Ram's-Head voice)
-fuzz  = 0.40
+fuzz  = 0.34
 tone  = 0.68
-level = 0.30
+level = 0.42
 
 # TS off — the Muff and the amp do the work.
 [tube_screamer]
@@ -45,12 +44,12 @@ tone  = 0.50
 level = 0.65
 
 # ── Pre-amp EQ ────────────────────────────────────────────────────────────────
-# Shapes what the amp clips: lows trimmed so the low strings stay clear (the old
-# mud), mids lifted for the vocal vowel, top left open and glassy.
+# Enabled 2026-10-13: trims the lows (-3.6 dB @ 100 Hz) BEFORE the Hiwatt
+# clips so the low strings stay clear — the old mud lived here.
 [preamp_eq]
-enabled = false
-low  = 0.42
-mid  = 0.60
+enabled = true
+low  = 0.35
+mid  = 0.58
 high = 0.54
 
 # Uni-Vibe off — the Numb solo uses the Mistress-style flanger, not the vibe.
@@ -73,7 +72,7 @@ bass   = 0.20
 mid    = 0.30
 treble = 0.62
 presence = 0.56
-master = 0.42
+master = 0.48
 
 # ── Cabinet ───────────────────────────────────────────────────────────────────
 # WEM 4×12 with Fane Crescendos, near on-axis with a light ribbon blend — bright

@@ -11,23 +11,24 @@ threshold = 0.14
 release   = 0.50
 
 # ── Compressor ────────────────────────────────────────────────────────────────
-# Heavier squeeze than the first solo — the outro is about infinite sustain.
+# 2026-10-13 punch pass: sustain 0.45 → 0.38 un-squashes the pick attack,
+# attack 0.34 → 0.42 (~21 ms) lets the transient through before the squash.
 [compressor]
 enabled = true
-sustain = 0.58
-attack  = 0.34
+sustain = 0.38
+attack  = 0.42
 level   = 0.52
 
 # ── Big Muff (Fuzz) ───────────────────────────────────────────────────────────
-# The Ram's-Head heart of the outro: live-matched against the isolated outro
-# guitar (fuzz 0.39, level 0.25 — far back from the old 0.64/0.55, which drove
-# the stack into mud). Bright tone keeps it a violin, not a mud slide.
+# 2026-10-13 drive pass: fuzz 0.32 → 0.38 for more grind. Level stays 0.45 —
+# the loudness is already right; this adds hair, not volume. Pre-EQ low cut
+# below keeps the extra drive off the low E.
 [fuzz]
 enabled = true
 type    = 0.0   # 0 = Big Muff (the Ram's-Head voice)
-fuzz  = 0.39
+fuzz  = 0.38
 tone  = 0.60
-level = 0.25
+level = 0.45
 
 # TS off — the Muff is the only dirt.
 [tube_screamer]
@@ -43,12 +44,13 @@ tone  = 0.50
 level = 0.65
 
 # ── Pre-amp EQ ────────────────────────────────────────────────────────────────
-# Push the vocal mids, cut the lows hard (this is where the old preset went
-# muddy), and keep the top open enough to cut through the wash.
+# Trims the lows (-3.6 dB @ 100 Hz) BEFORE the Hiwatt clips, so the extra
+# drive above lands on the mids, not the low E. Mid 0.55 → 0.60 pushes the
+# pick punch at 650 Hz (+2.4 dB) into the grind.
 [preamp_eq]
-enabled = false
-low  = 0.40
-mid  = 0.62
+enabled = true
+low  = 0.35
+mid  = 0.60
 high = 0.54
 
 # Uni-Vibe off — the outro swirl is the Mistress-style flanger.
@@ -60,19 +62,17 @@ mix     = 0.0
 mode    = 0.0
 
 # ── Amp ───────────────────────────────────────────────────────────────────────
-# Phase 7 joint re-voice. Live-matched near-zero bass/mid proved the model
-# stacked ~+12 dB of structural lows (WEM pile-up + Hiwatt +4 dB body lift +
-# excursion); the model was leaned, then bass/mid walked back up until the
-# render nulled vs the matched tone (LUFS −0.01 dB, centroid −0.4%,
-# residual ±2 dB narrow-shape). Knobs near noon again, as on the real rig.
+# 2026-10-13 drive pass: gain 0.40 → 0.48 pushes the Hiwatt preamp harder
+# (the Gilmour trick is a loud clean amp hit by pedals — this is the amp half
+# of that). Bass stays floored; the pre-EQ handles the lows.
 [amp]
 model  = "hiwatt"
-gain   = 0.40
+gain   = 0.48
 bass   = 0.20
 mid    = 0.28
 treble = 0.65
 presence = 0.56
-master = 0.40
+master = 0.50
 
 # ── Cabinet ───────────────────────────────────────────────────────────────────
 # WEM 4×12 with Fane Crescendos, near on-axis, light ribbon, a touch of room. No
@@ -81,7 +81,7 @@ master = 0.40
 model     = "wem"
 mic_pos   = 0.52
 mic_blend = 0.22
-mic_room  = 0.30
+mic_room  = 0.22
 
 # ── Parametric EQ ─────────────────────────────────────────────────────────────
 # Low end trimmed again at the end of the chain, mids forward, air on top.
@@ -99,33 +99,33 @@ depth = 0.50
 mix   = 0.0
 
 # ── Flanger (Electric Mistress) ───────────────────────────────────────────────
-# The Leslie-like Mistress swirl, proud enough to hear the motion — a signature
-# of the outro, not a subtle halo.
+# 2026-10-13 dry pass: mix 0.26 → 0.18. The swirl stays audible but stops
+# washing the pick attack.
 [flanger]
 enabled  = true
 rate     = 0.18
 depth    = 0.42
 feedback = 0.25
-mix      = 0.26
+mix      = 0.18
 type     = 1.0   # Electric Mistress (mono)
 
 # ── Delay ─────────────────────────────────────────────────────────────────────
-# A long ~450 ms Echorec repeat blooming behind each phrase — the
-# outro's sense of space. Feedback/mix held below the point of turning to fog.
+# 2026-10-13 dry pass: mix 0.26 → 0.17, feedback 0.36 → 0.30. Same long ~450 ms
+# Echorec, sitting further behind the dry note instead of doubling it.
 [delay]
 type     = 0.5   # Echorec drum echo
 enabled  = true
 time     = 0.90
-feedback = 0.36
-mix      = 0.26
+feedback = 0.30
+mix      = 0.17
 
 # ── Reverb ────────────────────────────────────────────────────────────────────
-# A big, fairly bright hall — the arena the outro floats in.
+# 2026-10-13 dry pass: mix 0.20 → 0.12. Room stays big, just further back.
 [reverb]
 enabled = true
 room = 0.55
 damp = 0.48
-mix  = 0.20
+mix  = 0.12
 
 [master]
 width = 1.0

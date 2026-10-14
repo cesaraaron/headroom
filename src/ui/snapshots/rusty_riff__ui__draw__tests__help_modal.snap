@@ -25,7 +25,7 @@ expression: text
 ││                                    ║  Z / U  amp-plugin bypass / browser                                                       ║                                     ││
 ││                                    ║Tools                                                                                      ║                                     ││
 ││                                    ║  P  preset browser (rig snapshot)                                                         ║                                     ││
-││                                    ║  S  save current rig as preset                                                            ║                                     ││
+││                                    ║  S  save session (asks for a name when new)                                               ║                                     ││
 │└────────────────────────────────────║  J  session browser: new / save / save as / load (/ search)                               ║─────────────────────────────────────┘│
 └─────────────────────────────────────║  T  chromatic tuner                                                                       ║──────────────────────────────────────┘
                                       ║  M  practice metronome (+/− tempo, Space on/off)                                          ║                                       

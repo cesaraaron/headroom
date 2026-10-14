@@ -2054,11 +2054,52 @@ pub fn run(
                                 Some((format!("Master width: {label}"), std::time::Instant::now()));
                         }
                         KeyCode::Char('s') | KeyCode::Char('S') => {
-                            save_open = true;
-                            save_name.clear();
-                            save_desc.clear();
-                            save_field = 0;
-                            save_error = None;
+                            // Quick session save (preset saving lives on `S`
+                            // inside the preset browser). A session that has
+                            // never been saved has no folder yet, so ask for
+                            // a name through the session browser instead.
+                            if let Some(dir) = practice_ui.session.saved_dir().cloned() {
+                                #[allow(unused_mut)]
+                                let mut clap_spec: Option<
+                                    crate::project::ClapSpec,
+                                > = None;
+                                #[allow(unused_mut)]
+                                let mut au_spec: Option<
+                                    crate::project::AuSpec,
+                                > = None;
+                                #[cfg(feature = "clap")]
+                                if browser.loaded_name().is_some() {
+                                    clap_spec = browser.export_spec();
+                                }
+                                #[cfg(all(feature = "au", target_os = "macos"))]
+                                if params
+                                    .amp_external_loaded
+                                    .load(std::sync::atomic::Ordering::Relaxed)
+                                {
+                                    au_spec = amp_browser.export_spec(&params);
+                                }
+                                let msg = save_current_session(
+                                    &mut practice_ui,
+                                    &dir,
+                                    &params,
+                                    &practice,
+                                    &metronome,
+                                    &ir_browser,
+                                    clap_spec,
+                                    au_spec,
+                                );
+                                sync_revision = msg
+                                    .as_deref()
+                                    .is_some_and(|m| !m.starts_with("Save failed"));
+                                save_msg = msg.map(|m| (m, std::time::Instant::now()));
+                            } else {
+                                session_browser.open(
+                                    practice_ui.session.recovery_dir().as_deref(),
+                                    &practice_ui.recovery_in_use(),
+                                );
+                                let name = practice_ui.session.name().to_owned();
+                                session_browser.prompt_name(&name);
+                            }
                         }
                         // Quick-add: on the pedalboard, `a` opens the add-pedal
                         // modal; elsewhere `a` still opens the amp browser.
