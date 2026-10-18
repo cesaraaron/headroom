@@ -21,15 +21,15 @@ attack  = 0.30
 level   = 0.52
 
 # ── Fuzz Face ─────────────────────────────────────────────────────────────────
-# 2026-10-13 identity pass: fuzz 0.55 → 0.50 calms the octave-up shimmer that
-# sat loudest on the low strings and pulled perception off the fundamental.
-# Tone up so it snarls instead of smoothing.
+# 2026-10-15: level 0.40 → 0.46 slams the Hiwatt harder with the SAME
+# clip character (more drive, no extra low-string octave mush — that lives
+# behind the fuzz knob, which stays put).
 [fuzz]
 enabled = true
 type    = 0.5   # 0 = Big Muff, 0.5 = Fuzz Face, 1 = Tone Bender
-fuzz    = 0.50
+fuzz    = 0.58
 tone    = 0.62
-level   = 0.40
+level   = 0.46
 
 # TS off — the fuzz into the driven amp is the sound.
 [tube_screamer]
@@ -45,36 +45,34 @@ tone  = 0.50
 level = 0.65
 
 # ── Pre-amp EQ ────────────────────────────────────────────────────────────────
-# Mids pushed for the vocal snarl, lows trimmed so fast low-note runs stay clear.
+# 2026-10-14 clarity pass: enabled to strip fuzz-made low mud (-2.9 dB @
+# 100 Hz) BEFORE the vibe and Hiwatt, and push vocal clarity (+1.9 dB @
+# 650 Hz). This is the low-note fix — cutting here keeps the drive's teeth
+# while the wool never reaches the swirl or the amp.
 [preamp_eq]
-enabled = false
-low  = 0.42
-mid  = 0.62
-high = 0.58
+enabled = true
+low  = 0.38
+mid  = 0.58
+high = 0.54
 
 # ── Uni-Vibe ──────────────────────────────────────────────────────────────────
-# 2026-10-13 identity pass: the old depth 0.50 / mix 0.45 nulled the
-# fundamental on low notes (render: vibe on cost 1.6 dB vs off and pushed the
-# centroid +480 Hz into the harmonics — the "different note"). Mix 0.28 keeps
-# the dry root dominant, depth 0.35 narrows the sweep off the fundamentals,
-# rate 0.24 slows the breath. Swirl stays, note stays.
+# 2026-10-15: depth 0.22 → 0.18, mix 0.15 → 0.10. Barely a halo — at
+# 10% wet the notch can't cancel the root anymore, it only breathes on it.
 [uni_vibe]
 enabled = true
-rate    = 0.24
-depth   = 0.35
-mix     = 0.28
+rate    = 0.20
+depth   = 0.18
+mix     = 0.10
 mode    = 0.0   # 0 = chorus, 1 = vibrato
 
 # ── Amp ───────────────────────────────────────────────────────────────────────
-# Hiwatt DR103, the real front end for the Dark Side tones. Phase 7 joint
-# re-voice (same structural-low fix as numb-outro): bass/mid back toward noon
-# until the render nulled vs the live-matched tone (LUFS −0.05 dB,
-# centroid −0.1%).
+# 2026-10-15: gain 0.56 → 0.58 takes the hotter Fuzz Face feed; clarity
+# courtesy of the pre-EQ low cut doing the mud duty instead.
 [amp]
 model  = "hiwatt"
-gain   = 0.46
+gain   = 0.58
 bass   = 0.25
-mid    = 0.33
+mid    = 0.36
 treble = 0.62
 presence = 0.58
 master = 0.30
@@ -111,22 +109,22 @@ feedback = 0.20
 mix      = 0.0
 
 # ── Delay ─────────────────────────────────────────────────────────────────────
-# Echorec ~310 ms repeats, present enough to fill the gaps between the
-# clipped phrases without washing them together.
+# 2026-10-15 dry pass: mix 0.13 → 0.10, feedback 0.27 → 0.24. The Echorec
+# answers once, clearly, instead of hovering.
 [delay]
 type     = 0.5   # Echorec drum echo
 enabled  = true
 time     = 0.62
-feedback = 0.34
-mix      = 0.24
+feedback = 0.24
+mix      = 0.10
 
 # ── Reverb ────────────────────────────────────────────────────────────────────
-# A medium room, lightly damped — depth without blurring the attack.
+# 2026-10-15 dry pass: mix 0.10 → 0.08.
 [reverb]
 enabled = true
 room = 0.48
 damp = 0.48
-mix  = 0.16
+mix  = 0.08
 
 [master]
 width = 1.0
