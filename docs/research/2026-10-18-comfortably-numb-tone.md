@@ -195,20 +195,48 @@ was 0.76 dB quieter and +7.8% centroid; the outro was 0.37 dB quieter, +0.79 dB
 crest and −10.6% centroid. The LTAS shifts reached ±5–6 dB in places, so this
 is a real voicing change; the ear test decided it.
 
-## Proposed next experiments
+## Modulation and low-end pass — result (2026-10-18)
 
-1. **Modulation matrix.** (a) Mistress off; (b) Mistress mix 0.08; (c) chorus
-   on, flanger off, low mix; (d) both low. Compare against the isolated first
-   and second solos.
-3. **Muff matrix.** Tone 0.40 / 0.50 / 0.55 / 0.60; fuzz 0.35 / 0.50 / 0.65;
-   level matched for loudness.
-4. **Amp gain.** Hiwatt gain 0.34 / 0.40 / 0.48; keep it clean-ish.
-5. **Reference analysis.** Use the isolated first/second solo audio from Kit
-   Rae (linked by Reverb) for LTAS/centroid/loudness comparison, then ear-test.
-   Do not commit the audio to the repo.
-6. **Only then** update the two bundled presets, re-bless the fidelity
-   baseline if metrics change, and record the sources/caveats in
-   `docs/fidelity-references.md`.
+**Modulation: chorus stand-in shipped.** Four modulation paths were A/B'd on
+both solos (Mistress off, Mistress low 0.08, chorus low 0.12, chorus + Mistress
+low). The chorus-only path (M3) won; the Mistress paths were the ones that “sat
+too much on the lows”. Both bundled presets now run `flanger enabled = false`
+and `chorus enabled = true, rate 0.45, depth 0.50, mix 0.12` — a slow, low-mix
+RA-200 stand-in. The Mistress stays in the file disabled for the live/Pulse
+flavor.
+
+**Low-end clarity: C2 clean-boost path shipped.** On the M3 base, three clarity
+paths were A/B'd:
+
+- C1 tight lows: pre-amp low 0.15, amp bass 0.15.
+- C2 clean boost: pre-amp low 0.20, fuzz 0.22/0.26, clean boost +3.6 dB with
+  bass shelf −3.6 dB, amp bass 0.15.
+- C3 dry + no comp: pre-amp low 0.20, compressor off, delay/reverb lower.
+
+The maintainer ranked **C2 = C1 > C3 ≫ the rest**, so C2 was promoted: it keeps
+the drive via the linear Power-Boost-style stage instead of adding fuzz to the
+low end. C1 is kept as a user-preset alternate. Final Numb values: fuzz
+0.22/0.26, pre-amp low 0.20, amp bass 0.15, boost 0.15/0.50/0.35, chorus
+0.45/0.50/0.12, digital delay unchanged.
+
+**Why the low end needed this:** the maintainer plays a Donner DST-150/152 HSS
+with the full bridge humbucker (not split). The record's Black Strat bridge was
+a single coil (SSL-1C/SSL-5 or DiMarzio FS-1, sources disagree), which is
+inherently tighter in the lows. The humbucker feeds the Big Muff's clippers
+much harder at 100–200 Hz; the pre-fuzz cut and lower fuzz keep that from
+turning to mush. The clean boost, not more fuzz, supplies the remaining push.
+
+## Remaining experiments
+
+1. **Muff tone sweep.** Tone 0.40 / 0.50 / 0.55 / 0.60 on the C2 base; the
+   current 0.68/0.60 may still be brighter than the record.
+2. **Amp gain/master.** Hiwatt gain 0.34 / 0.40 / 0.48 and master 0.40 / 0.48 /
+   0.50; the preamp/power-stage balance is still untested.
+3. **Isolated-solo analysis.** Use the Kit Rae first/second solo audio (linked
+   by Reverb) for LTAS/centroid/loudness comparison, then ear-test. Do not
+   commit the audio.
+4. **First vs second solo.** The two solos still share the same recipe; the
+   isolated tracks may justify a different fuzz/compression/level for Solo 1.
 
 ## Sources
 

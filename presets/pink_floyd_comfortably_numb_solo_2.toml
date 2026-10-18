@@ -1,5 +1,5 @@
 name        = "Pink Floyd — Comfortably Numb (Outro Solo)"
-description = "Inspired by the outro 'Comfortably Numb' solo (The Wall, 1979): a thick Big Muff-style fuzz into a Hiwatt DR103 and Fane-loaded WEM 4×12, an Electric Mistress-style flanger, clean digital repeats and a big hall. Not a verified session rig."
+description = "Inspired by the outro 'Comfortably Numb' solo (The Wall, 1979): a Big Muff into a Hiwatt DR103 and Fane-loaded WEM 4×12, a low-mix chorus standing in for the Yamaha RA-200, a clean Power-Boost-style push, digital repeats and a big hall. Voiced with a full bridge humbucker. Not a verified session rig."
 tags        = ["pink floyd", "lead", "classic rock"]
 year        = 1979
 
@@ -20,13 +20,14 @@ attack  = 0.42
 level   = 0.52
 
 # ── Big Muff (Fuzz) ───────────────────────────────────────────────────────────
-# 2026-10-13 drive pass: fuzz 0.32 → 0.38 for more grind. Level stays 0.45 —
-# the loudness is already right; this adds hair, not volume. Pre-EQ low cut
-# below keeps the extra drive off the low E.
+# 2026-10-18 low-end clarity pass: fuzz 0.38 → 0.26. A full bridge humbucker
+# feeds the Muff's low end much harder than the record's single coil; backing
+# the sustain off keeps the drive while the lows stay dry. The clean boost
+# below makes up the push into the Hiwatt.
 [fuzz]
 enabled = true
 type    = 0.0   # 0 = Big Muff (the Ram's-Head voice)
-fuzz  = 0.38
+fuzz  = 0.26
 tone  = 0.60
 level = 0.45
 
@@ -44,16 +45,16 @@ tone  = 0.50
 level = 0.65
 
 # ── Pre-amp EQ ────────────────────────────────────────────────────────────────
-# Trims the lows (-3.6 dB @ 100 Hz) BEFORE the Hiwatt clips, so the extra
-# drive above lands on the mids, not the low E. Mid 0.55 → 0.60 pushes the
-# pick punch at 650 Hz (+2.4 dB) into the grind.
+# 2026-10-18: low 0.35 → 0.20 (-7.2 dB @ 100 Hz). The cut now happens before
+# the Muff, so the humbucker's low end never saturates in the first place. Mid
+# 0.60 pushes the pick punch at 650 Hz (+2.4 dB) into the grind.
 [preamp_eq]
 enabled = true
-low  = 0.35
+low  = 0.20
 mid  = 0.60
 high = 0.54
 
-# Uni-Vibe off — the outro swirl is the Mistress-style flanger.
+# Uni-Vibe off — the RA-200-style motion is handled by the chorus below.
 [uni_vibe]
 enabled = false
 rate    = 0.24
@@ -61,14 +62,25 @@ depth   = 0.40
 mix     = 0.0
 mode    = 0.0
 
+# ── Clean Boost (Colorsound Power Boost style) ───────────────────────────────
+# +3.6 dB of linear drive into the Hiwatt (0.15 × 24 dB) with the bass shelf
+# cut (0.35 = -3.6 dB @ 120 Hz). This restores the push lost when the Muff's
+# sustain came down, without adding fuzz to the lows.
+[boost]
+enabled = true
+gain    = 0.15
+treble  = 0.50
+bass    = 0.35
+
 # ── Amp ───────────────────────────────────────────────────────────────────────
 # 2026-10-13 drive pass: gain 0.40 → 0.48 pushes the Hiwatt preamp harder
 # (the Gilmour trick is a loud clean amp hit by pedals — this is the amp half
-# of that). Bass stays floored; the pre-EQ handles the lows.
+# of that). Bass 0.20 → 0.15 in the 2026-10-18 clarity pass; the pre-EQ and
+# boost shelves do the low-end work.
 [amp]
 model  = "hiwatt"
 gain   = 0.48
-bass   = 0.20
+bass   = 0.15
 mid    = 0.28
 treble = 0.65
 presence = 0.56
@@ -91,18 +103,22 @@ low  = 0.40
 mid  = 0.58
 high = 0.55
 
-# Chorus off — the Mistress is a flanger, modelled in [flanger] below.
+# ── Chorus (RA-200 stand-in) ──────────────────────────────────────────────────
+# A slow, low-mix chorus stands in for the Yamaha RA-200 rotary that the studio
+# sources place alongside the Hiwatt. The RA-200 was mixed very low; 0.12 keeps
+# the motion without washing the pick attack.
 [chorus]
-enabled = false
-rate  = 0.20
+enabled = true
+rate  = 0.45
 depth = 0.50
-mix   = 0.0
+mix   = 0.12
 
 # ── Flanger (Electric Mistress) ───────────────────────────────────────────────
-# 2026-10-13 dry pass: mix 0.26 → 0.18. The swirl stays audible but stops
-# washing the pick attack.
+# Off for the studio take: the sources disagree on whether the Mistress was on
+# the album, and the RA-200/chorus path is the closer match. Kept here for the
+# live/Pulse flavor — turn it on and lower the chorus to taste.
 [flanger]
-enabled  = true
+enabled  = false
 rate     = 0.18
 depth    = 0.42
 feedback = 0.25

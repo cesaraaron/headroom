@@ -276,185 +276,185 @@ db = -32.724533
 
 [[render]]
 preset = "pink_floyd_comfortably_numb_solo_1"
-lufs_i = -6.762997
-crest_db = 16.364674
-correlation = 0.8292496
-centroid_hz = 1480.0261
+lufs_i = -6.561347
+crest_db = 16.286816
+correlation = 0.8069544
+centroid_hz = 2746.581
 
 [[render.ltas]]
 hz = 70.0
-db = 10.104626
+db = 11.152618
 
 [[render.ltas]]
 hz = 88.19447
-db = 8.29982
+db = 3.450554
 
 [[render.ltas]]
 hz = 111.11807
-db = 4.1120377
+db = -1.3876114
 
 [[render.ltas]]
 hz = 140.0
-db = 12.340111
+db = 7.1693306
 
 [[render.ltas]]
 hz = 176.38895
-db = 4.025734
+db = 3.148178
 
 [[render.ltas]]
 hz = 222.23615
-db = 17.283478
+db = 16.883518
 
 [[render.ltas]]
 hz = 280.0
-db = 0.98630524
+db = -1.0423737
 
 [[render.ltas]]
 hz = 352.7779
-db = -12.37249
+db = -12.384163
 
 [[render.ltas]]
 hz = 444.4723
-db = -6.210045
+db = -7.927826
 
 [[render.ltas]]
 hz = 560.0
-db = -10.031425
+db = -6.031296
 
 [[render.ltas]]
 hz = 705.5558
-db = 7.603485
+db = 7.30521
 
 [[render.ltas]]
 hz = 888.9446
-db = -0.050605774
+db = 2.6176224
 
 [[render.ltas]]
 hz = 1120.0
-db = -8.144859
+db = -5.0232544
 
 [[render.ltas]]
 hz = 1411.1116
-db = 1.5446548
+db = -2.4720612
 
 [[render.ltas]]
 hz = 1777.8892
-db = 3.7931137
+db = 4.7562256
 
 [[render.ltas]]
 hz = 2240.0
-db = -5.919487
+db = -4.06044
 
 [[render.ltas]]
 hz = 2822.2231
-db = 1.3913345
+db = 3.0292969
 
 [[render.ltas]]
 hz = 3555.7783
-db = -6.3018265
+db = -2.3139725
 
 [[render.ltas]]
 hz = 4480.0
-db = 9.923805
+db = 11.840721
 
 [[render.ltas]]
 hz = 5644.4463
-db = -8.055664
+db = -4.0431824
 
 [[render.ltas]]
 hz = 7111.5566
-db = -24.32183
+db = -24.667107
 
 [[render]]
 preset = "pink_floyd_comfortably_numb_solo_2"
-lufs_i = -6.5193
-crest_db = 15.340027
-correlation = 0.84618545
-centroid_hz = 2979.8247
+lufs_i = -6.3771515
+crest_db = 15.143797
+correlation = 0.8298877
+centroid_hz = 2993.6538
 
 [[render.ltas]]
 hz = 70.0
-db = 8.951092
+db = 10.742126
 
 [[render.ltas]]
 hz = 88.19447
-db = 8.85778
+db = 3.1846352
 
 [[render.ltas]]
 hz = 111.11807
-db = 6.0843277
+db = 0.85336304
 
 [[render.ltas]]
 hz = 140.0
-db = 13.427219
+db = 8.8732605
 
 [[render.ltas]]
 hz = 176.38895
-db = 4.8632545
+db = 4.60701
 
 [[render.ltas]]
 hz = 222.23615
-db = 14.845818
+db = 15.710083
 
 [[render.ltas]]
 hz = 280.0
-db = 2.825222
+db = 1.0832977
 
 [[render.ltas]]
 hz = 352.7779
-db = -11.749321
+db = -10.371597
 
 [[render.ltas]]
 hz = 444.4723
-db = -5.3977585
+db = -5.6328278
 
 [[render.ltas]]
 hz = 560.0
-db = -14.605957
+db = -8.079857
 
 [[render.ltas]]
 hz = 705.5558
-db = 4.395878
+db = 3.5857277
 
 [[render.ltas]]
 hz = 888.9446
-db = -1.3398132
+db = 1.4845886
 
 [[render.ltas]]
 hz = 1120.0
-db = -11.878983
+db = -10.097076
 
 [[render.ltas]]
 hz = 1411.1116
-db = 2.1986237
+db = -0.8561859
 
 [[render.ltas]]
 hz = 1777.8892
-db = 2.807846
+db = 2.9665756
 
 [[render.ltas]]
 hz = 2240.0
-db = -5.5054245
+db = -2.705742
 
 [[render.ltas]]
 hz = 2822.2231
-db = 1.8736458
+db = 0.7872467
 
 [[render.ltas]]
 hz = 3555.7783
-db = -3.5183868
+db = -1.8738403
 
 [[render.ltas]]
 hz = 4480.0
-db = 12.779003
+db = 14.216354
 
 [[render.ltas]]
 hz = 5644.4463
-db = -4.2637405
+db = -1.8450775
 
 [[render.ltas]]
 hz = 7111.5566
-db = -25.650375
+db = -26.632088
 
 [[render]]
 preset = "pink_floyd_mother_solo"
