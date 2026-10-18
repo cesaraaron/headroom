@@ -632,7 +632,8 @@ pub(super) const CHAIN_TILE: usize = KNOBS.len() + 2;
 
 /// Which top-level panels the user has chosen to show. Panel 1 (the live-order
 /// ribbon) is always visible; panels 2–4 are toggled live with the `2` / `3` /
-/// `4` keys (`1` only focuses the ribbon). Hidden panels are skipped by focus
+/// `4` keys (`1` only focuses the ribbon), and `Shift+1`–`4` solo a panel by
+/// closing the rest. Hidden panels are skipped by focus
 /// navigation (like off-board pedals) and left out of the layout so their space
 /// is reclaimed.
 #[derive(Clone, Copy)]

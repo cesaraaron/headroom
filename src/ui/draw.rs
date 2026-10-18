@@ -1649,6 +1649,10 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
             "  focus chain, amp, timeline, pedals (again: hide → timeline)",
         ),
         row(
+            "  Shift+1..4",
+            "  solo a panel: close the others, keep just that one",
+        ),
+        row(
             "  Tab / Shift-Tab",
             "  cycle focus through the visible panels",
         ),

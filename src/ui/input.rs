@@ -207,6 +207,30 @@ pub(super) fn press_number(
     (panels, panel_entry(n, board, order))
 }
 
+/// `Shift+number` solos a panel: every other panel is hidden so only `n` remains
+/// on screen, and focus lands on it. The ribbon (panel 1) is always visible, so
+/// soloing 1 clears the rest and focuses the ribbon. Unlike the plain number
+/// keys this never hides the target. Out-of-range keys leave everything
+/// untouched.
+pub(super) fn solo_panel(
+    n: u8,
+    focus: Option<usize>,
+    board: &[bool],
+    panels: &Panels,
+    order: &[u8; CHAIN_LEN],
+) -> (Panels, Option<usize>) {
+    if !(1..=4).contains(&n) {
+        return (*panels, focus);
+    }
+    // Only panel `n` stays visible; the ribbon is always visible regardless.
+    let panels = Panels {
+        amp: n == 2,
+        rig: n == 4,
+        timeline: n == 3,
+    };
+    (panels, panel_entry(n, board, order))
+}
+
 /// Where focus lands after hiding panel `hidden`: the practice timeline when it
 /// is open (it is the main workspace), otherwise the first visible panel's
 /// entry. Hiding the timeline itself is not a candidate for its own return.
@@ -1000,6 +1024,52 @@ mod tests {
         let (p6, f) = press_number(9, f, &b, &p5, &o);
         assert!(p6.rig && p6.amp && p6.timeline);
         assert_eq!(f, Some(CHAIN_TILE));
+    }
+
+    /// `Shift+1..4` solos a panel: every other panel is hidden so only the
+    /// pressed one remains, and focus lands on it. The ribbon (panel 1) is
+    /// always visible, so soloing 1 clears everything else and focuses it.
+    #[test]
+    fn shift_number_solos_a_panel() {
+        let b = board(true);
+        let o = order();
+        let all = Panels::all_visible();
+
+        // Shift+4 → only the pedalboard, focused at its entry.
+        let (p, f) = solo_panel(4, None, &b, &all, &o);
+        assert!(
+            p.rig && !p.amp && !p.timeline,
+            "only the pedalboard survives"
+        );
+        assert_eq!(f, Some(PEDALS[0].start));
+
+        // Shift+2 → only the amp/cab panel.
+        let (p, f) = solo_panel(2, None, &b, &all, &o);
+        assert!(p.amp && !p.rig && !p.timeline, "only the amp/cab survives");
+        assert_eq!(f, Some(AMP_START));
+
+        // Shift+3 → only the timeline.
+        let (p, f) = solo_panel(3, None, &b, &all, &o);
+        assert!(p.timeline && !p.amp && !p.rig, "only the timeline survives");
+        assert_eq!(f, Some(PRACTICE_TILE));
+
+        // Shift+1 → the ribbon is always visible, so the rest all close.
+        let (p, f) = solo_panel(1, None, &b, &all, &o);
+        assert!(
+            !p.amp && !p.rig && !p.timeline,
+            "soloing the ribbon closes the rest"
+        );
+        assert_eq!(f, Some(CHAIN_TILE));
+
+        // Idempotent: soloing an already-soloed panel changes nothing.
+        let (p2, f2) = solo_panel(1, Some(AMP_START), &b, &p, &o);
+        assert!(!p2.amp && !p2.rig && !p2.timeline);
+        assert_eq!(f2, Some(CHAIN_TILE));
+
+        // Out-of-range keys leave the layout and focus untouched.
+        let (p3, f3) = solo_panel(9, Some(AMP_START), &b, &all, &o);
+        assert!(p3.amp && p3.rig && p3.timeline);
+        assert_eq!(f3, Some(AMP_START));
     }
 
     /// Without an open timeline, closing a panel keeps the old behavior (ribbon);

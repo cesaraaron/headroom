@@ -50,7 +50,7 @@ use input::{
     PanelMemory, add_pedal, amp_choices, apply_hit, cab_choices, cycle_panel, ensure_focus_visible,
     focus_practice_timeline, init_amp_cursor, init_cab_cursor, jump_group, move_selected_stage,
     nudge, nudge_master, panel_of, press_number, remove_pedal, reorder_warning, select_amp,
-    select_cab, step_header, step_knob_in_panel, toggle_pedal, toggle_stage,
+    select_cab, solo_panel, step_header, step_knob_in_panel, toggle_pedal, toggle_stage,
 };
 use midi::{MidiUi, render_midi};
 use practice::{PracticeUi, SaveContext};
@@ -1906,6 +1906,42 @@ pub fn run(
                             export_error = None;
                             export_range = ExportRange::Full;
                             export_open = true;
+                        }
+                        // Shift+number solos a panel: the other panels close and
+                        // only the pressed one remains. Both the shifted symbol
+                        // (`!@#$`, what most terminals send) and the number with a
+                        // SHIFT modifier (Kitty keyboard protocol) are accepted.
+                        KeyCode::Char('!') => {
+                            (panels, focus) =
+                                solo_panel(1, focus, &board, &panels, &params.chain_slots());
+                        }
+                        KeyCode::Char('@') => {
+                            (panels, focus) =
+                                solo_panel(2, focus, &board, &panels, &params.chain_slots());
+                        }
+                        KeyCode::Char('#') => {
+                            (panels, focus) =
+                                solo_panel(3, focus, &board, &panels, &params.chain_slots());
+                        }
+                        KeyCode::Char('$') => {
+                            (panels, focus) =
+                                solo_panel(4, focus, &board, &panels, &params.chain_slots());
+                        }
+                        KeyCode::Char('1') if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                            (panels, focus) =
+                                solo_panel(1, focus, &board, &panels, &params.chain_slots());
+                        }
+                        KeyCode::Char('2') if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                            (panels, focus) =
+                                solo_panel(2, focus, &board, &panels, &params.chain_slots());
+                        }
+                        KeyCode::Char('3') if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                            (panels, focus) =
+                                solo_panel(3, focus, &board, &panels, &params.chain_slots());
+                        }
+                        KeyCode::Char('4') if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                            (panels, focus) =
+                                solo_panel(4, focus, &board, &panels, &params.chain_slots());
                         }
                         KeyCode::Char('1') => {
                             (panels, focus) =

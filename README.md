@@ -41,6 +41,7 @@ cargo run --release -- --opaque
 | `Space` | Bypass the focused stage |
 | `[` / `]` | Move the selected stage earlier or later |
 | `1`–`4` | Focus the chain, amp, timeline, or pedals |
+| `Shift+1`–`4` | Solo a panel: close the others, keep just that one |
 | `R` | Record / stop a dry take |
 | `/` | Search the preset, session, or import list |
 | `L` | Import library settings (path, only, subpaths) |
