@@ -29,9 +29,21 @@ const WINDOW: usize = 2048;
 const HOP: usize = 1024;
 
 /// Below this input RMS the window is treated as silence (no note played).
-const NOISE_RMS: f32 = 0.004;
+/// Very low on purpose: a plucked string keeps ringing long after it has fallen
+/// well below the level where a note *starts*, and a tuner must keep naming it.
+/// `0.0005` is about −66 dBFS RMS. Noise rejection comes from [`CLARITY_MIN`],
+/// not from this gate.
+const NOISE_RMS: f32 = 0.0005;
+/// Below this RMS the spectrum bars are allowed to fall away. Kept higher than
+/// [`NOISE_RMS`] so a quiet tail keeps a pitch readout without lighting the bars
+/// from the noise floor (the bars are normalised to their own peak).
+const SPECTRUM_RMS: f32 = 0.004;
 /// Minimum NSDF peak height for a pitch estimate to be trusted.
 const CLARITY_MIN: f32 = 0.6;
+/// How long the last confident reading survives a dropout or the final decay
+/// before the display clears. Short gaps (a fretting hand, a dull window) must
+/// not make the note flicker; sustained silence must clear it.
+const HOLD_SECS: f32 = 1.5;
 
 /// Centre frequency (Hz) of spectrum bar `i`, log-spaced across the display range.
 pub fn spectrum_bin_freq(i: usize) -> f32 {
@@ -114,6 +126,10 @@ pub struct TunerDetector {
     bins: [f32; SPECTRUM_BINS],
     min_lag: usize,
     max_lag: usize,
+    /// Analyses remaining before a stale reading is cleared (see [`HOLD_SECS`]).
+    hold: u32,
+    /// Analyses in one hold period, at the engine rate.
+    hold_max: u32,
 }
 
 impl TunerDetector {
@@ -128,6 +144,8 @@ impl TunerDetector {
             bins: std::array::from_fn(spectrum_bin_freq),
             min_lag,
             max_lag,
+            hold: 0,
+            hold_max: ((sr * HOLD_SECS) / HOP as f32).round().max(1.0) as u32,
         }
     }
 
@@ -153,19 +171,32 @@ impl TunerDetector {
         }
         let rms = (sumsq / WINDOW as f32).sqrt();
 
-        if rms < NOISE_RMS {
-            // No note: clear the pitch and let the bars fall away smoothly.
+        let (freq, clarity) = if rms >= NOISE_RMS {
+            self.detect_pitch()
+        } else {
+            (0.0, 0.0)
+        };
+
+        if freq > 0.0 {
+            out.freq.store(freq, Relaxed);
+            out.clarity.store(clarity, Relaxed);
+            self.hold = self.hold_max;
+        } else if self.hold > 0 {
+            // A brief dropout — or the final decay of a still-ringing string —
+            // keeps the last confident reading on screen until the hold expires.
+            self.hold -= 1;
+        } else {
             out.freq.store(0.0, Relaxed);
             out.clarity.store(0.0, Relaxed);
+        }
+
+        if rms < SPECTRUM_RMS {
+            // Too quiet to draw a meaningful spectrum: let the bars fall away.
             for b in &out.spectrum {
                 b.store(b.load(Relaxed) * 0.6, Relaxed);
             }
             return;
         }
-
-        let (freq, clarity) = self.detect_pitch();
-        out.freq.store(freq, Relaxed);
-        out.clarity.store(clarity, Relaxed);
 
         // Log-spaced magnitude spectrum, normalised to its own peak so the bars
         // always fill the display, then time-smoothed for a steadier readout.
@@ -345,6 +376,112 @@ mod tests {
         det.process(&vec![0.0f32; sr as usize / 5], &tuner);
         assert_eq!(tuner.freq.load(Relaxed), 0.0);
         assert_eq!(tuner.clarity.load(Relaxed), 0.0);
+    }
+
+    /// A real pluck decays for several seconds. The tuner must keep naming the
+    /// note well past the attack instead of blanking once the string falls below
+    /// the old −48 dBFS silence gate (the reported "note dies after 1–2 s").
+    #[test]
+    fn keeps_naming_a_decaying_note_for_several_seconds() {
+        let sr = 48_000.0;
+        let f0 = 82.41f32;
+        let mut det = TunerDetector::new(sr);
+        let tuner = Tuner::new();
+        let block = 480usize;
+        let seconds = 4.5f32;
+        let frames = (sr * seconds) as usize;
+        let mut n = 0usize;
+        while n < frames {
+            let mut buf = Vec::with_capacity(block);
+            for i in 0..block {
+                let t = (n + i) as f32 / sr;
+                // Calibrated humbucker P99 ≈ −20 dBFS; a string ringing down
+                // over roughly a second leaves a quiet but clearly audible tail.
+                let env = 0.10 * (-t / 1.2).exp();
+                let mut x = 0.0f32;
+                for (h, a) in [1.0f32, 0.55, 0.35, 0.22, 0.14].iter().enumerate() {
+                    x += a * (2.0 * PI * f0 * (h + 1) as f32 * t).sin();
+                }
+                buf.push(env * x);
+            }
+            det.process(&buf, &tuner);
+            n += block;
+        }
+
+        let freq = tuner.freq.load(Relaxed);
+        assert!(
+            freq > 0.0,
+            "tuner lost the still-ringing note at {seconds}s"
+        );
+        let cents = 1200.0 * (freq / f0).log2();
+        assert!(cents.abs() < 10.0, "held note is {cents:.1} cents off");
+    }
+
+    /// A short gap (string muted by a fretting hand, a dull window) should not
+    /// make the readout flicker to nothing, but true silence must clear it.
+    #[test]
+    fn holds_the_last_note_briefly_then_clears() {
+        let sr = 48_000.0;
+        let f0 = 110.0f32;
+        let mut det = TunerDetector::new(sr);
+        let tuner = Tuner::new();
+        let tone: Vec<f32> = (0..(sr as usize / 2))
+            .map(|n| (2.0 * PI * f0 * n as f32 / sr).sin() * 0.2)
+            .collect();
+        det.process(&tone, &tuner);
+        assert!(tuner.freq.load(Relaxed) > 0.0);
+
+        // A quarter second of silence is a dropout, not the end of the note.
+        det.process(&vec![0.0f32; (sr as usize) / 4], &tuner);
+        assert!(
+            tuner.freq.load(Relaxed) > 0.0,
+            "a brief dropout blanked the readout"
+        );
+
+        // Sustained silence releases the hold.
+        det.process(&vec![0.0f32; sr as usize * 3], &tuner);
+        assert_eq!(tuner.freq.load(Relaxed), 0.0);
+        assert_eq!(tuner.clarity.load(Relaxed), 0.0);
+    }
+
+    /// Hard-clipped input (a hot interface) is still periodic; the tuner should
+    /// name it even though the waveform is squared off.
+    #[test]
+    fn hard_clipped_input_still_reads_the_note() {
+        let sr = 48_000.0;
+        let f0 = 196.0f32;
+        let mut det = TunerDetector::new(sr);
+        let tuner = Tuner::new();
+        let block: Vec<f32> = (0..(sr as usize / 5))
+            .map(|n| {
+                let x = 3.0 * (2.0 * PI * f0 * n as f32 / sr).sin();
+                x.clamp(-1.0, 1.0)
+            })
+            .collect();
+        det.process(&block, &tuner);
+        let freq = tuner.freq.load(Relaxed);
+        assert!(freq > 0.0, "clipped input lost the pitch");
+        let cents = 1200.0 * (freq / f0).log2();
+        assert!(cents.abs() < 10.0, "clipped note read {cents:.1} cents off");
+    }
+
+    /// The lowered silence gate must not turn broadband noise into a note: the
+    /// clarity threshold, not the level gate, is what rejects noise.
+    #[test]
+    fn low_level_noise_reports_no_pitch() {
+        let sr = 48_000.0;
+        let mut det = TunerDetector::new(sr);
+        let tuner = Tuner::new();
+        // Uniform white noise at about −60 dBFS RMS — well above the gate.
+        let mut seed = 0x1234_5678u32;
+        let block: Vec<f32> = (0..(sr as usize / 5))
+            .map(|_| {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                ((seed >> 8) as f32 / 16_777_216.0 - 0.5) * 0.0035
+            })
+            .collect();
+        det.process(&block, &tuner);
+        assert_eq!(tuner.freq.load(Relaxed), 0.0);
     }
 
     /// The Goertzel spectrum must peak at the bin nearest the played tone.
