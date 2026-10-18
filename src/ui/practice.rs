@@ -1835,7 +1835,7 @@ impl PracticeUi {
                 ));
             }
         }
-        self.render_tracks(f, tracks_row, practice, focused, hits);
+        self.render_tracks(f, tracks_row, practice, hits);
         self.render_hint(f, hint_row, focused);
     }
 
@@ -2039,14 +2039,7 @@ impl PracticeUi {
         f.render_widget(Paragraph::new(Line::from(transport)), area);
     }
 
-    fn render_tracks(
-        &self,
-        f: &mut Frame,
-        area: Rect,
-        practice: &Practice,
-        focused: bool,
-        hits: &mut HitMap,
-    ) {
+    fn render_tracks(&self, f: &mut Frame, area: Rect, practice: &Practice, hits: &mut HitMap) {
         let tracks = self.session.tracks();
         if tracks.is_empty() {
             // Even with nothing to draw, keep the gutter divider and the
@@ -2156,6 +2149,7 @@ impl PracticeUi {
 
         let live_guard = self.live_peaks.as_ref().and_then(|m| m.try_lock().ok());
         let axis = self.seek_axis(area, practice);
+        let pos_col = playhead_col(position, view_start, view_len, axis.wave_w);
         let mut y = area.y;
         for (i, row_h) in rows {
             let row_h = row_h.min(area.bottom().saturating_sub(y) as usize);
@@ -2167,7 +2161,7 @@ impl PracticeUi {
                 (Some(rid), Some(lp)) if rid == track.id => Some(lp),
                 _ => None,
             };
-            let focused_row = focused && selected_idx == Some(i);
+            let selected_row = selected_idx == Some(i);
             let rect = Rect {
                 x: area.x,
                 y,
@@ -2188,18 +2182,34 @@ impl PracticeUi {
                     HitTarget::TimelineSeek(axis),
                 ));
             }
-            let lines = self.track_lines(
-                track,
-                focused_row,
-                practice,
-                position,
-                view_start,
-                view_len,
-                width,
-                live,
-                row_h,
+            let mut lines = self.track_lines(
+                track, practice, position, view_start, view_len, width, live, row_h,
             );
+            if !selected_row {
+                // The selected row keeps full brightness; every other row is
+                // dimmed so the selection reads at a glance without a cursor.
+                let dim = Style::default().add_modifier(Modifier::DIM);
+                lines = lines
+                    .into_iter()
+                    .map(|line| line.patch_style(dim))
+                    .collect();
+            }
             f.render_widget(Paragraph::new(lines), rect);
+            // Keep the playhead readable on a dimmed row: redraw its column in
+            // the hot colour, clearing the row's dim modifier.
+            if let Some(col) = pos_col {
+                let x = axis.x0 + col as u16;
+                if x < rect.right() {
+                    let style = Style::default()
+                        .fg(theme().hot)
+                        .add_modifier(Modifier::BOLD)
+                        .remove_modifier(Modifier::DIM);
+                    let buf = f.buffer_mut();
+                    for row_y in rect.y..rect.bottom() {
+                        buf[(x, row_y)].set_symbol("│").set_style(style);
+                    }
+                }
+            }
             y += row_h as u16;
         }
     }
@@ -2211,7 +2221,6 @@ impl PracticeUi {
     fn track_lines<'a>(
         &self,
         track: &crate::session::Track,
-        focused: bool,
         practice: &Practice,
         position: usize,
         view_start: usize,
@@ -2238,7 +2247,7 @@ impl PracticeUi {
             ),
         };
         let recording = matches!(track.lifecycle, TrackLifecycle::Recording);
-        let header = self.row_header(track, focused, loaded || recording);
+        let header = self.row_header(track, loaded || recording);
         let blank = Line::from(vec![
             Span::raw(" ".repeat(GUTTER - 1)),
             Span::styled("│", divider_style()),
@@ -2272,8 +2281,7 @@ impl PracticeUi {
             practice.loop_start.load(Relaxed) as usize,
             practice.loop_end.load(Relaxed) as usize,
         );
-        let pos_col = (position >= view_start && position < view_start + view_len)
-            .then(|| (position - view_start) * wave_w.saturating_sub(1) / view_len.max(1));
+        let pos_col = playhead_col(position, view_start, view_len, wave_w);
         let mid = height / 2;
         let glyphs = self.wave_glyphs;
         let cols = glyphs.cols();
@@ -2387,15 +2395,11 @@ impl PracticeUi {
         out
     }
 
-    /// Fixed-width left gutter (see [`GUTTER`]): cursor, LED, tag, `uncal`
-    /// flag, name, gain. Kept a constant width so every row's waveform — and the
-    /// ruler — share one column grid.
-    fn row_header<'a>(
-        &self,
-        track: &crate::session::Track,
-        focused: bool,
-        active: bool,
-    ) -> Vec<Span<'a>> {
+    /// Fixed-width left gutter (see [`GUTTER`]): LED, tag, `uncal` flag, name,
+    /// gain. Kept a constant width so every row's waveform — and the ruler —
+    /// share one column grid. Selection is conveyed by row brightness, so the
+    /// leading cell is a plain spacer.
+    fn row_header<'a>(&self, track: &crate::session::Track, active: bool) -> Vec<Span<'a>> {
         let (tag, tag_color) = match track.kind {
             TrackKind::Import => ("IMP ", theme().chrome),
             TrackKind::RawTake => ("TAKE", theme().chrome),
@@ -2415,10 +2419,7 @@ impl PracticeUi {
         let name_w = 13usize;
         let gain = format!("{:>3}%", (track.gain * 100.0).round() as i32);
         vec![
-            Span::styled(
-                if focused { "▌" } else { " " }.to_owned(),
-                Style::default().fg(theme().accent),
-            ),
+            Span::raw(" "),
             led,
             Span::styled(tag.to_owned(), Style::default().fg(tag_color)),
             Span::styled(
@@ -3225,6 +3226,19 @@ fn centered_box(width: u16, height: u16, area: Rect) -> Rect {
     }
 }
 
+/// Waveform column for `position`, relative to the plot's left edge, or `None`
+/// when the playhead sits outside the visible window. Shared by the row
+/// renderer and the post-dim playhead overdraw so they cannot disagree.
+fn playhead_col(
+    position: usize,
+    view_start: usize,
+    view_len: usize,
+    wave_w: usize,
+) -> Option<usize> {
+    (wave_w > 0 && position >= view_start && position < view_start + view_len)
+        .then(|| (position - view_start) * wave_w.saturating_sub(1) / view_len.max(1))
+}
+
 fn shade(c: Color, factor: f32) -> Color {
     match c {
         Color::Rgb(r, g, b) => Color::Rgb(
@@ -3782,6 +3796,158 @@ mod tests {
             assert!(text.contains("0.2"), "ruler tick missing under {zoom:?}");
             let braille = text.chars().any(|c| ('\u{2800}'..='\u{28FF}').contains(&c));
             assert!(braille, "braille waveform missing under {zoom:?}");
+        }
+    }
+
+    /// Selection is shown by brightness, not a cursor: the selected track keeps
+    /// the normal colors for its whole row while every other row is dimmed. It
+    /// stays that way whether or not the pane owns focus, and the old left-edge
+    /// `▌` cursor is gone.
+    #[test]
+    fn selected_track_is_bright_and_other_rows_are_dimmed() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut ui = PracticeUi::new();
+        let practice = Practice::new();
+        for id in 1..=2u64 {
+            let (asset, kind) = ready(&format!("{id}.wav"));
+            ui.session.push(
+                id,
+                format!("t{id}"),
+                kind,
+                asset,
+                0,
+                48_000,
+                TrackLifecycle::Ready,
+            );
+            ui.session.track_mut(id).expect("track").peaks = vec![(-0.5, 0.5); 64];
+        }
+        // From the transport row, the first move selects the first track.
+        ui.move_selection(true);
+        assert_eq!(ui.selection, Selection::Track(1), "first track is selected");
+
+        let mut term = Terminal::new(TestBackend::new(90, 12)).expect("test backend");
+        for focused in [true, false] {
+            let mut hits: HitMap = HitMap::new();
+            term.draw(|f| {
+                let area = f.area();
+                ui.render(f, area, &practice, focused, false, false, &mut hits);
+            })
+            .expect("draw");
+            let buf = term.backend().buffer();
+            let row = |id| {
+                hits.iter()
+                    .find_map(|(r, t)| {
+                        matches!(t, HitTarget::TimelineTrack(track) if *track == id).then_some(*r)
+                    })
+                    .unwrap_or_else(|| panic!("no row rect for track {id}"))
+            };
+            let (selected, other) = (row(1), row(2));
+            assert_ne!(selected.y, other.y, "rows must not overlap");
+            for y in selected.y..selected.bottom() {
+                for x in selected.x..selected.right() {
+                    assert!(
+                        !buf[(x, y)].modifier.contains(Modifier::DIM),
+                        "selected row dimmed at {x},{y} (focused={focused})"
+                    );
+                }
+            }
+            // The playhead column is the one cell that must survive the fade:
+            // it marks where the transport is, so it stays hot on every row.
+            let (view_start, view_len) = ui.view(&practice);
+            let wave_w = other.width as usize - GUTTER;
+            let pos_col =
+                (practice.position() - view_start) * wave_w.saturating_sub(1) / view_len.max(1);
+            let playhead_x = other.x + GUTTER as u16 + pos_col as u16;
+            for y in other.y..other.bottom() {
+                for x in other.x..other.right() {
+                    let cell = &buf[(x, y)];
+                    if x == playhead_x {
+                        assert_eq!(cell.symbol(), "│", "playhead glyph at {x},{y}");
+                        assert!(
+                            cell.modifier.contains(Modifier::BOLD),
+                            "playhead not bold at {x},{y} (focused={focused})"
+                        );
+                        assert!(
+                            !cell.modifier.contains(Modifier::DIM),
+                            "playhead dimmed at {x},{y} (focused={focused})"
+                        );
+                    } else {
+                        assert!(
+                            cell.modifier.contains(Modifier::DIM),
+                            "unselected row bright at {x},{y} (focused={focused})"
+                        );
+                    }
+                }
+            }
+            assert!(
+                !screen_text(&term).contains('▌'),
+                "the old edge cursor is still drawn"
+            );
+        }
+    }
+
+    /// With the transport row selected there is no focused track, so every
+    /// track row dims — the absence of a bright row is the "no selection" cue.
+    #[test]
+    fn transport_selection_dims_every_track_row() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut ui = PracticeUi::new();
+        let practice = Practice::new();
+        for id in 1..=2u64 {
+            let (asset, kind) = ready(&format!("{id}.wav"));
+            ui.session.push(
+                id,
+                format!("t{id}"),
+                kind,
+                asset,
+                0,
+                48_000,
+                TrackLifecycle::Ready,
+            );
+            ui.session.track_mut(id).expect("track").peaks = vec![(-0.5, 0.5); 64];
+        }
+        ui.selection = Selection::Transport;
+
+        let mut term = Terminal::new(TestBackend::new(90, 12)).expect("test backend");
+        let mut hits: HitMap = HitMap::new();
+        term.draw(|f| {
+            let area = f.area();
+            ui.render(f, area, &practice, true, false, false, &mut hits);
+        })
+        .expect("draw");
+        let buf = term.backend().buffer();
+        let (view_start, view_len) = ui.view(&practice);
+        for id in 1..=2u64 {
+            let row = hits
+                .iter()
+                .find_map(|(r, t)| {
+                    matches!(t, HitTarget::TimelineTrack(track) if *track == id).then_some(*r)
+                })
+                .expect("row rect");
+            let wave_w = row.width as usize - GUTTER;
+            let pos_col = playhead_col(practice.position(), view_start, view_len, wave_w)
+                .expect("playhead is in view");
+            let playhead_x = row.x + GUTTER as u16 + pos_col as u16;
+            for y in row.y..row.bottom() {
+                for x in row.x..row.right() {
+                    let cell = &buf[(x, y)];
+                    if x == playhead_x {
+                        assert!(
+                            !cell.modifier.contains(Modifier::DIM),
+                            "playhead dimmed at {x},{y} with no track selected"
+                        );
+                    } else {
+                        assert!(
+                            cell.modifier.contains(Modifier::DIM),
+                            "track {id} stayed bright at {x},{y} with no track selected"
+                        );
+                    }
+                }
+            }
         }
     }
 
