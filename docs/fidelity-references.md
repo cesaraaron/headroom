@@ -79,11 +79,11 @@ always explicit (deterministic loading); every bundled preset sets `master`
 | `eagles_hotel_california_clean` | fender | fender | gate, comp, eq, chorus, delay, reverb | digital, 0.42 | off |
 | `eagles_hotel_california_solo` | tweed | tweed | gate, delay, reverb | digital, 0.40 | off |
 | `led_zeppelin_stairway_solo` | supro | supro | gate, comp, ts, preeq, eq, delay, reverb | digital (default), 0.26 | off |
-| `pink_floyd_comfortably_numb_solo_1` | hiwatt | wem | gate, comp, fuzz, flanger, delay, reverb | tape, 0.88 | Big Muff |
-| `pink_floyd_comfortably_numb_solo_2` | hiwatt | wem | gate, comp, fuzz, flanger, delay, reverb | tape, 0.90 | Big Muff |
+| `pink_floyd_comfortably_numb_solo_1` | hiwatt | wem | gate, comp, fuzz, flanger, delay, reverb | digital, 0.88 | Big Muff |
+| `pink_floyd_comfortably_numb_solo_2` | hiwatt | wem | gate, comp, fuzz, flanger, delay, reverb | digital, 0.90 | Big Muff |
 | `pink_floyd_mother_solo` | hiwatt | wem | gate, comp, delay, reverb | tape, 0.55 | off |
-| `pink_floyd_time_chorus` | hiwatt | wem | gate, vibe, delay, reverb | tape, 0.75 | off |
-| `pink_floyd_time_solo` | hiwatt | wem | gate, comp, fuzz, vibe, delay, reverb | tape, 0.62 | Fuzz Face |
+| `pink_floyd_time_chorus` | hiwatt | wem | gate, vibe, delay, reverb | Echorec, 0.75 | off |
+| `pink_floyd_time_solo` | hiwatt | wem | gate, comp, fuzz, vibe, delay, reverb | Echorec, 0.62 | Fuzz Face |
 
 ### Description-vs-path flags
 
@@ -94,8 +94,8 @@ both reproduced so the flag is auditable.
 | Preset | Claimed | Actual enabled path | Flag |
 | ------ | ------- | ------------------- | ---- |
 | `led_zeppelin_stairway_solo` | "cranked small-amp crunch"; site "Echoplex slap" | Plexi + Greenback 4×12; tape-echo field **absent** so the delay resolves to **digital ping-pong** | **Resolved (Phase 5):** rebuilt on the Supro 1×10 combo, TS-808 removed. |
-| `pink_floyd_*` (Echorec) | "Echorec repeat/delay" | dedicated **Binson Echorec** delay mode (`type = 0.5`) since Phase 4 | **Resolved (Phase 4):** the multi-head drum-echo mode replaces the tape stand-in. |
-| `pink_floyd_comfortably_numb_*` | "Electric Mistress" | dedicated **Electric Mistress** mode (`flanger type = 1.0`, mono + filter matrix) since Phase 4 | **Resolved (Phase 4).** |
+| `pink_floyd_time_*` (Echorec) | "tape echo"/"tape repeat" | dedicated **Binson Echorec** delay mode (`type = 0.5`) since Phase 4 | **Resolved (Phase 4):** intentional stand-in. The Numb studio pair now uses the digital delay instead (2026-10-18, see below). |
+| `pink_floyd_comfortably_numb_*` | "Electric Mistress" | dedicated **Electric Mistress** mode (`flanger type = 1.0`, mono + filter matrix) since Phase 4 | **Resolved (Phase 4).** The Mistress remains contested for the studio take; see the 2026-10-18 note. |
 
 ---
 
@@ -196,6 +196,16 @@ both reproduced so the flag is auditable.
   EQ/compression; the two-EQ stack in the presets may be compensating. The DSP
   now has a dedicated Echorec drum-echo mode (Phase 4); double-tracking and
   studio EQ remain outside a single preset.
+- **2026-10-18 studio-delay note:** the two `comfortably_numb` presets moved
+  from the Echorec (`type = 0.5`) to the digital delay (`type = 0.0`). Guitar.com's
+  *The Wall* gear survey lists an **MXR Digital Delay System I**; Reverb's Numb
+  guide lists a **TC 2290** (370 ms, low mix, 3–4 repeats); the Binson Echorec
+  belongs to the pre-1977 Floyd rigs. A/B confirmed the digital repeat was
+  closer to the record. The same guide calls the **Yamaha RA-200** the studio's
+  “secret sauce” (mixed very low) and says the **Electric Mistress** is contested
+  for the album solo, with a CE-2 as the closest pedal emulation — so the Numb
+  flanger mix and the missing rotary approximation remain open. Full notes:
+  [`research/2026-10-18-comfortably-numb-tone.md`](research/2026-10-18-comfortably-numb-tone.md).
 
 ### `guns_n_roses_november_rain_solo.toml` *(retired)*
 

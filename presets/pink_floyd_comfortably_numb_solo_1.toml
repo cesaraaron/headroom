@@ -1,5 +1,5 @@
 name        = "Pink Floyd — Comfortably Numb (Solo 1)"
-description = "Inspired by the first 'Comfortably Numb' solo (The Wall, 1979): a Big Muff-style fuzz into a Hiwatt DR103 and Fane-loaded WEM 4×12, a hint of flanger and a long tape echo. Bright and vocal. Not a verified session rig."
+description = "Inspired by the first 'Comfortably Numb' solo (The Wall, 1979): a Big Muff-style fuzz into a Hiwatt DR103 and Fane-loaded WEM 4×12, a hint of flanger and a clean digital delay. Bright and vocal. Not a verified session rig."
 tags        = ["pink floyd", "lead", "classic rock"]
 year        = 1979
 
@@ -110,10 +110,11 @@ mix      = 0.20
 type     = 1.0   # Electric Mistress (mono)
 
 # ── Delay ─────────────────────────────────────────────────────────────────────
-# Echorec repeat: a long ~440 ms echo sitting behind the phrase. Low
-# feedback and mix keep it a dimension, not a fog.
+# Digital delay, ~440 ms: the studio sources point to an MXR/TC digital unit,
+# not a Binson. One clean repeat behind the phrase keeps the note articulate.
+# Low feedback and mix keep it a dimension, not a fog.
 [delay]
-type     = 0.5   # Echorec drum echo
+type     = 0.0   # Digital ping-pong
 enabled  = true
 time     = 0.88
 feedback = 0.30
