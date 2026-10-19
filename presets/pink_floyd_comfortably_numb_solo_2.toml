@@ -1,5 +1,5 @@
 name        = "Pink Floyd — Comfortably Numb (Outro Solo)"
-description = "Inspired by the outro 'Comfortably Numb' solo (The Wall, 1979): a Big Muff into a Hiwatt DR103 and Fane-loaded WEM 4×12, a low-mix chorus standing in for the Yamaha RA-200, a tight pre-fuzz low cut, digital repeats and a big hall. Voiced with a full bridge humbucker. Not a verified session rig."
+description = "Inspired by the outro 'Comfortably Numb' solo (The Wall, 1979): a Big Muff into a harder-driven Hiwatt DR103 and Fane-loaded WEM 4×12, a low-mix chorus standing in for the Yamaha RA-200, a tight pre-fuzz low cut, digital repeats and a big hall. Voiced with a full bridge humbucker. Not a verified session rig."
 tags        = ["pink floyd", "lead", "classic rock"]
 year        = 1979
 
@@ -20,13 +20,13 @@ attack  = 0.42
 level   = 0.52
 
 # ── Big Muff (Fuzz) ───────────────────────────────────────────────────────────
-# 2026-10-18: fuzz stays at 0.38. The low-end fix is the pre-EQ cut below, not
-# less fuzz or a boost — those added saturation on top of the already-saturated
-# Muff. Keep the drive; stop the lows reaching the clipper.
+# 2026-10-19 less-fuzz/more-drive pass: fuzz 0.38 → 0.30. The Hiwatt gain below
+# takes over the drive, so the note stays clear instead of piling more fuzz on
+# an already-saturated Muff. The pre-EQ cut keeps the humbucker's lows dry.
 [fuzz]
 enabled = true
 type    = 0.0   # 0 = Big Muff (the Ram's-Head voice)
-fuzz  = 0.38
+fuzz  = 0.30
 tone  = 0.60
 level = 0.45
 
@@ -62,13 +62,13 @@ mix     = 0.0
 mode    = 0.0
 
 # ── Amp ───────────────────────────────────────────────────────────────────────
-# 2026-10-13 drive pass: gain 0.40 → 0.48 pushes the Hiwatt preamp harder
-# (the Gilmour trick is a loud clean amp hit by pedals — this is the amp half
-# of that). Bass 0.20 → 0.15 in the 2026-10-18 clarity pass; the pre-EQ does
-# the low-end work.
+# Hiwatt DR103: gain 0.48 → 0.54 in the 2026-10-19 less-fuzz/more-drive pass.
+# The amp supplies the extra drive while the Muff stays clear (the Gilmour
+# trick — a loud clean-ish amp hit by pedals). Bass 0.15; the pre-EQ handles
+# the lows.
 [amp]
 model  = "hiwatt"
-gain   = 0.48
+gain   = 0.54
 bass   = 0.15
 mid    = 0.28
 treble = 0.65

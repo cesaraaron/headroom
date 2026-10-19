@@ -208,8 +208,11 @@ both reproduced so the flag is auditable.
   bass (0.20 → 0.15), while keeping the original fuzz settings. The cleaner
   C2/C3 variants (less fuzz, or a clean boost) added saturation on top of an
   already-saturated Muff; C1 — same fuzz, stronger pre-fuzz cut — won on both
-  solos. The pair is voiced for a full bridge humbucker; the record's
-  single-coil bridge is inherently tighter. Full notes:
+  solos. A further less-fuzz/more-drive pass then moved fuzz 0.34/0.38 →
+  0.26/0.30 and Hiwatt gain 0.34/0.48 → 0.40/0.54, keeping the C1 low cut and
+  no boost; the amp supplies the extra drive. The pair is voiced for a full
+  bridge humbucker; the record's single-coil bridge is inherently tighter.
+  Full notes:
   [`research/2026-10-18-comfortably-numb-tone.md`](research/2026-10-18-comfortably-numb-tone.md).
 
 ### `guns_n_roses_november_rain_solo.toml` *(retired)*

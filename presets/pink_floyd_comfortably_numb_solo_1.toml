@@ -1,5 +1,5 @@
 name        = "Pink Floyd — Comfortably Numb (Solo 1)"
-description = "Inspired by the first 'Comfortably Numb' solo (The Wall, 1979): a Big Muff into a Hiwatt DR103 and Fane-loaded WEM 4×12, a low-mix chorus standing in for the Yamaha RA-200, a tight pre-fuzz low cut and a digital delay. Voiced with a full bridge humbucker. Not a verified session rig."
+description = "Inspired by the first 'Comfortably Numb' solo (The Wall, 1979): a Big Muff into a harder-driven Hiwatt DR103 and Fane-loaded WEM 4×12, a low-mix chorus standing in for the Yamaha RA-200, a tight pre-fuzz low cut and a digital delay. Voiced with a full bridge humbucker. Not a verified session rig."
 tags        = ["pink floyd", "lead", "classic rock"]
 year        = 1979
 
@@ -20,13 +20,13 @@ attack  = 0.36
 level   = 0.52
 
 # ── Big Muff (Fuzz) ───────────────────────────────────────────────────────────
-# 2026-10-18: fuzz stays at 0.34. The low-end fix is the pre-EQ cut below, not
-# less fuzz or a boost — those added saturation on top of the already-saturated
-# Muff. Keep the drive; stop the lows reaching the clipper.
+# 2026-10-19 less-fuzz/more-drive pass: fuzz 0.34 → 0.26. The Hiwatt gain below
+# takes over the drive, so the note stays clear instead of piling more fuzz on
+# an already-saturated Muff. The pre-EQ cut keeps the humbucker's lows dry.
 [fuzz]
 enabled = true
 type    = 0.0   # 0 = Big Muff (the Ram's-Head voice)
-fuzz  = 0.34
+fuzz  = 0.26
 tone  = 0.68
 level = 0.42
 
@@ -61,12 +61,12 @@ mix     = 0.0
 mode    = 0.0
 
 # ── Amp ───────────────────────────────────────────────────────────────────────
-# Hiwatt DR103 at modest gain: enough to bloom and sing, with headroom so the
-# Muff is a voice, not the whole sound. Bass 0.20 → 0.15 in the 2026-10-18
-# clarity pass; the pre-EQ does the low-end work.
+# Hiwatt DR103: gain 0.34 → 0.40 in the 2026-10-19 less-fuzz/more-drive pass.
+# The amp supplies the extra drive while the Muff stays clear. Bass 0.15; the
+# pre-EQ does the low-end work.
 [amp]
 model  = "hiwatt"
-gain   = 0.34
+gain   = 0.40
 bass   = 0.15
 mid    = 0.30
 treble = 0.62
