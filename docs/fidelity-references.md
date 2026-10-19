@@ -79,8 +79,8 @@ always explicit (deterministic loading); every bundled preset sets `master`
 | `eagles_hotel_california_clean` | fender | fender | gate, comp, eq, chorus, delay, reverb | digital, 0.42 | off |
 | `eagles_hotel_california_solo` | tweed | tweed | gate, delay, reverb | digital, 0.40 | off |
 | `led_zeppelin_stairway_solo` | supro | supro | gate, comp, ts, preeq, eq, delay, reverb | digital (default), 0.26 | off |
-| `pink_floyd_comfortably_numb_solo_1` | hiwatt | wem | gate, comp, fuzz, preeq, boost, chorus, delay, reverb | digital, 0.88 | Big Muff |
-| `pink_floyd_comfortably_numb_solo_2` | hiwatt | wem | gate, comp, fuzz, preeq, boost, chorus, delay, reverb | digital, 0.90 | Big Muff |
+| `pink_floyd_comfortably_numb_solo_1` | hiwatt | wem | gate, comp, fuzz, preeq, chorus, delay, reverb | digital, 0.88 | Big Muff |
+| `pink_floyd_comfortably_numb_solo_2` | hiwatt | wem | gate, comp, fuzz, preeq, chorus, delay, reverb | digital, 0.90 | Big Muff |
 | `pink_floyd_mother_solo` | hiwatt | wem | gate, comp, delay, reverb | tape, 0.55 | off |
 | `pink_floyd_time_chorus` | hiwatt | wem | gate, vibe, delay, reverb | Echorec, 0.75 | off |
 | `pink_floyd_time_solo` | hiwatt | wem | gate, comp, fuzz, vibe, delay, reverb | Echorec, 0.62 | Fuzz Face |
@@ -203,12 +203,13 @@ both reproduced so the flag is auditable.
   closer to the record. The same guide calls the **Yamaha RA-200** the studio's
   “secret sauce” (mixed very low) and says the **Electric Mistress** is contested
   for the album solo, with a CE-2 as the closest pedal emulation. A follow-up
-  modulation/low-end pass therefore replaced the Mistress with a low-mix chorus
-  (RA-200 stand-in), added a Power-Boost-style clean boost (+3.6 dB, bass shelf
-  cut), reduced fuzz 0.34/0.38 → 0.22/0.26, deepened the pre-amp low cut
-  (0.35 → 0.20) and lowered the amp bass (0.20 → 0.15). The pair is voiced for a
-  full bridge humbucker; the record's single-coil bridge is inherently tighter.
-  Full notes:
+  modulation/low-end pass replaced the Mistress with a low-mix chorus (RA-200
+  stand-in), deepened the pre-amp low cut (0.35 → 0.15) and lowered the amp
+  bass (0.20 → 0.15), while keeping the original fuzz settings. The cleaner
+  C2/C3 variants (less fuzz, or a clean boost) added saturation on top of an
+  already-saturated Muff; C1 — same fuzz, stronger pre-fuzz cut — won on both
+  solos. The pair is voiced for a full bridge humbucker; the record's
+  single-coil bridge is inherently tighter. Full notes:
   [`research/2026-10-18-comfortably-numb-tone.md`](research/2026-10-18-comfortably-numb-tone.md).
 
 ### `guns_n_roses_november_rain_solo.toml` *(retired)*

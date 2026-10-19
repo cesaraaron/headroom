@@ -205,26 +205,27 @@ and `chorus enabled = true, rate 0.45, depth 0.50, mix 0.12` — a slow, low-mix
 RA-200 stand-in. The Mistress stays in the file disabled for the live/Pulse
 flavor.
 
-**Low-end clarity: C2 clean-boost path shipped.** On the M3 base, three clarity
+**Low-end clarity: C1 tight-lows path shipped.** On the M3 base, three clarity
 paths were A/B'd:
 
-- C1 tight lows: pre-amp low 0.15, amp bass 0.15.
+- C1 tight lows: pre-amp low 0.15, amp bass 0.15, fuzz unchanged (0.34/0.38).
 - C2 clean boost: pre-amp low 0.20, fuzz 0.22/0.26, clean boost +3.6 dB with
   bass shelf −3.6 dB, amp bass 0.15.
 - C3 dry + no comp: pre-amp low 0.20, compressor off, delay/reverb lower.
 
-The maintainer ranked **C2 = C1 > C3 ≫ the rest**, so C2 was promoted: it keeps
-the drive via the linear Power-Boost-style stage instead of adding fuzz to the
-low end. C1 is kept as a user-preset alternate. Final Numb values: fuzz
-0.22/0.26, pre-amp low 0.20, amp bass 0.15, boost 0.15/0.50/0.35, chorus
-0.45/0.50/0.12, digital delay unchanged.
+An initial pass ranked **C2 = C1 > C3**, and C2 was promoted first. A second
+listen on both solos reversed that: C2 and C3 **added saturation on top of an
+already-saturated Muff**, while C1 kept the original drive and simply stopped
+the lows reaching the clipper. C1 is now the shipped preset on both solos.
+Final Numb values: fuzz 0.34/0.38, pre-amp low 0.15 (−8.4 dB @ 100 Hz), amp
+bass 0.15, no boost, chorus 0.45/0.50/0.12, digital delay unchanged.
 
 **Why the low end needed this:** the maintainer plays a Donner DST-150/152 HSS
 with the full bridge humbucker (not split). The record's Black Strat bridge was
 a single coil (SSL-1C/SSL-5 or DiMarzio FS-1, sources disagree), which is
 inherently tighter in the lows. The humbucker feeds the Big Muff's clippers
-much harder at 100–200 Hz; the pre-fuzz cut and lower fuzz keep that from
-turning to mush. The clean boost, not more fuzz, supplies the remaining push.
+much harder at 100–200 Hz; the strong pre-fuzz cut keeps that from turning to
+mush without adding another gain stage.
 
 ## Remaining experiments
 
