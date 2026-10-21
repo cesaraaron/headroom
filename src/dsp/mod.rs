@@ -803,6 +803,10 @@ pub struct Params {
     /// Rig master output, normalized 0.0-1.0. See [`DEFAULT_MASTER_OUTPUT`].
     pub master_output: Arc<AtomicF32>,
 
+    /// Live mains-hum floor injected at the chain input. Runtime-only: `F4`
+    /// toggles it for A/B and it is not stored in presets or sessions.
+    pub hum_enabled: Arc<AtomicBool>,
+
     /// MIDI-clock tempo surfaced by the UI (`0.0` = no clock running). Written by
     /// the MIDI thread when clock sync is enabled; read-only everywhere else.
     pub midi_clock_bpm: Arc<AtomicF32>,
@@ -1029,6 +1033,7 @@ impl Params {
             mic_room: p!(DEFAULT_MIC_ROOM),
             master_width: p!(DEFAULT_MASTER_WIDTH),
             master_output: p!(DEFAULT_MASTER_OUTPUT),
+            hum_enabled: b!(DEFAULT_HUM_ENABLED),
             midi_clock_bpm: p!(0.0),
             cab_external_active: b!(DEFAULT_CAB_EXTERNAL_ACTIVE),
             cab_external_loaded: b!(false),
@@ -1172,6 +1177,7 @@ impl Params {
         self.mic_room.store(DEFAULT_MIC_ROOM, Relaxed);
         self.master_width.store(DEFAULT_MASTER_WIDTH, Relaxed);
         self.master_output.store(DEFAULT_MASTER_OUTPUT, Relaxed);
+        self.hum_enabled.store(DEFAULT_HUM_ENABLED, Relaxed);
         // Fall back to the built-in cab. The loaded IR (if any) stays installed in
         // the chain — only its active/inactive selection is a default-able param.
         self.cab_external_active
@@ -1580,6 +1586,8 @@ struct BlockRoute {
     width: f32,
     /// Frozen once per block alongside `width`. See [`master_output_gain`].
     output: f32,
+    /// Mains-hum floor enabled for this block (`F4` A/B toggle).
+    hum: bool,
 }
 
 /// Built-in↔AU declick fade time. Long enough to smooth a waveform step, short
@@ -1596,6 +1604,10 @@ pub(crate) const BYPASS_DECLICK_SECS: f32 = 0.006;
 /// default threshold (~−64 dB) so enabling the gate nulls it without touching the
 /// threshold; the gain stages still amplify it to an audible floor when ungated.
 const HUM_LEVEL: f32 = 0.0002;
+
+/// The mains-hum floor is on by default so a silent input behaves like a real amp.
+/// `F4` flips it live for A/B; it is deliberately runtime-only (not a preset field).
+pub const DEFAULT_HUM_ENABLED: bool = true;
 
 /// A quiet mains-hum floor, injected at the **chain input** so the gain stages
 /// amplify it the way a real amp does *and* the noise gate (the first stage) can null
@@ -1837,8 +1849,10 @@ impl DspChain {
     #[inline]
     fn process_core(&mut self, sample: f32, route: &BlockRoute) -> (f32, f32) {
         // Inject the hum floor at the chain input so the gate (first stage by
-        // default) sees it, and every stage amplifies it like a real amp.
-        let x = sample + self.hum.next();
+        // default) sees it, and every stage amplifies it like a real amp. The
+        // phasor advances even when muted so toggling it back on cannot click.
+        let hum = self.hum.next();
+        let x = if route.hum { sample + hum } else { sample };
         self.run_full(x, route)
     }
 
@@ -1863,6 +1877,7 @@ impl DspChain {
             skip_cab: use_ext_amp && !amp_only,
             width: p.master_width.load(Relaxed),
             output: master_output_gain(p.master_output.load(Relaxed)),
+            hum: p.hum_enabled.load(Relaxed),
         }
     }
 
@@ -2330,7 +2345,8 @@ impl DspChain {
             // block-based plugin.
             for ((&x, l), r) in input.iter().zip(out_l.iter_mut()).zip(out_r.iter_mut()) {
                 // Same hum injection as the built-in path (`process_core`).
-                let x = x + self.hum.next();
+                let hum = self.hum.next();
+                let x = if route.hum { x + hum } else { x };
                 let pre = self
                     .run_range(Sig::Mono(x), &route.order[..amp_idx], &route)
                     .into_mono();
@@ -2711,6 +2727,24 @@ mod tests {
         assert!(
             gated < floor * 0.02,
             "gate did not null the hum: {gated:.2e} vs floor {floor:.2e}"
+        );
+    }
+
+    /// The live hum toggle must silence the floor completely, not just lower it.
+    /// With a silent input and the gate off, a disabled hum leaves bit-exact zero.
+    #[test]
+    fn hum_toggle_can_silence_the_floor() {
+        let sr = 48_000.0;
+        let p = Arc::new(Params::new());
+        p.hum_enabled.store(false, Relaxed);
+        let mut chain = DspChain::new(sr, p);
+        let out: Vec<f32> = (0..48_000).map(|_| chain.process(0.0).0).collect();
+        let max = out.iter().fold(0.0f32, |m, &x| m.max(x.abs()));
+        // The chain's filters can leave numerical dust (~1e-9); the hum floor is
+        // three orders of magnitude above that.
+        assert!(
+            max < 1e-7,
+            "the hum floor survived the toggle (max {max:.2e})"
         );
     }
 

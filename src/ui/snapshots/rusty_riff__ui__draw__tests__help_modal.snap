@@ -33,6 +33,7 @@ expression: text
                                       ║  N  calibrate input level                                                                 ║                                       
                                       ║  F2  MIDI bindings: learn a controller control                                            ║                                       
                                       ║  F3  cycle the UI theme                                                                   ║                                       
+                                      ║  F4 / Ctrl+G  mains-hum floor: on / off (live A/B)                                        ║                                       
                                       ║  V  plugin browser                                                                        ║                                       
                                       ║  R  arm / stop a dry raw take (auto-plays; lands on the timeline)                         ║                                       
                                       ║Looper (monitor only)                                                                      ║                                       
@@ -54,6 +55,5 @@ expression: text
                                       ║  M  mute the selected track                                                               ║                                       
                                       ║  Enter  jump to start (loop in-point if looped)                                           ║                                       
                                       ║  ↑/↓  ←/→  select row / seek by the step                                                  ║                                       
-                                      ║  +/−  step (seek & move): 0.01/0.05/0.1/0.5/1/5/10/30 s                                   ║                                       
                                       ║                          ↑/↓  PgUp/PgDn scroll  ·  Esc / K close                          ║                                       
                                       ╚═══════════════════════════════════════════════════════════════════════════════════════════╝

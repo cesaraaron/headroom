@@ -1703,6 +1703,7 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         row("  N", "  calibrate input level"),
         row("  F2", "  MIDI bindings: learn a controller control"),
         row("  F3", "  cycle the UI theme"),
+        row("  F4 / Ctrl+G", "  mains-hum floor: on / off (live A/B)"),
     ]);
     #[cfg(feature = "clap")]
     lines.push(row("  V", "  plugin browser"));

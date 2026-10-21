@@ -1045,6 +1045,23 @@ pub fn run(
                     ));
                     continue;
                 }
+                // Mains-hum floor A/B: F4, with Ctrl+G as the fallback for
+                // terminals that eat F4. Runtime-only. The phasor keeps running
+                // when muted, so flipping it back on cannot click. Not saved to
+                // presets or sessions; it always starts on.
+                let hum_key = key.code == KeyCode::F(4)
+                    || (key.code == KeyCode::Char('g')
+                        && key.modifiers.contains(KeyModifiers::CONTROL));
+                if hum_key && !any_overlay {
+                    use std::sync::atomic::Ordering::Relaxed;
+                    let now = !params.hum_enabled.load(Relaxed);
+                    params.hum_enabled.store(now, Relaxed);
+                    save_msg = Some((
+                        format!("Mains hum: {}", if now { "on" } else { "off" }),
+                        std::time::Instant::now(),
+                    ));
+                    continue;
+                }
 
                 // Unsaved-changes prompt: block the quit or session change until
                 // the user chooses save, discard, or cancel.
