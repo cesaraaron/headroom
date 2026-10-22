@@ -79,8 +79,8 @@ always explicit (deterministic loading); every bundled preset sets `master`
 | `eagles_hotel_california_clean` | fender | fender | gate, comp, eq, chorus, delay, reverb | digital, 0.42 | off |
 | `eagles_hotel_california_solo` | tweed | tweed | gate, delay, reverb | digital, 0.40 | off |
 | `led_zeppelin_stairway_solo` | supro | supro | gate, comp, ts, preeq, eq, delay, reverb | digital (default), 0.26 | off |
-| `pink_floyd_comfortably_numb_solo_1` | hiwatt | wem | gate, comp, fuzz, preeq, chorus, delay, reverb | digital, 0.88 | Big Muff |
-| `pink_floyd_comfortably_numb_solo_2` | hiwatt | wem | gate, comp, fuzz, preeq, chorus, delay, reverb | digital, 0.90 | Big Muff |
+| `pink_floyd_comfortably_numb_solo_1` | hiwatt | wem | gate, comp, ts, fuzz, preeq, chorus, delay, reverb | digital, 0.88 | Big Muff |
+| `pink_floyd_comfortably_numb_solo_2` | hiwatt | wem | gate, comp, ts, fuzz, preeq, chorus, delay, reverb | digital, 0.90 | Big Muff |
 | `pink_floyd_mother_solo` | hiwatt | wem | gate, comp, delay, reverb | tape, 0.55 | off |
 | `pink_floyd_time_chorus` | hiwatt | wem | gate, vibe, delay, reverb | Echorec, 0.75 | off |
 | `pink_floyd_time_solo` | hiwatt | wem | gate, comp, fuzz, vibe, delay, reverb | Echorec, 0.62 | Fuzz Face |
@@ -208,11 +208,13 @@ both reproduced so the flag is auditable.
   bass (0.20 → 0.15), while keeping the original fuzz settings. The cleaner
   C2/C3 variants (less fuzz, or a clean boost) added saturation on top of an
   already-saturated Muff; C1 — same fuzz, stronger pre-fuzz cut — won on both
-  solos. A further less-fuzz/more-drive pass then moved fuzz 0.34/0.38 →
-  0.26/0.30 and Hiwatt gain 0.34/0.48 → 0.40/0.54, keeping the C1 low cut and
-  no boost; the amp supplies the extra drive. The pair is voiced for a full
-  bridge humbucker; the record's single-coil bridge is inherently tighter.
-  Full notes:
+  solos. A further less-fuzz/more-drive pass moved fuzz 0.34/0.38 → 0.26/0.30
+  while keeping the C1 low cut. The final 2026-10-22 pass adds a low-drive
+  TS-808 **before** the Big Muff (level 0.35, drive 0.10, tone 0.50); that
+  order is empirical — Gilmour's studio rig is not documented with a TS-808 —
+  but it was clearly closer than Muff → TS on both solos. The pair is voiced
+  for a full bridge humbucker; the record's single-coil bridge is inherently
+  tighter. Full notes:
   [`research/2026-10-18-comfortably-numb-tone.md`](research/2026-10-18-comfortably-numb-tone.md).
 
 ### `guns_n_roses_november_rain_solo.toml` *(retired)*

@@ -217,14 +217,19 @@ An initial pass ranked **C2 = C1 > C3**, and C2 was promoted first. A second
 listen on both solos reversed that: C2 and C3 **added saturation on top of an
 already-saturated Muff**, while C1 kept the original drive and simply stopped
 the lows reaching the clipper. C1 is now the shipped preset on both solos.
-Final Numb values after the follow-up less-fuzz/more-drive pass: fuzz
-0.26/0.30, Hiwatt gain 0.40/0.54, pre-amp low 0.15 (−8.4 dB @ 100 Hz), amp
-bass 0.15, no boost, chorus 0.45/0.50/0.12, digital delay unchanged.
+Final Numb values after the 2026-10-22 TS-before-Muff pass: fuzz 0.26/0.30,
+Hiwatt gain 0.34/0.48, TS-808 before the fuzz (drive 0.10, tone 0.50, level
+0.35), pre-amp low 0.15 (−8.4 dB @ 100 Hz), amp bass 0.15, no boost, chorus
+0.45/0.50/0.12, digital delay unchanged.
 
-A TS-808-after-fuzz variant (D2) gave exactly the dryness the maintainer
-wanted — about −4 dB at 222 Hz and +2.7 dB at 650 Hz on Solo 1 — but its output
-was too hot and clipped. Tamed TS variants (level 0.30–0.40, drive 0.08–0.12)
-are under audition; the amp-gain path above is the shipped fallback.
+A TS-808-after-fuzz variant (D2) gave the dryness the maintainer wanted —
+about −4 dB at 222 Hz and +2.7 dB at 650 Hz on Solo 1 — but its output was too
+hot and clipped. Taming its level fixed the clipping but still lost to the
+same TS placed **before** the Muff. That order is empirical, not historical:
+Gilmour's studio rig is not documented with a TS-808, but E1-before-Muff was
+clearly closer on both solos. Offline it was ~0.14 dB quieter than TS-after,
+with a lower centroid (3007 vs 3142 Hz on Solo 1; 2754 vs 2829 Hz on the
+outro) — darker and tighter, which is the direction the record wanted.
 
 **Why the low end needed this:** the maintainer plays a Donner DST-150/152 HSS
 with the full bridge humbucker (not split). The record's Black Strat bridge was

@@ -1,5 +1,5 @@
 name        = "Pink Floyd — Comfortably Numb (Outro Solo)"
-description = "Inspired by the outro 'Comfortably Numb' solo (The Wall, 1979): a Big Muff into a harder-driven Hiwatt DR103 and Fane-loaded WEM 4×12, a low-mix chorus standing in for the Yamaha RA-200, a tight pre-fuzz low cut, digital repeats and a big hall. Voiced with a full bridge humbucker. Not a verified session rig."
+description = "Inspired by the outro 'Comfortably Numb' solo (The Wall, 1979): a TS-808 before a Big Muff into a Hiwatt DR103 and Fane-loaded WEM 4×12, a low-mix chorus standing in for the Yamaha RA-200, a tightened low end, digital repeats and a big hall. The TS-before-Muff order was chosen by ear, not from Gilmour's documented chain. Voiced with a full bridge humbucker. Not a verified session rig."
 tags        = ["pink floyd", "lead", "classic rock"]
 year        = 1979
 
@@ -20,9 +20,10 @@ attack  = 0.42
 level   = 0.52
 
 # ── Big Muff (Fuzz) ───────────────────────────────────────────────────────────
-# 2026-10-19 less-fuzz/more-drive pass: fuzz 0.38 → 0.30. The Hiwatt gain below
-# takes over the drive, so the note stays clear instead of piling more fuzz on
-# an already-saturated Muff. The pre-EQ cut keeps the humbucker's lows dry.
+# 2026-10-22: fuzz 0.38 → 0.30. The TS below now sits *before* the Muff in the
+# chain order, tightening the lows and pushing the mids into the fuzz instead
+# of piling more clipping on top of it. The TS tightens the input; the pre-EQ
+# trims what the fuzz produces.
 [fuzz]
 enabled = true
 type    = 0.0   # 0 = Big Muff (the Ram's-Head voice)
@@ -30,12 +31,17 @@ fuzz  = 0.30
 tone  = 0.60
 level = 0.45
 
-# TS off — the Muff is the only dirt.
+# ── TS-808 (before the Muff) ──────────────────────────────────────────────────
+# 2026-10-22: enabled at a low drive and moved ahead of the fuzz. The 720 Hz
+# gain shelf + low cut give the dry, mid-forward push the Muff was missing;
+# leaving it after the Muff added clipping instead. This order is empirical —
+# Gilmour's studio rig is not documented with a TS-808 — but it was clearly
+# closer on both solos.
 [tube_screamer]
-enabled = false
-drive = 0.30
-tone  = 0.55
-level = 0.70
+enabled = true
+drive = 0.10
+tone  = 0.50
+level = 0.35
 
 [distortion]
 enabled = false
@@ -44,9 +50,10 @@ tone  = 0.50
 level = 0.65
 
 # ── Pre-amp EQ ────────────────────────────────────────────────────────────────
-# 2026-10-18: low 0.35 → 0.15 (-8.4 dB @ 100 Hz). The cut now happens before
-# the Muff, so the humbucker's low end never saturates in the first place. Mid
-# 0.60 pushes the pick punch at 650 Hz (+2.4 dB) into the grind.
+# 2026-10-18: low 0.35 → 0.15 (-8.4 dB @ 100 Hz). The stage sits after the fuzz
+# and before the Hiwatt, so it trims the low end the Muff produced; the TS
+# before the fuzz does the tightening on the way in. Mid 0.60 pushes the pick
+# punch at 650 Hz (+2.4 dB) into the grind.
 [preamp_eq]
 enabled = true
 low  = 0.15
@@ -62,13 +69,12 @@ mix     = 0.0
 mode    = 0.0
 
 # ── Amp ───────────────────────────────────────────────────────────────────────
-# Hiwatt DR103: gain 0.48 → 0.54 in the 2026-10-19 less-fuzz/more-drive pass.
-# The amp supplies the extra drive while the Muff stays clear (the Gilmour
-# trick — a loud clean-ish amp hit by pedals). Bass 0.15; the pre-EQ handles
-# the lows.
+# Hiwatt DR103: the TS before the Muff supplies the push, gain 0.48 (the
+# Gilmour trick — a loud clean-ish amp hit by pedals). Bass 0.15; the pre-EQ
+# handles the lows.
 [amp]
 model  = "hiwatt"
-gain   = 0.54
+gain   = 0.48
 bass   = 0.15
 mid    = 0.28
 treble = 0.65
@@ -135,3 +141,31 @@ mix  = 0.12
 
 [master]
 width = 1.0
+
+# ── Chain order ───────────────────────────────────────────────────────────────
+# TS before the Muff (the shipped default is the other way round): the low
+# drive tightens what the fuzz sees, which A/B'd closer than Muff → TS.
+[chain]
+order = [
+    "gate",
+    "whammy",
+    "wah",
+    "comp",
+    "ts",
+    "fuzz",
+    "ds",
+    "metal",
+    "preeq",
+    "vibe",
+    "boost",
+    "amp",
+    "cab",
+    "geq",
+    "eq",
+    "flanger",
+    "chorus",
+    "phaser",
+    "trem",
+    "delay",
+    "reverb",
+]
