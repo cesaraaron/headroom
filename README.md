@@ -47,6 +47,7 @@ cargo run --release -- --opaque
 | `L` | Import library settings (path, only, subpaths) |
 | `N` | Calibrate the input level |
 | `F2` | MIDI bindings (learn a controller) |
+| `F4` / `Ctrl+G` | Toggle the mains-hum floor (live A/B) |
 | `Q` | Quit |
 
 ## Mouse

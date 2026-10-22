@@ -21,19 +21,19 @@ expression: text
 │└────────────────────────────────────║  I / X  IR browser / IR bypass                                                            ║─────────────────────────────────────┘│
 ││├───────────────────────────────────║  O  change audio devices                                                                  ║────────────────────────────────────┤││
 ││SELECT A PEDAL — ←→                 ║  W  studio-master width: neutral / wide                                                   ║                                     ││
+││                                    ║  F4 / Ctrl+G  mains-hum floor: on / off (live A/B)                                        ║                                     ││
 ││                                    ║  panel 1 master cell: ←/→ select it, ↑/↓ set the rig output                               ║                                     ││
 ││                                    ║  ;  tap tempo: set the delay time by tapping                                              ║                                     ││
 ││                                    ║  Z / U  amp-plugin bypass / browser                                                       ║                                     ││
 ││                                    ║Tools                                                                                      ║                                     ││
-││                                    ║  P  preset browser (rig snapshot)                                                         ║                                     ││
-│└────────────────────────────────────║  S  save session (asks for a name when new)                                               ║─────────────────────────────────────┘│
-└─────────────────────────────────────║  J  session browser: new / save / save as / load (/ search)                               ║──────────────────────────────────────┘
+│└────────────────────────────────────║  P  preset browser (rig snapshot)                                                         ║─────────────────────────────────────┘│
+└─────────────────────────────────────║  S  save session (asks for a name when new)                                               ║──────────────────────────────────────┘
+                                      ║  J  session browser: new / save / save as / load (/ search)                               ║                                       
                                       ║  T  chromatic tuner                                                                       ║                                       
                                       ║  M  practice metronome (+/− tempo, Space on/off)                                          ║                                       
                                       ║  N  calibrate input level                                                                 ║                                       
                                       ║  F2  MIDI bindings: learn a controller control                                            ║                                       
                                       ║  F3  cycle the UI theme                                                                   ║                                       
-                                      ║  F4 / Ctrl+G  mains-hum floor: on / off (live A/B)                                        ║                                       
                                       ║  V  plugin browser                                                                        ║                                       
                                       ║  R  arm / stop a dry raw take (auto-plays; lands on the timeline)                         ║                                       
                                       ║Looper (monitor only)                                                                      ║                                       

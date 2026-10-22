@@ -803,8 +803,9 @@ pub struct Params {
     /// Rig master output, normalized 0.0-1.0. See [`DEFAULT_MASTER_OUTPUT`].
     pub master_output: Arc<AtomicF32>,
 
-    /// Live mains-hum floor injected at the chain input. Runtime-only: `F4`
-    /// toggles it for A/B and it is not stored in presets or sessions.
+    /// Live mains-hum floor injected at the chain input. Off by default;
+    /// runtime-only: `F4` / `Ctrl+G` toggles it for A/B and it is not stored in
+    /// presets or sessions.
     pub hum_enabled: Arc<AtomicBool>,
 
     /// MIDI-clock tempo surfaced by the UI (`0.0` = no clock running). Written by
@@ -1605,9 +1606,10 @@ pub(crate) const BYPASS_DECLICK_SECS: f32 = 0.006;
 /// threshold; the gain stages still amplify it to an audible floor when ungated.
 const HUM_LEVEL: f32 = 0.0002;
 
-/// The mains-hum floor is on by default so a silent input behaves like a real amp.
-/// `F4` flips it live for A/B; it is deliberately runtime-only (not a preset field).
-pub const DEFAULT_HUM_ENABLED: bool = true;
+/// The mains-hum floor is **off** by default; `F4` / `Ctrl+G` turns it on live
+/// for A/B. It is deliberately runtime-only (not a preset field), so the boot
+/// rig is silent in silence unless the player asks for the amp's hum.
+pub const DEFAULT_HUM_ENABLED: bool = false;
 
 /// A quiet mains-hum floor, injected at the **chain input** so the gain stages
 /// amplify it the way a real amp does *and* the noise gate (the first stage) can null
@@ -2708,8 +2710,11 @@ mod tests {
         let rms =
             |v: &[f32]| (v.iter().map(|&x| (x * x) as f64).sum::<f64>() / v.len() as f64).sqrt();
 
-        // Gate off (default): the hum floor is present but quiet.
-        let mut chain = DspChain::new(sr, Arc::new(Params::new()));
+        // Gate off (default) and the hum explicitly on: the floor is present but
+        // quiet. The default is now off, so this test opts in.
+        let p = Arc::new(Params::new());
+        p.hum_enabled.store(true, Relaxed);
+        let mut chain = DspChain::new(sr, p);
         let out: Vec<f32> = (0..48_000).map(|_| chain.process(0.0).0).collect();
         let floor = rms(&out[24_000..]);
         assert!(
@@ -2720,6 +2725,7 @@ mod tests {
 
         // Gate on at its default threshold: the hum is below it and is nulled.
         let p = Arc::new(Params::new());
+        p.hum_enabled.store(true, Relaxed);
         p.ng_enabled.store(true, Relaxed);
         let mut chain = DspChain::new(sr, p);
         let out: Vec<f32> = (0..96_000).map(|_| chain.process(0.0).0).collect();
@@ -2730,18 +2736,31 @@ mod tests {
         );
     }
 
-    /// The live hum toggle must silence the floor completely, not just lower it.
-    /// With a silent input and the gate off, a disabled hum leaves bit-exact zero.
+    /// The hum is off by default; the live toggle can turn it on and silence it
+    /// again. The chain's filters leave numerical dust (~1e-9), three orders of
+    /// magnitude below the floor.
     #[test]
-    fn hum_toggle_can_silence_the_floor() {
+    fn hum_toggle_is_off_by_default_and_silences_the_floor() {
         let sr = 48_000.0;
         let p = Arc::new(Params::new());
+        let mut chain = DspChain::new(sr, Arc::clone(&p));
+        // Skip the first half-second: turning the hum off leaves the amp's
+        // last state to settle, exactly like any other input step.
+        let max_abs = |chain: &mut DspChain| -> f32 {
+            let out: Vec<f32> = (0..48_000).map(|_| chain.process(0.0).0).collect();
+            out[24_000..].iter().fold(0.0f32, |m, &x| m.max(x.abs()))
+        };
+
+        let max = max_abs(&mut chain);
+        assert!(max < 1e-7, "hum is on by default (max {max:.2e})");
+
+        p.hum_enabled.store(true, Relaxed);
+        let on: Vec<f32> = (0..48_000).map(|_| chain.process(0.0).0).collect();
+        let rms = (on.iter().map(|&x| (x * x) as f64).sum::<f64>() / on.len() as f64).sqrt();
+        assert!(rms > 1e-6, "the hum toggle did not enable the floor");
+
         p.hum_enabled.store(false, Relaxed);
-        let mut chain = DspChain::new(sr, p);
-        let out: Vec<f32> = (0..48_000).map(|_| chain.process(0.0).0).collect();
-        let max = out.iter().fold(0.0f32, |m, &x| m.max(x.abs()));
-        // The chain's filters can leave numerical dust (~1e-9); the hum floor is
-        // three orders of magnitude above that.
+        let max = max_abs(&mut chain);
         assert!(
             max < 1e-7,
             "the hum floor survived the toggle (max {max:.2e})"
