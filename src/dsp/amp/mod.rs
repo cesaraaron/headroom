@@ -638,6 +638,8 @@ pub(crate) struct GlobalNfb {
     lf: Biquad,
     /// Highpass used to bleed the top out of the divider for the presence pot.
     bleed: Biquad,
+    /// Previous divider output, for the 2-tap high-rate Nyquist null.
+    nyq: f32,
     /// Fixed loop gain.
     beta: f32,
 }
@@ -654,6 +656,7 @@ impl GlobalNfb {
         Self {
             lf: Biquad::lowpass(os_sr, lf_corner, 0.707),
             bleed: Biquad::highpass(os_sr, 4000.0, 0.707),
+            nyq: 0.0,
             beta,
         }
     }
@@ -675,7 +678,15 @@ impl GlobalNfb {
         let bled = self.bleed.process(shaped);
         let bleed_amt = (presence - 0.5) * 2.0;
         let looped = shaped - bleed_amt * bled;
-        self.beta * looped
+        // One high-rate sample of loop delay has an alternating (high-rate
+        // Nyquist) mode. At low presence the divider doubles the top, which can
+        // put the loop above unity there on the hotter models; bounded by the
+        // clipper, that becomes a limit cycle biasing its operating point. The
+        // 2-tap average is a zero exactly at that Nyquist and unity (0.16 deg at
+        // 20 kHz) across the audio band.
+        let nulled = 0.5 * (looped + self.nyq);
+        self.nyq = looped;
+        self.beta * nulled
     }
 }
 
@@ -2509,6 +2520,55 @@ mod tests {
         assert!(
             (g4 / g2 - 1.0).abs() < 0.15,
             "the loop combs the power stage: 2 kHz {g2:.3}, 4 kHz {g4:.3}"
+        );
+    }
+
+    /// The loop's one-high-rate-sample delay has an alternating (high-rate
+    /// Nyquist) mode. At presence 0 the divider doubles the top, which puts the
+    /// loop above unity on the hotter models; the mode is bounded by the clipper
+    /// but it biases the operating point (and the bottom of the presence knob
+    /// becomes a compression control). The divider must null that mode.
+    #[test]
+    fn the_divider_nulls_the_high_rate_nyquist_mode() {
+        let sr = 48_000.0;
+        let mut nfb = GlobalNfb::new(sr, 0.5, 220.0);
+        let mut tail = 0.0f32;
+        // Long enough for the 220 Hz / 4 kHz filters to settle: the alternating
+        // steady state is what must be nulled, not their startup transient.
+        for i in 0..16_384 {
+            let x = if i % 2 == 0 { 1.0 } else { -1.0 };
+            let y = nfb.feedback(x, 0.0);
+            if i >= 15_872 {
+                tail = tail.max(y.abs());
+            }
+        }
+        assert!(tail < 0.05, "the Nyquist mode passes the divider: {tail}");
+    }
+
+    /// The divider is clocked at 8×, so its filters must be designed at 8×sr.
+    /// If they regress to base rate, the 220 Hz LF corner moves to 1.76 kHz and
+    /// the loop stops shaping the bass/mid boundary it exists for.
+    #[test]
+    fn the_divider_is_designed_at_the_oversampled_rate() {
+        let sr = 48_000.0;
+        let rms = |freq: f32| {
+            let mut nfb = GlobalNfb::new(sr, 0.5, 220.0);
+            let n = 24_000usize;
+            let mut e = 0.0f64;
+            for i in 0..n {
+                let x = (2.0 * PI * freq * i as f32 / sr).sin();
+                let y = nfb.feedback(x, 0.5);
+                if i >= n / 2 {
+                    e += f64::from(y * y);
+                }
+            }
+            (e / (n / 2) as f64).sqrt() as f32
+        };
+        let low = rms(200.0);
+        let high = rms(2_000.0);
+        assert!(
+            low > high * 0.15,
+            "the divider's LF corner is not 220 Hz: 200 Hz {low:.3}, 2 kHz {high:.3}"
         );
     }
 
