@@ -262,13 +262,10 @@ impl Marshall {
         let (drive_up, rail) = sagged_rail(supply, 2.2);
         // The divider runs per oversampled sample inside the loop, so its only
         // delay is one high-rate sample rather than the FIR's ~11 base samples.
-        self.os_power.shape_closed_loop(
-            x,
-            &mut self.nfb,
-            presence,
-            &mut self.pf_out,
-            |u| TubeClip::PUSH_PULL.shape(u * drive_up) * rail * 0.7992,
-        )
+        self.os_power
+            .shape_closed_loop(x, &mut self.nfb, presence, &mut self.pf_out, |u| {
+                TubeClip::PUSH_PULL.shape(u * drive_up) * rail * 0.7992
+            })
     }
 }
 

@@ -1553,8 +1553,14 @@ mod tests {
     #[test]
     fn looper_playback_rides_the_take_bus_not_the_live_bus() {
         let (l, r, take) = monitor_frame(0.10, 0.20, 0.01, 0.02, 0.03, 0.40, 0.25);
-        assert!((l - 0.14).abs() < 1e-6, "live L must not carry the loop: {l}");
-        assert!((r - 0.25).abs() < 1e-6, "live R must not carry the loop: {r}");
+        assert!(
+            (l - 0.14).abs() < 1e-6,
+            "live L must not carry the loop: {l}"
+        );
+        assert!(
+            (r - 0.25).abs() < 1e-6,
+            "live R must not carry the loop: {r}"
+        );
         assert!(
             (take - 0.65).abs() < 1e-6,
             "loop must ride the take bus: {take}"

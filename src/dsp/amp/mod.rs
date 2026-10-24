@@ -740,7 +740,9 @@ pub(crate) fn split_gain3(
 ///
 /// ```text
 /// let (drive_up, rail) = sagged_rail(supply, 2.2);
-/// os_power.shape(x, |u| clip(u * drive_up) * rail * 0.62)
+/// os_power.shape_closed_loop(x, &mut nfb, presence, &mut pf_out, |u| {
+///     clip(u * drive_up) * rail * 0.62
+/// })
 /// ```
 ///
 /// **Why the sag divides the drive instead of scaling the signal.** Every model
@@ -936,17 +938,6 @@ impl PowerOs {
         Self {
             os: crate::dsp::oversample::Oversampler8::new(sr),
         }
-    }
-
-    /// Run memoryless `f` at 8× for one base-rate sample.
-    #[inline]
-    pub fn shape<F: FnMut(f32) -> f32>(&mut self, x: f32, mut f: F) -> f32 {
-        let up = self.os.upsample(x);
-        let mut down = [0.0f32; 8];
-        for (o, &u) in down.iter_mut().zip(up.iter()) {
-            *o = f(u);
-        }
-        self.os.downsample(down)
     }
 
     /// Run the power-stage curve at 8× with the global NFB loop closed *inside*
@@ -2496,13 +2487,14 @@ mod tests {
         let ratio = |freq: f32| {
             let mut os_open = PowerOs::new(sr);
             let mut os_closed = PowerOs::new(sr);
+            let mut open_nfb = GlobalNfb::new(sr, 0.0, 220.0);
             let mut closed_nfb = GlobalNfb::new(sr, 0.5, 220.0);
-            let mut pf_closed = 0.0f32;
+            let (mut pf_open, mut pf_closed) = (0.0f32, 0.0f32);
             let (mut e_open, mut e_closed) = (0.0f64, 0.0f64);
             let n = 48_000usize;
             for i in 0..n {
                 let x = (2.0 * PI * freq * i as f32 / sr).sin();
-                let y_open = os_open.shape(x, |u| u);
+                let y_open = os_open.shape_closed_loop(x, &mut open_nfb, 0.5, &mut pf_open, |u| u);
                 let y_closed =
                     os_closed.shape_closed_loop(x, &mut closed_nfb, 0.5, &mut pf_closed, |u| u);
                 if i >= n / 2 {

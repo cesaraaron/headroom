@@ -200,13 +200,10 @@ impl Plexi {
         // comes back down, so sag compresses *harder* under load. See `sagged_rail`.
         // The divider runs per oversampled sample inside the loop, so its only
         // delay is one high-rate sample rather than the FIR's ~11 base samples.
-        self.os_power.shape_closed_loop(
-            x,
-            &mut self.nfb,
-            presence,
-            &mut self.pf_out,
-            |u| TubeClip::PUSH_PULL.shape(u * drive_up) * rail * 0.7545,
-        )
+        self.os_power
+            .shape_closed_loop(x, &mut self.nfb, presence, &mut self.pf_out, |u| {
+                TubeClip::PUSH_PULL.shape(u * drive_up) * rail * 0.7545
+            })
     }
 }
 

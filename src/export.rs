@@ -711,10 +711,8 @@ mod tests {
     /// losing every tail that crossed the region boundary.
     #[test]
     fn region_export_feeds_pre_window_audio_to_the_chain() {
-        let dir = std::env::temp_dir().join(format!(
-            "rusty-riff-export-prefeed-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("rusty-riff-export-prefeed-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let take = dir.join("take.wav");
@@ -755,8 +753,7 @@ mod tests {
             .samples::<f32>()
             .map(|s| s.expect("sample"))
             .collect();
-        let rms =
-            (raw.iter().map(|&x| f64::from(x * x)).sum::<f64>() / raw.len() as f64).sqrt();
+        let rms = (raw.iter().map(|&x| f64::from(x * x)).sum::<f64>() / raw.len() as f64).sqrt();
         assert!(rms > 1e-4, "the pre-window tail was muted: rms {rms}");
         let _ = std::fs::remove_dir_all(&dir);
     }

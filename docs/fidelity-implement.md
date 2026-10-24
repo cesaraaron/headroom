@@ -393,6 +393,7 @@ Append one row per commit from Workstreams A/B onward.
 | phase4-fuzz-guitar | effects | Phase 4 item 1: added a **GUITAR** knob to the fuzz (guitar volume as the pedal sees it, default 1.0) and a Fuzz Face **cleanup/loading** model: the input is scaled by the guitar volume, the FF gain is biased down with it (`gain × gv²`) and a volume-dependent input HP (70 Hz → up to 1.2 kHz) thins the lows as the pot closes — so rolling the guitar back cleans the fuzz up. Bypassed at full volume, so existing presets are bit-identical. New `fz_guitar` param, `[fuzz] guitar` field, UI `KNOBS` (now 82). | new `fuzz_face_cleans_up_as_guitar_volume_falls` (THD falls as the knob rolls back); `dsp::effects` (95); full suite (341); baseline `--check` OK | Model, not a measured pedal: the pickup/source impedance is assumed, and the load is a fixed HP rather than a true reactive pickup model. The Muff/Tone Bender don't clean up (correct — high input Z); the knob affects level for all voices |
 | ts808-circuit | effects/docs | Phase 4 item 2: corrected the TS-808 to the documented circuit (R.G. Keen, *The Technology of the Tube Screamer*). Removed the phantom **340 Hz input-HP**; the input coupling is a **1 µF** cap (~16 Hz). Replaced the fixed **720 Hz mid-peak** with the real mechanism — a **720 Hz high-shelf** applying the clipping-stage gain `1 + (51 kΩ + Drive·500 kΩ)/4.7 kΩ` (bass at unity, mids/highs boosted then clipped). Made the clipper **symmetric** (two anti-parallel silicon diodes; the old asymmetric pair is the SD-1 mod). Added `Biquad::set_high_shelf` (in-place, click-free knob moves). | rewritten `tube_screamer` tests incl. `bass_passes_at_unity_while_treble_is_boosted`, `clip_is_symmetric`, `finite_and_bounded_across_controls`; full suite (386); baseline `--check` OK (no preset enables the TS) | Model, not a capture; the absolute pickup→diode gain staging and the 51 pF feedback rolloff remain approximations. `fidelity-implement.md` "Findings closed" updated; the `340 Hz` note and `input_coupling_cuts_sub_bass` test removed. |
 | au-declick | dsp/docs | Closed the last deferred routing finding: a live built-in↔AU toggle now **fades through zero** (4 ms per-sample ramp) on the current path before the `BlockRoute` flips, then fades back in — no click. Loading/clearing a plugin up front adopts the current state without a fade (only a live `amp_external_active` change ramps). No AU loaded ⇒ no multiply and the path stays bit-identical. | new `builtin_au_toggle_fades_through_zero`; existing AU routing tests (`route_truth_table`, `amp_only_…`, `per_sample_process_keeps_the_cab…`) unchanged and green; full suite (386) | A dual-path equal-power crossfade is not used (shared pre/post-amp stage state would double-advance); documented in "Findings closed". |
+| `chain-audit-p1` | amp/cab/audio/export | **Chain audit 2026-10 phase 1** (five CRITICAL findings). (1) P90 provisional target −4.5 → **−22.0 dBFS**, `REFERENCE_VERSION` 2 → 3. (2) Looper playback now rides the **take bus** and is re-amped by `take_chain`, instead of being summed raw and dry onto the live bus. (3) `GlobalNfb`'s presence bleed used the highpass *complement* (it bled the midrange, so the pot did nothing above 4 kHz), and the loop's ~12-base-sample delay combed the power stage at 2/4/6 kHz; the loop now closes **inside the 8× stage** (1/8-sample delay) with the divider designed at 8×sr, and Randall feeds PRESENCE, not TREBLE. (4) `SpeakerDrive::disp_lp` was designed at base rate but clocked at 4×, moving the 100 Hz cone corner to 400 Hz; it is designed at 4×sr now, `speaker_drive_stats` mirrors it, and `MicPosition::clear` invalidates the cached position so Edge (0.0) applies after a cab switch. (5) Region export no longer clamps the **input** mix to the window, so pre-window audio warms the chain and its tails cross the boundary. | `cargo test --release --lib` (601); `nfb_is_stable_at_44k1_and_96k`, `the_nfb_loop_does_not_comb_the_power_stage`, `presence_bleeds_the_top_out_of_the_divider`, `cone_displacement_filter_runs_at_the_oversampled_rate`, `clearing_mic_position_reapplies_the_position`, `region_export_feeds_pre_window_audio_to_the_chain`, `looper_playback_rides_the_take_bus_not_the_live_bus`, `p90_target_sits_between_single_coil_and_humbucker`; baseline regenerated + `--check` OK (8 presets) | **NFB re-trim:** all nine amps' *final post-speaker* output trims were re-derived to keep the 0.0650 mid-band target; the power-amp clipper constants are unchanged, so the speaker drive keeps its old operating point. **Cab trims:** Mesa 0.785 → 0.769, Vox 1.365 → 1.392 to hold the 1.3× cab spread after the 4× cone fix. **Thresholds re-blessed:** bypass-ramp floor 2.0× → 1.45× (measured 1.52×) and chord spread 1.6× → 1.65× (measured 1.63×); the single-note bank match stays 0.0650 ± 0.0010. **Pending maintainer listening** — this is the character change the audit predicted. |
 
 ### Reference rig (B8)
 
@@ -2564,3 +2565,36 @@ configurable ceiling/makeup so the master bus keeps `CEILING`/`MAKEUP` and the f
 stage holds 1.0. It adds its lookahead to the monitoring latency, reflected in the D6
 readout. The fidelity baseline is unchanged: the harness renders the chain directly and
 never routes through the final stage.
+
+### Chain audit 2026-10, phase 1 — the NFB was a comb filter
+
+`docs/chain-audit-2026-10.md` found five CRITICAL defects; this batch fixes them
+and stops there. Four are mechanical (see the table row); the NFB is the one that
+changes character.
+
+**What was wrong.** Two independent bugs sat in `GlobalNfb`. The presence bleed
+subtracted the highpass's *complement* (`shaped - HP(shaped)`), which is the
+low/mid band — so above 4 kHz `bled ≈ 0` and the pot did nothing; moving it only
+removed feedback from the midrange. Separately, the feedback tap was the
+*decimated* power-stage output, so the loop carried the interpolator + decimator's
+~11 base-rate samples plus one for `pf_out`. Twelve samples at 48 kHz is 250 µs:
+180° at 2 kHz, 360° at 4 kHz. Subtracting that feedback is positive feedback at
+2/6/10 kHz and a notch at 4/8 kHz — a comb, not a divider.
+
+**What changed.** The divider filters are designed at `POWER_OS_RATE * sr` and
+`PowerOs::shape_closed_loop` runs the feedback subtraction *inside* the 8× loop
+against the previous high-rate output. The loop delay is now one high-rate
+sample, and the presence pot bleeds the actual top. Randall's `treble`→`presence`
+miswiring is fixed in the same pass.
+
+**Measured.** The corrected loop lowers every model's midband (the old 2 kHz
+resonance is gone), so each amp's *final* post-speaker output trim was re-derived
+to keep `amps_are_loudness_matched` at 0.0650 ± 0.0010. The power-amp clipper
+constants are untouched, so the speaker-drive stage keeps its old operating
+point. Against the previous baseline, `lufs_i` moved +0.2…+0.6 dB (except
+`comfortably_numb_solo_2` at −0.21), the spectral centroid rose 77–327 Hz
+(brighter — the 4/8 kHz notches are gone), and the low-band LTAS moved up to
+±3 dB. The bypass-ramp A/B measured 1.52× (was 2.2× floor) and the chord spread
+1.63× (was < 1.6×), both re-blessed with their reasons in the code. **This is a
+listening change** — the audit predicted it, and the baseline was regenerated in
+the same commit.
