@@ -80,7 +80,9 @@ impl Fuzz {
         let gv = guitar.clamp(0.03, 1.0);
         let corner = (70.0 * (1.0 / gv).powf(1.3)).clamp(70.0, 1200.0);
         self.guitar_hp.set_highpass(self.sr, corner, 0.707);
-        self.last_guitar = gv;
+        // Store the *raw* knob: `process` compares the unclamped value, so
+        // storing the 0.03 floor made `guitar < 0.029` rebuild every sample.
+        self.last_guitar = guitar;
     }
 
     /// `fuzz` 0–1 (sustain/gain), `tone` 0–1, `level` 0–1, `kind` 0–1 selecting the
@@ -212,7 +214,9 @@ fn ff_clip(x: f32) -> f32 {
     if x >= 0.0 {
         (0.7 * x).tanh() / 0.7
     } else {
-        0.8 * (0.9 * x / 0.8).tanh()
+        // Unit slope at the origin (the old `0.9 * x / 0.8` gave 0.9 on this
+        // side and 1.0 on the other, a scale-invariant rectifier at x = 0).
+        0.8 * (x / 0.8).tanh()
     }
 }
 
@@ -224,7 +228,8 @@ fn tb_clip(x: f32) -> f32 {
     if x >= 0.0 {
         (1.15 * x).tanh() / 1.15
     } else {
-        0.82 * ((x * 1.1) / 0.82).tanh()
+        // Unit slope at the origin; the rail stays at -0.82.
+        0.82 * (x / 0.82).tanh()
     }
 }
 
@@ -232,6 +237,33 @@ fn tb_clip(x: f32) -> f32 {
 mod tests {
     use super::*;
     use std::f32::consts::PI;
+
+    /// Both shapers must have the same small-signal slope on either side of zero.
+    /// A slope kink at the origin half-wave-rectifies quiet signals (guitar-volume
+    /// cleanup, decaying tails) at any amplitude, because it is scale-invariant.
+    #[test]
+    fn shaper_slopes_match_at_the_origin() {
+        let h = 1e-4f32;
+        let slope = |f: fn(f32) -> f32, x: f32| (f(x + h) - f(x - h)) / (2.0 * h);
+        for (name, f) in [("ff", ff_clip as fn(f32) -> f32), ("tb", tb_clip)] {
+            let up = slope(f, h);
+            let down = slope(f, -h);
+            assert!((up - down).abs() < 1e-2, "{name}: slope {up} vs {down}");
+        }
+        // The rails stay asymmetric, which is why the curves exist.
+        assert!((ff_clip(-10.0) + 0.8).abs() < 1e-3);
+        assert!((tb_clip(-10.0) + 0.82).abs() < 1e-3);
+    }
+
+    /// `guitar == 0.0` used to rebuild the input-loading HP every sample:
+    /// `set_guitar` stored the clamped `0.03` while `process` compared the raw
+    /// `0.0`, so `powf` + `set_highpass` ran at 48 kHz. Store the raw knob.
+    #[test]
+    fn guitar_zero_is_not_rebuilt_every_sample() {
+        let mut fz = Fuzz::new(48_000.0);
+        fz.process(0.0, 0.5, 0.5, 0.5, 0.5, 0.0);
+        assert_eq!(fz.last_guitar, 0.0);
+    }
 
     /// The fuzz must stay finite and bounded even at maximum sustain on a hot, low
     /// note — its two cascaded clippers run at enormous gain, so any instability or

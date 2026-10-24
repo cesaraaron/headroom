@@ -113,7 +113,7 @@ impl AmpModel {
 
     pub fn prev(self) -> Self {
         match self {
-            Self::Marshall => Self::Supro,
+            Self::Marshall => Self::Tweed,
             Self::Mesa => Self::Marshall,
             Self::Randall => Self::Mesa,
             Self::Vox => Self::Randall,

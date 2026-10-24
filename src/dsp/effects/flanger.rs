@@ -102,8 +102,6 @@ impl Flanger {
                 0.5 - 0.5 * (ph.fract() * TAU).cos()
             }
         };
-        let span = min_ms + sweep_ms * depth;
-
         // The Electric Mistress is a mono pedal, so the *wet* path (and the
         // regeneration it feeds) collapses to one channel and drops the
         // quarter-cycle offset. The **dry** path stays stereo: folding the dry
@@ -112,11 +110,11 @@ impl Flanger {
         // was at mix = 1. Folding only the wet keeps it transparent.
         let m = 0.5 * (l + r);
         let (wet_in_l, wet_in_r) = if mistress { (m, m) } else { (l, r) };
-        let del_l = (min_ms + span * lfo(self.phase)) * self.sr / 1000.0;
+        let del_l = tap_ms(min_ms, sweep_ms, depth, lfo(self.phase)) * self.sr / 1000.0;
         let del_r = if mistress {
             del_l
         } else {
-            (min_ms + span * lfo(self.phase + 0.25)) * self.sr / 1000.0
+            tap_ms(min_ms, sweep_ms, depth, lfo(self.phase + 0.25)) * self.sr / 1000.0
         };
 
         let wet_l = Self::read(&self.buf_l, self.write, del_l);
@@ -137,12 +135,31 @@ impl Flanger {
     }
 }
 
+/// Sweep-tap position in milliseconds.
+///
+/// `sweep_ms` is the full sweep *range*, so `depth = 0` must leave the tap still
+/// at `min_ms` — the offset is not part of the span.
+#[inline]
+fn tap_ms(min_ms: f32, sweep_ms: f32, depth: f32, lfo: f32) -> f32 {
+    min_ms + sweep_ms * depth * lfo
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::f32::consts::PI;
 
     const SR: f32 = 48_000.0;
+
+    /// `depth = 0` must hold the tap still at `min_ms`. `span` is the sweep
+    /// *range*, so it must not already contain the offset.
+    #[test]
+    fn depth_zero_holds_the_tap_still() {
+        for lfo in [-1.0f32, -0.3, 0.0, 0.5, 1.0] {
+            assert!((tap_ms(0.4, 4.6, 0.0, lfo) - 0.4).abs() < 1e-6);
+        }
+        assert!((tap_ms(0.4, 4.6, 1.0, 1.0) - 5.0).abs() < 1e-6);
+    }
 
     /// `mix = 0` must pass the dry signal through untouched on both channels,
     /// for **both** kinds. The Electric Mistress (`kind = 1.0`) is a mono pedal,
