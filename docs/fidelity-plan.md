@@ -415,10 +415,10 @@ no Phase 3–5 change can be measured.
   were voiced on** (see B8 and `fidelity-implement.md`) so calibration preserves
   the existing preset sound (trim ≈ 0 there) and normalizes other interfaces and
   guitars to the same engine level; the single-coil offset keeps the output
-  difference between pickup classes instead of normalizing it away. Verified at
-  `REFERENCE_VERSION = 2`; P90 uses an interpolated provisional target (between
-  the measured single-coil and humbucker values) until a P90 guitar is measured.
-  `REFERENCE_VERSION = 3` since the P90 correction.
+  difference between pickup classes instead of normalizing it away.
+  `REFERENCE_VERSION` is 3: the humbucker and single-coil targets are measured on
+  the B8 rig, and P90 uses an interpolated provisional target (between them)
+  until a P90 guitar is measured.
 - **Trim.** `trim_db = target − measured`, clamped to `[−24, +24]` dB, applied
   as a linear gain to the guitar input before anything else.
 - **Uncalibrated.** `trim_db = 0.0` — bit-identical to today.
@@ -655,7 +655,7 @@ Pure core (unit-tested, no UI):
 
 ```rust
 pub enum PickupClass { SingleCoil, P90, Humbucker }
-pub const REFERENCE_VERSION: u32 = 1;
+pub const REFERENCE_VERSION: u32 = 3;
 pub fn target_peak_dbfs(p: PickupClass) -> f32;  // −24.6 / −22.0 / −19.7
 pub struct CalResult { pub measured_peak_dbfs: f32, pub noise_floor_dbfs: f32,
                        pub target_peak_dbfs: f32, pub trim_db: f32, pub warnings: Vec<CalWarning> }
