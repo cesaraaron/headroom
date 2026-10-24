@@ -739,6 +739,28 @@ fn with_buffer(cfg: &StreamConfig, buffer_size: cpal::BufferSize) -> StreamConfi
 /// them. Before this existed, the converter clipped and the overload grew with
 /// every take layer.
 ///
+/// Split one frame's monitor sources between the two monitor buses.
+///
+/// The looper records the post-trim dry DI, so its playback is *take* audio: it
+/// belongs on the take bus, where `take_chain` re-amps it with the current rig.
+/// The click and the import bus are finished signals and stay on the live bus.
+#[inline]
+fn monitor_frame(
+    live_l: f32,
+    live_r: f32,
+    import_l: f32,
+    import_r: f32,
+    click: f32,
+    take: f32,
+    loop_sample: f32,
+) -> (f32, f32, f32) {
+    (
+        live_l + import_l + click,
+        live_r + import_r + click,
+        take + loop_sample,
+    )
+}
+
 /// This is the final *safety* only: each chain already left its own lookahead
 /// limiter at `−1 dBFS`, so the sum is normally well under the ceiling. It exists
 /// for the monitor-only mixes (metronome/backing/looper) and for stacking a take on
@@ -1140,13 +1162,21 @@ impl InputState {
 
             // Metronome click, the import bus, and the looper are mixed into the
             // monitor path only (post-capture), so none ever lands in a take. The
-            // looper captures/replays the post-trim dry `sample`.
+            // looper captures the post-trim dry `sample`, so its playback is raw
+            // take audio and rides the take bus (see `monitor_frame`).
             let click = self.metro_voice.next_sample(metro_active, metro_bpm);
             let frame = self.player.next_frame(&transport);
             let loop_sample = self.looper.process(sample);
-            self.take_in[i] = frame.take;
-            let out_left = self.out_l[i] + frame.import_l + click + loop_sample;
-            let out_right = self.out_r[i] + frame.import_r + click + loop_sample;
+            let (out_left, out_right, take_in) = monitor_frame(
+                self.out_l[i],
+                self.out_r[i],
+                frame.import_l,
+                frame.import_r,
+                click,
+                frame.take,
+                loop_sample,
+            );
+            self.take_in[i] = take_in;
             self.out_l[i] = out_left;
             self.out_r[i] = out_right;
 
@@ -1513,9 +1543,30 @@ fn build_engine(
 
 #[cfg(test)]
 mod tests {
-    use super::{Limiter, block_ranges, output_stage};
+    use super::{Limiter, block_ranges, monitor_frame, output_stage};
 
     const SR: f32 = 48_000.0;
+
+    /// The looper records the post-trim dry DI, so its playback is raw take
+    /// audio: it must be re-amped by `take_chain` instead of summed raw onto the
+    /// live bus (where it played as un-amplified DI ~20 dB below the rig).
+    #[test]
+    fn looper_playback_rides_the_take_bus_not_the_live_bus() {
+        let (l, r, take) = monitor_frame(0.10, 0.20, 0.01, 0.02, 0.03, 0.40, 0.25);
+        assert!((l - 0.14).abs() < 1e-6, "live L must not carry the loop: {l}");
+        assert!((r - 0.25).abs() < 1e-6, "live R must not carry the loop: {r}");
+        assert!(
+            (take - 0.65).abs() < 1e-6,
+            "loop must ride the take bus: {take}"
+        );
+    }
+
+    /// An idle/empty loop contributes silence to the take bus.
+    #[test]
+    fn idle_looper_adds_nothing_to_either_bus() {
+        let (l, r, take) = monitor_frame(0.3, 0.4, 0.0, 0.0, 0.0, 0.0, 0.0);
+        assert_eq!((l, r, take), (0.3, 0.4, 0.0));
+    }
 
     fn stage() -> Limiter {
         Limiter::output_stage(SR)
