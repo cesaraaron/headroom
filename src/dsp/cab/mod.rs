@@ -214,7 +214,9 @@ impl SpeakerDrive {
             env: 0.0,
             atk: coeff(PC_ATK_MS),
             rel: coeff(PC_REL_MS),
-            disp_lp: Biquad::lowpass(sr, DISP_FC, DISP_Q),
+            // Clocked once per oversampled sample (see `process`), so design it
+            // at the oversampled rate or the 100 Hz corner lands at 400 Hz.
+            disp_lp: Biquad::lowpass(sr * DRIVE_OS_RATE, DISP_FC, DISP_Q),
             dop_buf: [0.0; 16],
             dop_pos: 0,
             os: Oversampler4::new(sr),
@@ -606,14 +608,19 @@ pub fn speaker_drive_stats(sr: f32, drive: &[f32]) -> SpeakerDriveStats {
     // drift) while recording the envelope and displacement it develops.
     let coeff = |ms: f32| 1.0 - (-1.0 / (sr * ms / 1000.0)).exp();
     let (atk, rel) = (coeff(PC_ATK_MS), coeff(PC_REL_MS));
-    let mut disp_lp = Biquad::lowpass(sr, DISP_FC, DISP_Q);
+    // Mirror the real stage's 4x clock: design at the oversampled rate and run
+    // four sub-steps per base sample, so the statistic sees the same cutoff.
+    let mut disp_lp = Biquad::lowpass(sr * DRIVE_OS_RATE, DISP_FC, DISP_Q);
     let mut env = 0.0f32;
     let mut engaged = 0usize;
     let mut max_over = 0.0f32;
     let mut dsum = 0.0f64;
     for &x in drive {
         let x = x * SPKR_SENS;
-        let d = disp_lp.process(x).clamp(-1.5, 1.5);
+        let mut d = 0.0f32;
+        for _ in 0..DRIVE_OS_RATE as usize {
+            d = disp_lp.process(x).clamp(-1.5, 1.5);
+        }
         dsum += f64::from(d.abs());
         let x = x / (1.0 + BL_DROOP_K * d * d);
         let x = cone_breakup(x);
@@ -844,7 +851,10 @@ impl MicPosition {
     fn clear(&mut self) {
         self.l.clear();
         self.r.clear();
-        self.last_pos = 0.0;
+        // Force the next `set` to retune. A cab switch is exactly the moment the
+        // incoming cab must adopt the current mic position; leaving this at 0.0
+        // silently skipped `set(0.0)` (Edge) and kept the neutral voicing.
+        self.last_pos = -1.0;
     }
 
     pub(crate) fn new(sr: f32) -> Self {
@@ -1879,5 +1889,49 @@ mod tests {
                 assert!(dc < 0.02, "cab leaks DC at pos {pos}: {dc:.4}");
             }
         }
+    }
+
+    /// `disp_lp` is clocked once per oversampled sample, so it must be designed
+    /// at `4 * sr`. At base rate its 100 Hz corner landed at 400 Hz, letting
+    /// midrange guitar fundamentals modulate the cone.
+    #[test]
+    fn cone_displacement_filter_runs_at_the_oversampled_rate() {
+        use super::{DRIVE_OS_RATE, SpeakerDrive};
+        let sr = 48_000.0;
+        let mut drive = SpeakerDrive::new(sr);
+        let n = 4_800usize;
+        let mut e = 0.0f64;
+        for i in 0..n {
+            let x = (std::f32::consts::PI * 2.0 * 300.0 * i as f32 / sr).sin() * 0.5;
+            for &u in drive.os.upsample(x).iter() {
+                let d = drive.disp_lp.process(u);
+                e += f64::from(d * d);
+            }
+        }
+        let rms = (e / (n as f64 * f64::from(DRIVE_OS_RATE))).sqrt() as f32;
+        // 100 Hz 2nd-order at 300 Hz is ~-19 dB; the broken 400 Hz corner was ~-1 dB.
+        assert!(rms < 0.1, "300 Hz leaked into cone displacement: {rms}");
+    }
+
+    /// A cab switch calls `clear()` and then `set(mic_pos)`. `clear()` must
+    /// invalidate the cached position, or `mic_pos == 0.0` (Edge) is a no-op.
+    #[test]
+    fn clearing_mic_position_reapplies_the_position() {
+        use super::MicPosition;
+        let sr = 48_000.0;
+        let render = |mic: &mut MicPosition| -> Vec<f32> {
+            (0..256)
+                .map(|i| {
+                    let x = (std::f32::consts::PI * 2.0 * 3_000.0 * i as f32 / sr).sin() * 0.5;
+                    mic.process(x, x).0
+                })
+                .collect()
+        };
+        let mut fresh = MicPosition::new(sr);
+        fresh.set(0.0);
+        let mut switched = MicPosition::new(sr);
+        switched.clear();
+        switched.set(0.0);
+        assert_eq!(render(&mut fresh), render(&mut switched));
     }
 }
