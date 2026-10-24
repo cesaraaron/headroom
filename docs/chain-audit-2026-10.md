@@ -27,6 +27,13 @@ Every item below has been verified against `HEAD` with exact `file:line` referen
 
 ---
 
+## Phase 1 status (2026-10)
+
+Findings **1.1, 1.2, 3.1, 3.2, 4.1, 4.2 and 5.1** are fixed on `main` in
+`chain-audit-p1`; the as-built record (including the measured tone drift and the
+re-derived level trims) is in `docs/fidelity-implement.md` → increment log.
+Everything from Phase 2 onward is still open.
+
 ## Executive Summary Matrix
 
 | ID | Stage | Severity | Location | Summary |

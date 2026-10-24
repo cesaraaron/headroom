@@ -722,23 +722,6 @@ fn with_buffer(cfg: &StreamConfig, buffer_size: cpal::BufferSize) -> StreamConfi
     }
 }
 
-/// All state owned by the audio *input* callback.
-///
-/// Bundling it in one struct lets the same block-processing code be compiled for
-/// whichever sample format the device requires — some interfaces (e.g. a Focusrite
-/// Scarlett Solo) expose `S32_LE` capture rather than `f32`, so hard-coding an f32
-/// stream fails to open at all. `on_input` converts the device's samples into the
-/// engine's `f32` domain on the way in.
-/// Final output stage: sum the live and take buses, then apply the output
-/// ceiling.
-///
-/// Both buses have *already* been through their own `master_bus` (the take bus
-/// is a whole second [`DspChain`]), so each is bounded by 1.0 on its own. Their
-/// **sum** is not: two buses at the ceiling are +3 dB, and the metronome click
-/// and looper are mixed into the live bus before this point with nothing after
-/// them. Before this existed, the converter clipped and the overload grew with
-/// every take layer.
-///
 /// Split one frame's monitor sources between the two monitor buses.
 ///
 /// The looper records the post-trim dry DI, so its playback is *take* audio: it
@@ -761,6 +744,26 @@ fn monitor_frame(
     )
 }
 
+/// Peak-follow one frame of the final output for the `OUT` meter.
+///
+/// Tracks the louder channel, not the mono sum: out-of-phase stereo cancels in a
+/// sum, so a mono meter reads silence on a signal the converter is driving.
+#[inline]
+fn follow_stereo(env: f32, l: f32, r: f32, attack: f32, release: f32) -> f32 {
+    let a = l.abs().max(r.abs());
+    env + if a > env { attack } else { release } * (a - env)
+}
+
+/// Final output stage: sum the live and take buses, then apply the output
+/// ceiling.
+///
+/// Both buses have *already* been through their own `master_bus` (the take bus
+/// is a whole second [`DspChain`]), so each is bounded by 1.0 on its own. Their
+/// **sum** is not: two buses at the ceiling are +3 dB, and the metronome click
+/// and looper are mixed into the live bus before this point with nothing after
+/// them. Before this existed, the converter clipped and the overload grew with
+/// every take layer.
+///
 /// This is the final *safety* only: each chain already left its own lookahead
 /// limiter at `−1 dBFS`, so the sum is normally well under the ceiling. It exists
 /// for the monitor-only mixes (metronome/backing/looper) and for stacking a take on
@@ -827,6 +830,13 @@ impl TruePeak {
     }
 }
 
+/// All state owned by the audio *input* callback.
+///
+/// Bundling it in one struct lets the same block-processing code be compiled for
+/// whichever sample format the device requires — some interfaces (e.g. a Focusrite
+/// Scarlett Solo) expose `S32_LE` capture rather than `f32`, so hard-coding an f32
+/// stream fails to open at all. `on_input` converts the device's samples into the
+/// engine's `f32` domain on the way in.
 struct InputState {
     /// The live guitar rig.
     chain: DspChain,
@@ -1179,14 +1189,6 @@ impl InputState {
             self.take_in[i] = take_in;
             self.out_l[i] = out_left;
             self.out_r[i] = out_right;
-
-            let mono = 0.5 * (out_left + out_right);
-            let a = mono.abs();
-            self.out_env += if a > self.out_env {
-                self.attack
-            } else {
-                self.release
-            } * (a - self.out_env);
         }
 
         // Reflect any mid-block transport change (recording grew, or auto-stopped
@@ -1226,11 +1228,15 @@ impl InputState {
                 output_stage(live_l, live_r, take_l, take_r, &mut self.final_limiter);
             let out_mono = 0.5 * (out_left + out_right);
 
+            // The `OUT` follower reads the final sum (live + takes + loop), not
+            // the live bus alone, so a take or loop playing on its own still
+            // moves the meter.
+            self.out_env =
+                follow_stereo(self.out_env, out_left, out_right, self.attack, self.release);
+
             // True peak of the final, post-ceiling signal, with a slow decay so a
             // transient stays readable. The `output` meter is a *follower*: it
-            // tracks level but does not hold a peak, and it is computed before
-            // the take bus, so it structurally cannot show that this output just
-            // touched the ceiling.
+            // tracks level but does not hold a peak; this is its peak-hold pair.
             self.out_peak.push(out_left, out_right);
             // Did the ceiling actually have to work on this sample? The knee
             // opens at 0.95, so anything the limiter changes was above that.
@@ -1543,9 +1549,27 @@ fn build_engine(
 
 #[cfg(test)]
 mod tests {
-    use super::{Limiter, block_ranges, monitor_frame, output_stage};
+    use super::{Limiter, block_ranges, follow_stereo, monitor_frame, output_stage};
 
     const SR: f32 = 48_000.0;
+
+    /// The `OUT` meter must read the final sum, and it must not cancel
+    /// out-of-phase stereo content the way the old mono-sum follower did.
+    #[test]
+    fn the_out_meter_follows_the_louder_channel() {
+        let mut env = 0.0;
+        for _ in 0..480 {
+            env = follow_stereo(env, 1.0, -1.0, 0.5, 0.01);
+        }
+        assert!(
+            env > 0.9,
+            "out-of-phase stereo must not read as silence: {env}"
+        );
+        for _ in 0..4_800 {
+            env = follow_stereo(env, 0.0, 0.0, 0.5, 0.01);
+        }
+        assert!(env < 1e-3, "the meter must release to zero: {env}");
+    }
 
     /// The looper records the post-trim dry DI, so its playback is raw take
     /// audio: it must be re-amped by `take_chain` instead of summed raw onto the
