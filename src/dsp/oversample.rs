@@ -194,8 +194,14 @@ fn i0(x: f32) -> f32 {
 /// nonlinearity is gentle enough that 4× already keeps alias fold-back well down.
 pub type Oversampler4 = Oversampler<4>;
 
+/// The factor behind [`Oversampler8`].
+///
+/// Exposed so a caller that has to design filters in the oversampled domain (the
+/// amp's NFB divider) cannot drift from the alias.
+pub const OVERSAMPLE8_FACTOR: usize = 8;
+
 /// 8× oversampler — used by the high-gain amp models for creamy, alias-free drive.
-pub type Oversampler8 = Oversampler<8>;
+pub type Oversampler8 = Oversampler<OVERSAMPLE8_FACTOR>;
 
 #[cfg(test)]
 mod tests {

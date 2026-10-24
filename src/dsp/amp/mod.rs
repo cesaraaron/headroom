@@ -629,8 +629,9 @@ pub(crate) const MASTER_DRIVE_REF: f32 = 0.55;
 /// Presence is wired *into* the divider rather than sitting after it, which is where
 /// it lives on a real amp: the pot bleeds high frequencies out of the feedback path.
 /// Oversampling factor of the power-stage clipper. Anything expressed in
-/// base-rate samples inside the loop must be scaled by this.
-pub(crate) const POWER_OS_RATE: f32 = 8.0;
+/// base-rate samples inside the loop must be scaled by this. Derived from the
+/// `Oversampler8` alias so the divider's design rate cannot silently drift.
+pub(crate) const POWER_OS_RATE: f32 = crate::dsp::oversample::OVERSAMPLE8_FACTOR as f32;
 
 pub(crate) struct GlobalNfb {
     /// Lowpass forming the LF-shaping of the divider. Feedback below its corner is
