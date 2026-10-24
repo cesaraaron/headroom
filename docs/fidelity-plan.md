@@ -408,7 +408,7 @@ no Phase 3–5 change can be measured.
   | `PickupClass` | Target (P99 window peak) |
   | --- | --- |
   | `Humbucker` | −19.7 dBFS (measured, B8) |
-  | `P90` | −4.5 dBFS (provisional) |
+  | `P90` | −22.0 dBFS (provisional, interpolated) |
   | `SingleCoil` | −24.6 dBFS (measured, B8) |
 
   Rationale: the targets are measured on the **reference rig the bundled presets
@@ -416,8 +416,9 @@ no Phase 3–5 change can be measured.
   the existing preset sound (trim ≈ 0 there) and normalizes other interfaces and
   guitars to the same engine level; the single-coil offset keeps the output
   difference between pickup classes instead of normalizing it away. Verified at
-  `REFERENCE_VERSION = 2`; P90 keeps its provisional value until a P90 guitar is
-  measured.
+  `REFERENCE_VERSION = 2`; P90 uses an interpolated provisional target (between
+  the measured single-coil and humbucker values) until a P90 guitar is measured.
+  `REFERENCE_VERSION = 3` since the P90 correction.
 - **Trim.** `trim_db = target − measured`, clamped to `[−24, +24]` dB, applied
   as a linear gain to the guitar input before anything else.
 - **Uncalibrated.** `trim_db = 0.0` — bit-identical to today.
@@ -655,7 +656,7 @@ Pure core (unit-tested, no UI):
 ```rust
 pub enum PickupClass { SingleCoil, P90, Humbucker }
 pub const REFERENCE_VERSION: u32 = 1;
-pub fn target_peak_dbfs(p: PickupClass) -> f32;  // −9.0 / −4.5 / −3.0
+pub fn target_peak_dbfs(p: PickupClass) -> f32;  // −24.6 / −22.0 / −19.7
 pub struct CalResult { pub measured_peak_dbfs: f32, pub noise_floor_dbfs: f32,
                        pub target_peak_dbfs: f32, pub trim_db: f32, pub warnings: Vec<CalWarning> }
 pub enum CalError { Clipped, NoSignal, TooShort, Overflow }
