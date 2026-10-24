@@ -215,14 +215,15 @@ impl Mesa {
         let (drive_up, rail) = sagged_rail(supply, 2.4);
         // `supply` is a rail voltage: as it falls the drive rises and the output
         // comes back down, so sag compresses *harder* under load. See `sagged_rail`.
-        // Subtract the divider's feedback from the stage's own input, read from
-        // `pf_out` so the loop stays causal.
-        let fb = self.nfb.feedback(self.pf_out, presence);
-        let out = self.os_power.shape(x - fb, |u| {
-            TubeClip::PUSH_PULL.shape(u * drive_up) * rail * 0.9964
-        });
-        self.pf_out = out;
-        out
+        // The divider runs per oversampled sample inside the loop, so its only
+        // delay is one high-rate sample rather than the FIR's ~11 base samples.
+        self.os_power.shape_closed_loop(
+            x,
+            &mut self.nfb,
+            presence,
+            &mut self.pf_out,
+            |u| TubeClip::PUSH_PULL.shape(u * drive_up) * rail * 0.9964,
+        )
     }
 }
 
@@ -305,7 +306,7 @@ impl Amplifier for Mesa {
 
         // Output trim: level-match the Recto to the other models so switching
         // doesn't jump in volume. The master's level is in the power-amp input scale.
-        x * MASTER_DRIVE_REF * 3.453
+        x * MASTER_DRIVE_REF * 5.492
     }
 }
 

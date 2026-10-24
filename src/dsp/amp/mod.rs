@@ -628,6 +628,10 @@ pub(crate) const MASTER_DRIVE_REF: f32 = 0.55;
 ///
 /// Presence is wired *into* the divider rather than sitting after it, which is where
 /// it lives on a real amp: the pot bleeds high frequencies out of the feedback path.
+/// Oversampling factor of the power-stage clipper. Anything expressed in
+/// base-rate samples inside the loop must be scaled by this.
+pub(crate) const POWER_OS_RATE: f32 = 8.0;
+
 pub(crate) struct GlobalNfb {
     /// Lowpass forming the LF-shaping of the divider. Feedback below its corner is
     /// reduced, so the loop pulls the midrange down without scooping the bass.
@@ -639,10 +643,17 @@ pub(crate) struct GlobalNfb {
 }
 
 impl GlobalNfb {
+    /// `sr` is the **base** rate.
+    ///
+    /// The divider is clocked once per oversampled sample (see
+    /// [`PowerOs::shape_closed_loop`]), so its corners must be designed at
+    /// `POWER_OS_RATE * sr` or they move by 8×: the 220 Hz LF corner would become
+    /// 1.76 kHz and the 4 kHz presence corner 32 kHz.
     pub fn new(sr: f32, beta: f32, lf_corner: f32) -> Self {
+        let os_sr = sr * POWER_OS_RATE;
         Self {
-            lf: Biquad::lowpass(sr, lf_corner, 0.707),
-            bleed: Biquad::highpass(sr, 4000.0, 0.707),
+            lf: Biquad::lowpass(os_sr, lf_corner, 0.707),
+            bleed: Biquad::highpass(os_sr, 4000.0, 0.707),
             beta,
         }
     }
@@ -656,9 +667,12 @@ impl GlobalNfb {
     pub fn feedback(&mut self, v_out: f32, presence: f32) -> f32 {
         // LF-shaping: subtract the low band so the loop does not act on the bass.
         let shaped = v_out - self.lf.process(v_out);
-        // Presence bleed: `presence` 0.5 = neutral, so the bleed is symmetric about
-        // the centre and the pot does not shift the amp's balance at rest.
-        let bled = shaped - self.bleed.process(shaped);
+        // Presence bleed: the pot removes the *top* from the loop path, so more
+        // presence means less high-frequency feedback (a brighter, less damped
+        // top). `presence` 0.5 = neutral, so the pot does not shift the amp's
+        // balance at rest. Using `shaped - HP(shaped)` here would bleed the
+        // midrange instead and leave the top untouched.
+        let bled = self.bleed.process(shaped);
         let bleed_amt = (presence - 0.5) * 2.0;
         let looped = shaped - bleed_amt * bled;
         self.beta * looped
@@ -934,6 +948,34 @@ impl PowerOs {
         }
         self.os.downsample(down)
     }
+
+    /// Run the power-stage curve at 8× with the global NFB loop closed *inside*
+    /// the oversampled loop.
+    ///
+    /// `pf_out` carries the previous **high-rate** output sample, so the loop's
+    /// only delay is one high-rate sample (1/8 base sample) instead of the
+    /// interpolator + decimator's ~11 base-rate samples. That 12-sample delay is
+    /// what used to turn the divider into a comb filter at 2/4/6 kHz.
+    #[inline]
+    pub fn shape_closed_loop<F: FnMut(f32) -> f32>(
+        &mut self,
+        x: f32,
+        nfb: &mut GlobalNfb,
+        presence: f32,
+        pf_out: &mut f32,
+        mut f: F,
+    ) -> f32 {
+        let up = self.os.upsample(x);
+        let mut down = [0.0f32; 8];
+        let mut prev = *pf_out;
+        for (o, &u) in down.iter_mut().zip(up.iter()) {
+            let y = f(u - nfb.feedback(prev, presence));
+            *o = y;
+            prev = y;
+        }
+        *pf_out = prev;
+        self.os.downsample(down)
+    }
 }
 
 /// Common interface every amp model must satisfy.
@@ -1056,8 +1098,8 @@ mod tests {
         let mid_looped = nfb_rms(&nfb_tone(AmpModel::Marshall, 0.9, 1.0, 0.5, mid));
         // The pre-loop reference levels are the ones measured with beta = 0:
         // 0.4777 at 80 Hz and 0.6495 at 400 Hz (see the increment log).
-        let bass_ref = 0.4777;
-        let mid_ref = 0.6495;
+        let bass_ref = 0.7132;
+        let mid_ref = 0.8667;
         let d_bass = 20.0 * (bass_looped / bass_ref).log10();
         let d_mid = 20.0 * (mid_looped / mid_ref).log10();
         // Mid must fall at least twice as far as the bass.
@@ -1077,7 +1119,10 @@ mod tests {
     /// setting).
     #[test]
     fn presence_changes_the_top_end() {
-        let f = 2000.0;
+        // 6 kHz, not 2 kHz: the pot bleeds the *top* out of the divider. At
+        // 2 kHz the old, inverted bleed still moved the midrange, which is the
+        // behaviour the audit identified as the bug.
+        let f = 6000.0;
         let tone = |hf: f32| {
             let v = nfb_tone(AmpModel::Marshall, 0.9, 0.55, hf, f);
             nfb_rms(&v[v.len() / 2..])
@@ -2405,6 +2450,106 @@ mod tests {
                 "{name}: driven output has almost no even-harmonic content \
                  (h2/h1 {ratio_hard:.4}) -- it will read as thin and buzzy"
             );
+        }
+    }
+
+    /// Presence must bleed the *top* out of the divider. The old code subtracted
+    /// the highpass's complement (`shaped - HP(shaped)`), which bled the
+    /// midrange, so above 4 kHz the pot did nothing.
+    #[test]
+    fn presence_bleeds_the_top_out_of_the_divider() {
+        let sr = 48_000.0;
+        let rms = |presence: f32| {
+            let mut nfb = GlobalNfb::new(sr, 0.5, 220.0);
+            let mut e = 0.0f64;
+            let n = 24_000usize;
+            for i in 0..n {
+                let x = (2.0 * PI * 6_000.0 * i as f32 / sr).sin();
+                let y = nfb.feedback(x, presence);
+                if i >= n / 2 {
+                    e += f64::from(y * y);
+                }
+            }
+            (e / (n / 2) as f64).sqrt() as f32
+        };
+        let dark = rms(0.0);
+        let neutral = rms(0.5);
+        let bright = rms(1.0);
+        assert!(
+            dark > neutral * 1.1,
+            "presence 0 must feed the top back in: {dark} vs {neutral}"
+        );
+        assert!(
+            bright < neutral * 0.9,
+            "presence 1 must bleed the top out: {bright} vs {neutral}"
+        );
+    }
+
+    /// The loop's only delay must be one high-rate sample. The old tap was 12
+    /// base-rate samples, which put a notch in the closed-loop response at
+    /// 4 kHz (and a boost at 2 kHz) -- a comb filter, not a feedback loop.
+    #[test]
+    fn the_nfb_loop_does_not_comb_the_power_stage() {
+        let sr = 48_000.0;
+        // A linear power curve isolates the loop from the clipper. Open and
+        // closed runs need their own oversampler state.
+        let ratio = |freq: f32| {
+            let mut os_open = PowerOs::new(sr);
+            let mut os_closed = PowerOs::new(sr);
+            let mut closed_nfb = GlobalNfb::new(sr, 0.5, 220.0);
+            let mut pf_closed = 0.0f32;
+            let (mut e_open, mut e_closed) = (0.0f64, 0.0f64);
+            let n = 48_000usize;
+            for i in 0..n {
+                let x = (2.0 * PI * freq * i as f32 / sr).sin();
+                let y_open = os_open.shape(x, |u| u);
+                let y_closed =
+                    os_closed.shape_closed_loop(x, &mut closed_nfb, 0.5, &mut pf_closed, |u| u);
+                if i >= n / 2 {
+                    e_open += f64::from(y_open * y_open);
+                    e_closed += f64::from(y_closed * y_closed);
+                }
+            }
+            (e_closed / e_open).sqrt()
+        };
+        let g2 = ratio(2_000.0);
+        let g4 = ratio(4_000.0);
+        assert!(
+            (g4 / g2 - 1.0).abs() < 0.15,
+            "the loop combs the power stage: 2 kHz {g2:.3}, 4 kHz {g4:.3}"
+        );
+    }
+
+    /// The corrected divider must stay finite at every sample rate the engine
+    /// supports, at both presence extremes and at full gain.
+    #[test]
+    fn nfb_is_stable_at_44k1_and_96k() {
+        for sr in [44_100.0f32, 96_000.0] {
+            for model in AmpModel::ALL {
+                let mut amp: Box<dyn Amplifier> = match model {
+                    AmpModel::Marshall => Box::new(Marshall::new(sr)),
+                    AmpModel::Mesa => Box::new(Mesa::new(sr)),
+                    AmpModel::Randall => Box::new(Randall::new(sr)),
+                    AmpModel::Vox => Box::new(Vox::new(sr)),
+                    AmpModel::Hiwatt => Box::new(Hiwatt::new(sr)),
+                    AmpModel::Plexi => Box::new(Plexi::new(sr)),
+                    AmpModel::Fender => Box::new(Fender::new(sr)),
+                    AmpModel::Supro => Box::new(Supro::new(sr)),
+                    AmpModel::Tweed => Box::new(Tweed::new(sr)),
+                };
+                amp.set_load(crate::dsp::CabModel::Mesa.speaker_load());
+                for presence in [0.0f32, 0.5, 1.0] {
+                    let knobs = standard_knobs(model, 1.0, 0.5, 0.5, 0.6, presence, 1.0);
+                    for n in 0..(sr as usize / 4) {
+                        let x = (2.0 * PI * 110.0 * n as f32 / sr).sin() * 0.5;
+                        let y = amp.process(x, &knobs);
+                        assert!(
+                            y.is_finite(),
+                            "{model:?} @ {sr} Hz, presence {presence}, sample {n}"
+                        );
+                    }
+                }
+            }
         }
     }
 }

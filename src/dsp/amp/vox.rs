@@ -183,14 +183,15 @@ impl Vox {
         let (drive_up, rail) = sagged_rail(sag, 2.5);
         // `sag` is a rail voltage: as it falls the drive rises and the output
         // comes back down, so sag compresses *harder* under load. See `sagged_rail`.
-        // Subtract the divider's feedback from the stage's own input, read from
-        // `pf_out` so the loop stays causal.
-        let fb = self.nfb.feedback(self.pf_out, presence);
-        let out = self.os_power.shape(x - fb, |u| {
-            TubeClip::PUSH_PULL.shape(u * drive_up) * rail * 0.4475
-        });
-        self.pf_out = out;
-        out
+        // The divider runs per oversampled sample inside the loop, so its only
+        // delay is one high-rate sample rather than the FIR's ~11 base samples.
+        self.os_power.shape_closed_loop(
+            x,
+            &mut self.nfb,
+            presence,
+            &mut self.pf_out,
+            |u| TubeClip::PUSH_PULL.shape(u * drive_up) * rail * 0.4475,
+        )
     }
 }
 
@@ -274,6 +275,6 @@ impl Amplifier for Vox {
 
         // Output trim: the AC30 has no master volume (the Top Boost Volume is the
         // gain), so this fixed trim level-matches it to the other models.
-        x * 9.037
+        x * 9.424
     }
 }
