@@ -102,8 +102,10 @@ pub(super) fn read_cubic(buf: &[f32], write: usize, delay: f32) -> f32 {
     if len < 5 {
         return buf.get(write % len.max(1)).copied().unwrap_or(0.0);
     }
-    // Taps at delays i-1, i, i+1, i+2 must all be in range.
-    let d = delay.clamp(1.0, (len - 3) as f32);
+    // Taps at delays i-1, i, i+1, i+2 must all be in range, and `idx(0)` is the
+    // slot the caller has not written yet: it still holds the oldest sample in
+    // the ring. Two samples is the shortest tap that only reads written history.
+    let d = delay.clamp(2.0, (len - 3) as f32);
     let i = d.floor() as usize;
     let t = d - i as f32;
     // `idx(k)` is `k` samples behind the write head; larger k = older.
@@ -359,6 +361,23 @@ mod tests {
         assert!(constant_power_mix(1.0).0.abs() < 1e-6, "mix 1 is all wet");
     }
 
+    /// The delay effects read *before* they write, so the slot at `write` still
+    /// holds the oldest sample. A tap shorter than two samples used to mix that
+    /// stale slot in; the clamp must keep every tap inside the written history.
+    #[test]
+    fn read_cubic_never_reads_the_unwritten_slot() {
+        let len = 16;
+        let mut buf = vec![0.0f32; len];
+        let write = 0usize;
+        // idx(k) = k for k >= 1, and idx(0) is the stale slot we poison.
+        for k in 1..len {
+            buf[(write + len - k) % len] = k as f32;
+        }
+        buf[write] = 1_000.0;
+        let y = read_cubic(&buf, write, 1.5);
+        assert!(y.abs() < 10.0, "read_cubic mixed the unwritten slot: {y}");
+    }
+
     /// `read_cubic` is exact at integer delays, holds a constant at any fractional
     /// delay, and reproduces a linear ramp (Catmull-Rom is exact for degree ≤ 1) —
     /// the correctness floor under the smoother modulation reads.
@@ -367,7 +386,9 @@ mod tests {
         let buf: Vec<f32> = (0..64).map(|i| i as f32).collect();
         let write = 0usize;
         let at = |k: usize| buf[(write + buf.len() - k) % buf.len()];
-        for d in 1..20usize {
+        // From 2: the delay effects read before they write, so taps below two
+        // samples would include the stale slot (see the test above).
+        for d in 2..20usize {
             assert!((read_cubic(&buf, write, d as f32) - at(d)).abs() < 1e-4);
         }
         let flat = vec![0.25f32; 64];

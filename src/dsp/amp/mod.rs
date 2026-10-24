@@ -1627,6 +1627,16 @@ mod tests {
         }
     }
 
+    /// Cycling the picker forwards and backwards must visit the same set; a
+    /// one-way mapping that disagrees with `next` makes a model unreachable.
+    #[test]
+    fn amp_model_cycle_is_reversible() {
+        for m in AmpModel::ALL {
+            assert_eq!(m.next().prev(), m, "{m:?}: next().prev()");
+            assert_eq!(m.prev().next(), m, "{m:?}: prev().next()");
+        }
+    }
+
     /// At equal settings the models must sit within a sane loudness window of each
     /// other, so flipping models on stage doesn't jump the volume. The output
     /// trims in each amp exist precisely to enforce this.
@@ -1635,7 +1645,6 @@ mod tests {
     /// RMS: the ear weights the mids far more than the low end a chug is full of, so
     /// raw RMS let bass-heavy voicings (and the low-headroom small combos) drift out
     /// of perceptual balance. See `examples/rig_loudness.rs`.
-
     #[test]
     fn amps_are_loudness_matched() {
         use crate::dsp::biquad::Biquad;

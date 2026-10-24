@@ -64,7 +64,18 @@ impl Biquad {
     // separate from the storage is what lets the constructor and the in-place
     // setter share one implementation of the maths.
 
+    /// Clamp a design to the stable, meaningful range.
+    ///
+    /// At or above Nyquist `sin(w0)` can go negative, flipping `a0` negative and
+    /// moving the poles outside the unit circle (an instant NaN blow-up); a zero
+    /// or negative corner is meaningless; `q = 0` divides by zero.
+    #[inline]
+    fn design(sr: f32, freq: f32, q: f32) -> (f32, f32) {
+        (freq.clamp(1.0, sr * 0.495), q.max(1e-4))
+    }
+
     fn hp_coeffs(sr: f32, freq: f32, q: f32) -> [f32; 6] {
+        let (freq, q) = Self::design(sr, freq, q);
         let w0 = 2.0 * PI * freq / sr;
         let (s, c) = (w0.sin(), w0.cos());
         let alpha = s / (2.0 * q);
@@ -79,6 +90,7 @@ impl Biquad {
     }
 
     fn lp_coeffs(sr: f32, freq: f32, q: f32) -> [f32; 6] {
+        let (freq, q) = Self::design(sr, freq, q);
         let w0 = 2.0 * PI * freq / sr;
         let (s, c) = (w0.sin(), w0.cos());
         let alpha = s / (2.0 * q);
@@ -93,6 +105,7 @@ impl Biquad {
     }
 
     fn low_shelf_coeffs(sr: f32, freq: f32, gain_db: f32) -> [f32; 6] {
+        let freq = freq.clamp(1.0, sr * 0.495);
         let a = 10.0_f32.powf(gain_db / 40.0);
         let w0 = 2.0 * PI * freq / sr;
         let (s, c) = (w0.sin(), w0.cos());
@@ -109,6 +122,7 @@ impl Biquad {
     }
 
     fn high_shelf_coeffs(sr: f32, freq: f32, gain_db: f32) -> [f32; 6] {
+        let freq = freq.clamp(1.0, sr * 0.495);
         let a = 10.0_f32.powf(gain_db / 40.0);
         let w0 = 2.0 * PI * freq / sr;
         let (s, c) = (w0.sin(), w0.cos());
@@ -125,6 +139,7 @@ impl Biquad {
     }
 
     fn peak_eq_coeffs(sr: f32, freq: f32, q: f32, gain_db: f32) -> [f32; 6] {
+        let (freq, q) = Self::design(sr, freq, q);
         let a = 10.0_f32.powf(gain_db / 40.0);
         let w0 = 2.0 * PI * freq / sr;
         let (s, c) = (w0.sin(), w0.cos());
@@ -220,6 +235,7 @@ impl Biquad {
     /// frequency, falling away on both sides — used to tap a resonant band for
     /// the speaker-load resonance model.
     pub fn bandpass(sr: f32, freq: f32, q: f32) -> Self {
+        let (freq, q) = Self::design(sr, freq, q);
         let w0 = 2.0 * PI * freq / sr;
         let (s, c) = (w0.sin(), w0.cos());
         let alpha = s / (2.0 * q);
@@ -238,6 +254,7 @@ impl Biquad {
 
     /// Retune a [`bandpass`](Self::bandpass) in place, preserving state.
     pub fn set_bandpass(&mut self, sr: f32, freq: f32, q: f32) {
+        let (freq, q) = Self::design(sr, freq, q);
         let w0 = 2.0 * PI * freq / sr;
         let (s, c) = (w0.sin(), w0.cos());
         let alpha = s / (2.0 * q);
@@ -272,6 +289,26 @@ impl Biquad {
 mod tests {
     use super::*;
     use std::f32::consts::PI;
+
+    /// A design frequency at or above Nyquist used to put the poles outside the
+    /// unit circle (`sin(w0) < 0`, so `a0 < 0`), and `q = 0` divided by zero.
+    /// Both must clamp to a stable design instead of blowing up.
+    #[test]
+    fn frequencies_at_or_above_nyquist_are_clamped() {
+        let sr = 48_000.0;
+        let mut hot = Biquad::lowpass(sr, 40_000.0, 0.707);
+        let mut edge = Biquad::lowpass(sr, 0.495 * sr, 0.707);
+        let mut zero_q = Biquad::peak_eq(sr, 60_000.0, 0.0, 6.0);
+        for i in 0..1_000 {
+            let x = if i < 8 { 1.0 } else { 0.0 };
+            let a = hot.process(x);
+            let b = edge.process(x);
+            let p = zero_q.process(x);
+            assert!(a.is_finite() && p.is_finite(), "blow-up at {i}: {a}, {p}");
+            assert!(a.abs() < 100.0, "unstable at {i}: {a}");
+            assert!((a - b).abs() < 1e-6, "not clamped at {i}: {a} vs {b}");
+        }
+    }
 
     /// Every design's `set_*` must produce **exactly** the same coefficients as
     /// its constructor. The state-preserving setters are only trustworthy if
