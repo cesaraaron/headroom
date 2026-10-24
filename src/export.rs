@@ -351,11 +351,13 @@ fn render_with_chain(
         let n = BLOCK.min(remaining);
         mono[..n].fill(0.0);
         for clip in &decoded {
-            // Overlap-add this clip's contribution to the block, clamped to the
-            // render window so a region export never writes outside it.
+            // Overlap-add this clip's contribution to the block. The whole
+            // timeline is fed to the chain; only the *write* below is clamped to
+            // the region. Clamping here muted the warm-up and lost every tail
+            // that crossed the region boundary.
             let clip_end = clip.start + clip.mono.len();
-            let lo = (written).max(clip.start).max(win_start);
-            let hi = (written + n).min(clip_end).min(win_end);
+            let lo = written.max(clip.start);
+            let hi = (written + n).min(clip_end);
             if lo < hi {
                 for out in lo..hi {
                     mono[out - written] += clip.mono[out - clip.start] * clip.gain;
@@ -700,6 +702,59 @@ mod tests {
         let reader = hound::WavReader::open(&out).expect("open out");
         let frames = reader.len() as usize / 2;
         assert_eq!(frames, 120, "region export wrote {frames} frames, want 120");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A region export still renders the chain from frame 0 so the rig is warm
+    /// (sag, cab delay line, reverb/delay tails). Clamping the *input* mix to
+    /// `win_start` muted that warm-up and made the window start from silence —
+    /// losing every tail that crossed the region boundary.
+    #[test]
+    fn region_export_feeds_pre_window_audio_to_the_chain() {
+        let dir =
+            std::env::temp_dir().join(format!("rusty-riff-export-prefeed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let take = dir.join("take.wav");
+        // A clip that ends 200 samples before the window, with a long wet tail.
+        let samples: Vec<f32> = (0..2_800)
+            .map(|i| {
+                let t = i as f32 / 48_000.0;
+                (-t * 8.0).exp() * (2.0 * std::f32::consts::PI * 220.0 * t).sin() * 0.6
+            })
+            .collect();
+        write_mono_wav(&take, 48_000, &samples);
+
+        let params = Params::new();
+        params.rev_enabled.store(true, Relaxed);
+        params.rev_mix.store(0.9, Relaxed);
+        params.rev_room.store(0.95, Relaxed);
+        let job = ExportJob {
+            dest: dir.join("out.wav"),
+            sample_rate: 48_000,
+            project_sample_rate: 48_000,
+            clips: vec![ExportClip {
+                path: take,
+                start_ticks: 0,
+                gain: 1.0,
+            }],
+            rig: snapshot_rig(&params),
+            range_ticks: Some((3_000, 4_000)),
+            ir_path: None,
+            ir_active: false,
+            insert: None,
+            amp: None,
+        };
+        let cancel = AtomicBool::new(false);
+        let progress = AtomicU32::new(0);
+        let out = run(job, &progress, &cancel).expect("export");
+        let mut reader = hound::WavReader::open(&out).expect("open out");
+        let raw: Vec<f32> = reader
+            .samples::<f32>()
+            .map(|s| s.expect("sample"))
+            .collect();
+        let rms = (raw.iter().map(|&x| f64::from(x * x)).sum::<f64>() / raw.len() as f64).sqrt();
+        assert!(rms > 1e-4, "the pre-window tail was muted: rms {rms}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

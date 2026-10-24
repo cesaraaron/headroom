@@ -261,13 +261,17 @@ impl Amplifier for Randall {
         // The master drives the power stage's input (real master-volume behaviour)
         // before the rail clip, so backing it off lightens the drive.
         let drive = (master / MASTER_DRIVE_REF).clamp(0.0, 2.0);
-        // Subtract the divider's feedback from the stage's own input, read from
-        // `pf_out` so the loop stays causal.
-        let fb = self.nfb.feedback(self.pf_out, treble);
-        let out = self
-            .os_power
-            .shape(x * drive - fb, |u| (u * 1.85).tanh() * 0.5997 * supply);
-        self.pf_out = out;
+        // The divider runs per oversampled sample inside the loop, so its only
+        // delay is one high-rate sample rather than the FIR's ~11 base samples.
+        // The Warhead has a dedicated PRESENCE pot; it must drive the divider,
+        // not TREBLE.
+        let out = self.os_power.shape_closed_loop(
+            x * drive,
+            &mut self.nfb,
+            presence,
+            &mut self.pf_out,
+            |u| (u * 1.85).tanh() * 0.5997 * supply,
+        );
         let x = out;
         let x = self.speaker.process(x, 0.0);
         // Second subsonic stage after the tanh: the clipper regenerates a low
@@ -281,7 +285,7 @@ impl Amplifier for Randall {
         // under overtones (`fundamental_is_not_buried_under_overtones`) and
         // breaks the DS-chain level match. Re-tuning it means re-tuning the cab.
         // The master's level is in the power-amp input scale above.
-        x * MASTER_DRIVE_REF * 0.823
+        x * MASTER_DRIVE_REF * 0.8819
     }
 }
 

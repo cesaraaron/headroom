@@ -121,9 +121,12 @@ pub fn condition_block(
 // ── Reference targets and persistence ─────────────────────────────────────────
 
 /// Bumped when the reference targets change; recorded with each saved entry so
-/// the UI can warn about a stale calibration. Version 2 = targets measured on the
-/// reference rig (see `docs/fidelity-implement.md` → B8).
-pub const REFERENCE_VERSION: u32 = 2;
+/// the UI can warn about a stale calibration.
+///
+/// Version 2 = targets measured on the reference rig (see
+/// `docs/fidelity-implement.md` → B8). Version 3 = the P90 target corrected to
+/// an interpolated provisional value; the measured HB/SC targets are unchanged.
+pub const REFERENCE_VERSION: u32 = 3;
 
 /// The pickup class a calibration was measured with.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,11 +143,14 @@ pub enum PickupClass {
 ///
 /// Verified for humbucker and single-coil against the reference rig (Scarlett
 /// Solo Gen 4, INST on, gain 9 o'clock; Donner DST-152 bridge HB / neck SC) in
-/// B8; P90 remains provisional (no P90 guitar was available to measure).
+/// B8. P90 remains provisional and is *interpolated* between the two measured
+/// classes (no P90 guitar was available to measure).
 pub fn target_peak_dbfs(p: PickupClass) -> f32 {
     match p {
         PickupClass::SingleCoil => -24.6,
-        PickupClass::P90 => -4.5,
+        // The pre-B8 placeholder was -4.5: 15.2 dB above a humbucker, which
+        // pinned every P90 calibration's trim at the +24 dB clamp.
+        PickupClass::P90 => -22.0,
         PickupClass::Humbucker => -19.7,
     }
 }
@@ -643,6 +649,37 @@ mod tests {
                 r.trim_db
             );
         }
+    }
+
+    /// The pre-B8 placeholder (-4.5 dBFS) was 15.2 dB hotter than a humbucker,
+    /// so every P90 calibration clamped its trim at +24 dB. A P90 sits between
+    /// the measured single-coil and humbucker targets.
+    #[test]
+    fn p90_target_sits_between_single_coil_and_humbucker() {
+        let sc = target_peak_dbfs(PickupClass::SingleCoil);
+        let p90 = target_peak_dbfs(PickupClass::P90);
+        let hb = target_peak_dbfs(PickupClass::Humbucker);
+        assert!(
+            sc < p90 && p90 < hb,
+            "single {sc}, P90 {p90}, humbucker {hb}"
+        );
+        assert!(
+            p90 > sc + 1.0,
+            "P90 must not collapse onto the single-coil target"
+        );
+        assert!(
+            p90 < hb - 1.0,
+            "P90 must not collapse onto the humbucker target"
+        );
+    }
+
+    /// A quiet performance on a P90 must not pin the trim at the +24 dB clamp.
+    #[test]
+    fn p90_calibration_does_not_hit_the_trim_clamp() {
+        let play = windows(db_to_lin(-30.0), 250);
+        let noise = windows(db_to_lin(-80.0), 200);
+        let r = compute_calibration(&play, &noise, PickupClass::P90, false, false).unwrap();
+        assert!(r.trim_db < 24.0, "trim clamped: {}", r.trim_db);
     }
 
     #[test]

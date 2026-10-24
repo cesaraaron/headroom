@@ -260,14 +260,12 @@ impl Marshall {
         // `sagged_rail` — the old `clip(u * supply * 2.2)` reduced clipping under
         // load, which is backwards.
         let (drive_up, rail) = sagged_rail(supply, 2.2);
-        // Subtract the divider's feedback from the stage's own input. Read from
-        // `pf_out` (the previous sample) so the loop is causal.
-        let fb = self.nfb.feedback(self.pf_out, presence);
-        let out = self.os_power.shape(x - fb, |u| {
-            TubeClip::PUSH_PULL.shape(u * drive_up) * rail * 0.7992
-        });
-        self.pf_out = out;
-        out
+        // The divider runs per oversampled sample inside the loop, so its only
+        // delay is one high-rate sample rather than the FIR's ~11 base samples.
+        self.os_power
+            .shape_closed_loop(x, &mut self.nfb, presence, &mut self.pf_out, |u| {
+                TubeClip::PUSH_PULL.shape(u * drive_up) * rail * 0.7992
+            })
     }
 }
 
@@ -367,6 +365,6 @@ impl Amplifier for Marshall {
         // Output trim: level-matches the JCM800 to the other models so switching
         // doesn't jump in volume. The master's level comes from the power-amp input
         // scale above; this is a fixed trim referenced to the default.
-        x * MASTER_DRIVE_REF * 5.427
+        x * MASTER_DRIVE_REF * 6.560
     }
 }
