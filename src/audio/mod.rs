@@ -1642,7 +1642,10 @@ mod tests {
     /// permanent colouration. (Read after the lookahead settles.)
     #[test]
     fn final_stage_is_transparent_at_normal_levels() {
-        for v in [0.0f32, 0.1, 0.5, 0.9] {
+        // Stay below the gain computer's knee (1.0 * MARGIN = 0.97): this stage
+        // now starts turning down at -0.265 dBFS, not at 0 dBFS. A step to 0.9
+        // also rings the true-peak detector's interpolator over 0.97.
+        for v in [0.0f32, 0.1, 0.5, 0.8] {
             let mut lim = stage();
             settle(&mut lim, v, -v);
             let (l, r) = output_stage(v, -v, 0.0, 0.0, &mut lim);
@@ -1660,7 +1663,8 @@ mod tests {
         const IMPORT: f32 = 0.2;
         // Kept below the ceiling so the stage is transparent and the only thing under
         // test is that the monitor bus adds at unity on top of the chain.
-        for live in [0.0f32, 0.2, 0.5, 0.7] {
+        // Kept below the knee (0.97 on this full-scale stage), including IMPORT.
+        for live in [0.0f32, 0.2, 0.4, 0.6] {
             let mut a = stage();
             settle(&mut a, live + IMPORT, live + IMPORT);
             let (with_monitor, _) = output_stage(live + IMPORT, live + IMPORT, 0.0, 0.0, &mut a);

@@ -1725,6 +1725,8 @@ pub struct DspChain {
     /// Declick ramp for a cab-source switch (0 = muted, 1 = open).
     cab_declick: f32,
     cab_declick_step: f32,
+    /// Whether a full-rig AU skipped the cab stage on the previous sample.
+    cab_skipped: bool,
     /// Master-bus DC blockers, one per channel.
     master_dc: MasterDc,
     /// Master-bus lookahead limiter. Replaces the old memoryless clip so peaks
@@ -1778,6 +1780,7 @@ impl DspChain {
             cab_ext_live: false,
             cab_declick: 1.0,
             cab_declick_step: 1.0 / (BYPASS_DECLICK_SECS * sr).max(1.0),
+            cab_skipped: false,
             master_dc: MasterDc::new(sr),
             master_limiter: Limiter::new(sr),
             hum: HumNoise::new(sr),
@@ -2161,12 +2164,19 @@ impl DspChain {
         match stage {
             ChainStage::Amp => return Sig::Mono(self.amp_stage(sig.into_mono())),
             ChainStage::Cab => {
-                return if route.skip_cab {
-                    sig
-                } else {
-                    let (l, r) = self.cab_stage(sig.into_mono());
-                    Sig::Stereo(l, r)
-                };
+                if route.skip_cab {
+                    // A full-rig AU owns the cab for now; the bank is not
+                    // advanced, so its convolver holds the tail it was in the
+                    // middle of when the AU took over.
+                    self.cab_skipped = true;
+                    return sig;
+                }
+                if self.cab_skipped {
+                    self.cab_skipped = false;
+                    self.cab.reset();
+                }
+                let (l, r) = self.cab_stage(sig.into_mono());
+                return Sig::Stereo(l, r);
             }
             _ => {}
         }
