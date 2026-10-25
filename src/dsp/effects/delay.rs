@@ -22,6 +22,8 @@ pub struct Delay {
     write: usize,
     /// Wet/dry, smoothed. `delay_mix` is a MIDI CC target.
     mix: SmoothedGain,
+    /// Delay time, smoothed.
+    time_smooth: SmoothedGain,
     sr: f32,
     // Tape transport: wow/flutter LFO phases and the per-channel feedback damping.
     wow_phase: f32,
@@ -68,7 +70,9 @@ const ECHOREC_FB: f32 = 0.72;
 
 impl Delay {
     pub fn new(sr: f32) -> Self {
-        let max_samples = (sr * 0.5) as usize + 1; // 500 ms max
+        // 500 ms + headroom for tape wow/flutter at `time = 1.0`, plus the
+        // cubic read's 3-sample guard band.
+        let max_samples = (sr * 0.5 * 1.01) as usize + 8;
         Self {
             buf_l: vec![0.0; max_samples],
             buf_r: vec![0.0; max_samples],
@@ -86,6 +90,10 @@ impl Delay {
             sat_os_r: Oversampler4::new(sr),
             // `DEFAULT_DELAY_MIX`.
             mix: SmoothedGain::new(0.30, sr),
+            // Time is a MIDI/tap-tempo target; a step moves the read tap through
+            // the feedback loop. ~30 ms is fast enough for tap tempo, slow enough
+            // to not click.
+            time_smooth: SmoothedGain::with_ms(0.5, 30.0, sr),
         }
     }
 
@@ -107,6 +115,14 @@ impl Delay {
         self.write = 0;
         self.sat_os_l.reset();
         self.sat_os_r.reset();
+        // The feedback filters hold the previous signal in their state; leaving
+        // them loaded re-injects it into the cleared buffer as a tail.
+        self.damp_l.clear();
+        self.damp_r.clear();
+        self.ec_lp_l.clear();
+        self.ec_lp_r.clear();
+        self.ec_hp_l.clear();
+        self.ec_hp_r.clear();
     }
 
     /// `time`, `feedback`, `mix` 0–1; `kind` 0 = digital ping-pong, 0.5 = Echorec
@@ -124,7 +140,8 @@ impl Delay {
         let echorec = kind > 0.25 && kind < 0.75;
         let tape = kind >= 0.75;
         let len = self.buf_l.len();
-        let base = time * self.sr * 0.5;
+        self.time_smooth.set(time.clamp(0.0, 1.0));
+        let base = self.time_smooth.step() * self.sr * 0.5;
         // Aim the smoother once; each branch below takes one `next()` step.
         self.mix.set(mix_param.clamp(0.0, 1.0));
 
@@ -211,6 +228,38 @@ fn tape_sat(x: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// At `time = 1.0` the tape wobble asks for a read up to +0.37 % past the
+    /// nominal 500 ms. The old buffer ended at exactly 500 ms and clamped the
+    /// modulation flat at the longest setting.
+    #[test]
+    fn the_buffer_has_headroom_for_wobble_at_max_delay() {
+        let d = Delay::new(48_000.0);
+        let deepest = 48_000.0 * 0.5 * (1.0 + WOW_DEPTH + FLUTTER_DEPTH);
+        assert!(
+            d.buf_l.len() as f32 >= deepest + 2.0,
+            "buffer {} is shorter than the deepest tap {deepest}",
+            d.buf_l.len()
+        );
+    }
+
+    /// Clearing the delay lines must also clear the feedback-path filters: their
+    /// state otherwise re-injects the previous signal as a tail.
+    #[test]
+    fn clear_buffers_drops_the_feedback_filters_tail() {
+        let mut d = Delay::new(48_000.0);
+        for n in 0..4_800 {
+            let x = (2.0 * std::f32::consts::PI * 220.0 * n as f32 / 48_000.0).sin() * 0.5;
+            let _ = d.process(x, x, 0.1, 0.8, 1.0, 1.0);
+        }
+        d.clear_buffers();
+        let mut peak = 0.0f32;
+        for _ in 0..20_000 {
+            let (l, r) = d.process(0.0, 0.0, 0.1, 0.8, 1.0, 1.0);
+            peak = peak.max(l.abs()).max(r.abs());
+        }
+        assert!(peak < 1e-6, "stale feedback tail after clear: {peak}");
+    }
 
     /// `mix = 0` must pass the dry signal through unchanged, in every voicing.
     #[test]

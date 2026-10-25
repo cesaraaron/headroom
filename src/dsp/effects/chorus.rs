@@ -50,6 +50,14 @@ impl Chorus {
         }
     }
 
+    /// Zero the delay lines (LFO phase and mix stay put). Called on a chain
+    /// reorder, which cuts every recirculating tail.
+    pub(crate) fn clear_buffers(&mut self) {
+        self.buf_l.fill(0.0);
+        self.buf_r.fill(0.0);
+        self.write = 0;
+    }
+
     /// Interpolated read `delay` samples behind the write head (Catmull-Rom).
     #[inline]
     fn read(buf: &[f32], write: usize, delay: f32) -> f32 {

@@ -1085,6 +1085,14 @@ impl AmpBank {
         }
     }
 
+    /// Drop every model's switch state. Used on a chain reorder, which cuts
+    /// tails the same way a model switch does (the sag envelopes are kept).
+    pub fn clear_tails(&mut self) {
+        for model in AmpModel::ALL {
+            self.clear_switch_state(model);
+        }
+    }
+
     #[inline]
     fn clear_switch_state(&mut self, model: AmpModel) {
         match model {

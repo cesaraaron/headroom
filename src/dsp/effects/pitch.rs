@@ -75,6 +75,13 @@ impl Pitch {
         p
     }
 
+    /// Zero the grain buffer (phase and mix stay put). Called on a chain reorder,
+    /// which cuts every recirculating tail.
+    pub(crate) fn clear_buffers(&mut self) {
+        self.buf.fill(0.0);
+        self.write = 0;
+    }
+
     fn set_tone(&mut self, tone: f32) {
         // tone 0 → ~800 Hz (dark, artifacts rolled off), tone 1 → ~10 kHz (open)
         let freq = 800.0 * (10_000.0_f32 / 800.0).powf(tone.clamp(0.0, 1.0));

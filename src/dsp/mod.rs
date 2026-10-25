@@ -2299,6 +2299,11 @@ impl DspChain {
             self.delay.clear_buffers();
             self.flanger.clear_buffers();
             self.phaser.clear_buffers();
+            self.pitch.clear_buffers();
+            self.chorus.clear_buffers();
+            self.tremolo.clear_buffers();
+            // The Fender spring tank and every model's oversampler histories.
+            self.amp.clear_tails();
             self.last_order = o;
         }
         self.last_order

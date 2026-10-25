@@ -26,6 +26,9 @@ pub struct Tremolo {
     buf_r: Vec<f32>,
     write: usize,
     phase: f32,
+    /// How much of the vibrato tap is mixed in (0 = direct), smoothed.
+    tap: f32,
+    tap_coeff: f32,
     sr: f32,
 }
 
@@ -45,20 +48,25 @@ impl Tremolo {
             buf_r: vec![0.0; len],
             write: 0,
             phase: 0.0,
+            tap: 0.0,
+            // ~10 ms: enough to hide the tap's 4 ms latency step when MODE crosses
+            // zero, fast enough to feel immediate.
+            tap_coeff: 1.0 - (-1.0 / (0.010 * sr)).exp(),
             sr,
         }
+    }
+
+    /// Zero the delay line (the LFO phase and mix stay put).
+    pub(crate) fn clear_buffers(&mut self) {
+        self.buf_l.fill(0.0);
+        self.buf_r.fill(0.0);
+        self.write = 0;
     }
 
     /// Linear-interpolated read `delay` samples behind the write head.
     #[inline]
     fn read(buf: &[f32], write: usize, delay: f32) -> f32 {
-        let len = buf.len();
-        let d = delay.clamp(1.0, (len - 2) as f32);
-        let i0 = d.floor() as usize;
-        let frac = d - i0 as f32;
-        let a = (write + len - i0) % len;
-        let b = (write + len - i0 - 1) % len;
-        buf[a] * (1.0 - frac) + buf[b] * frac
+        super::read_cubic(buf, write, delay)
     }
 
     #[inline]
@@ -100,14 +108,15 @@ impl Tremolo {
         // engages the tap and its intrinsic 4 ms — which is a real vibrato
         // pedal's behaviour, not an artifact. The buffer is written either way
         // so the tap is warm when the user reaches for MODE.
-        let (wet_l, wet_r) = if pitch_depth > 0.0 {
-            (
-                Self::read(&self.buf_l, self.write, del),
-                Self::read(&self.buf_r, self.write, del),
-            )
-        } else {
-            (l, r)
-        };
+        // Always read the tap, then crossfade it in with MODE. Switching the wet
+        // path in one sample at `pitch_depth > 0` stepped the whole rig 4 ms in
+        // time; the ramp hides it while keeping pure tremolo at zero latency.
+        let tap_l = Self::read(&self.buf_l, self.write, del);
+        let tap_r = Self::read(&self.buf_r, self.write, del);
+        let tap_target = if pitch_depth > 0.0 { 1.0 } else { 0.0 };
+        self.tap += (tap_target - self.tap) * self.tap_coeff;
+        let wet_l = l + (tap_l - l) * self.tap;
+        let wet_r = r + (tap_r - r) * self.tap;
 
         self.buf_l[self.write] = l;
         self.buf_r[self.write] = r;
@@ -201,6 +210,10 @@ mod tests {
     /// an impulse — i.e. the effect's latency, in samples.
     fn latency_samples(mode: f32, depth: f32) -> usize {
         let mut t = Tremolo::new(SR);
+        // Let the MODE crossfade settle before the impulse (10 ms).
+        for _ in 0..2_000 {
+            t.process(0.0, 0.0, 0.5, depth, 0.0, mode);
+        }
         let mut peak_idx = 0usize;
         let mut peak = 0.0f32;
         for n in 0..(SR as usize) {
@@ -213,6 +226,23 @@ mod tests {
         }
         assert!(peak > 0.1, "no output at all for mode {mode} depth {depth}");
         peak_idx
+    }
+
+    /// Crossing out of pure tremolo must fade the vibrato tap in, not switch the
+    /// whole rig 4 ms in time on one sample.
+    #[test]
+    fn engaging_vibrato_fades_the_tap_in() {
+        let mut t = Tremolo::new(SR);
+        for _ in 0..2_000 {
+            t.process(0.1, 0.1, 0.5, 0.5, 0.5, 0.0);
+        }
+        assert_eq!(t.tap, 0.0);
+        t.process(0.1, 0.1, 0.5, 0.5, 0.5, 1.0);
+        assert!(t.tap > 0.0 && t.tap < 0.2, "tap stepped to {}", t.tap);
+        for _ in 0..2_000 {
+            t.process(0.1, 0.1, 0.5, 0.5, 0.5, 1.0);
+        }
+        assert!(t.tap > 0.9, "tap did not engage: {}", t.tap);
     }
 
     /// Tremolo (MODE 0) must add **no latency**. With `pitch_depth == 0` there
