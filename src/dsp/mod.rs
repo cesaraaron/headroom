@@ -1749,6 +1749,22 @@ pub struct DspChain {
 impl DspChain {
     pub fn new(sr: f32, params: Arc<Params>) -> Self {
         let last_order = params.chain_slots();
+        // Start at the stages' actual enabled state: a stage enabled before
+        // construction (a preset loaded at boot) must not fade in from dry over
+        // the first 6 ms.
+        let bypass_ramp = {
+            let mut ramps = [0.0f32; CHAIN_LEN];
+            for id in ChainStage::default_order() {
+                if let Some(stage) = ChainStage::from_u8(id) {
+                    ramps[stage as usize] = if params.stage_enabled(stage) {
+                        1.0
+                    } else {
+                        0.0
+                    };
+                }
+            }
+            ramps
+        };
         Self {
             ng: NoiseGate::new(sr),
             pitch: Pitch::new(sr),
@@ -1789,7 +1805,7 @@ impl DspChain {
             master_dc: MasterDc::new(sr),
             master_limiter: Limiter::new(sr),
             hum: HumNoise::new(sr),
-            bypass_ramp: [0.0; CHAIN_LEN],
+            bypass_ramp,
             bypass_step: 1.0 / (BYPASS_DECLICK_SECS * sr).max(1.0),
         }
     }
@@ -2727,6 +2743,19 @@ mod tests {
     }
 
     use super::*;
+
+    /// A stage enabled when the chain is constructed (a preset applied before
+    /// the engine starts) must start fully open, not fade in from dry.
+    #[test]
+    fn an_enabled_stage_starts_open() {
+        let params = Arc::new(Params::new());
+        params.fz_enabled.store(true, Relaxed);
+        params.fl_enabled.store(true, Relaxed);
+        let chain = DspChain::new(48_000.0, params);
+        assert_eq!(chain.bypass_ramp[ChainStage::Fuzz as usize], 1.0);
+        assert_eq!(chain.bypass_ramp[ChainStage::Flanger as usize], 1.0);
+        assert_eq!(chain.bypass_ramp[ChainStage::Phaser as usize], 0.0);
+    }
     use std::f32::consts::PI;
 
     /// Drive a loud sine through the full chain and confirm the output stays

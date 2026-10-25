@@ -323,6 +323,6 @@ impl Amplifier for Hiwatt {
 
         // Output trim: level-matched to the other models so switching amps doesn't
         // jump in volume. The master's level is in the power-amp input scale above.
-        x * MASTER_DRIVE_REF * 13.509
+        x * MASTER_DRIVE_REF * 13.4182
     }
 }

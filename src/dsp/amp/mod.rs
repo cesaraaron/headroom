@@ -401,7 +401,10 @@ impl GridBlock {
 /// a high-frequency tap whose gain crossfades, per sample, from the knob's
 /// shelf toward a fixed open-loop lift as the sag envelope loads the loop.
 pub(crate) struct DynamicPresence {
-    hp: Biquad,
+    /// First-order lowpass used as `x - lp(x)` for the high-frequency tap.
+    /// A 2nd-order highpass has 180° of phase below its corner, so adding it
+    /// back to `x` cancelled the band an octave under the presence corner.
+    lp: crate::dsp::effects::OnePoleLp,
     g_knob: f32,
     g_open: f32,
     sag_k: f32,
@@ -412,8 +415,10 @@ impl DynamicPresence {
     /// collapses toward under drive, `sag_k` how fast the sag envelope eats the
     /// loop gain. Call [`set_knob`](Self::set_knob) to dial the static shelf.
     pub fn new(sr: f32, freq: f32, open_db: f32, sag_k: f32) -> Self {
+        let mut lp = crate::dsp::effects::OnePoleLp::new();
+        lp.set_cutoff(freq, sr);
         Self {
-            hp: Biquad::highpass(sr, freq, 0.707),
+            lp,
             g_knob: 0.0,
             g_open: 10.0_f32.powf(open_db / 20.0) - 1.0,
             sag_k,
@@ -431,7 +436,10 @@ impl DynamicPresence {
         // the knob's setting toward the open-loop lift.
         let w = 1.0 / (1.0 + self.sag_k * env);
         let g = self.g_knob * w + self.g_open * (1.0 - w);
-        x + g * self.hp.process(x)
+        // First-order complementary split: `x - lp(x)` is the high band with no
+        // out-of-phase residue, so the presence lift cannot notch the midrange.
+        let high = x - self.lp.process(x);
+        x + g * high
     }
 }
 
@@ -2704,6 +2712,30 @@ mod tests {
         assert!(
             (y - r).abs() < 1e-5,
             "switch cut to the new model instead of fading: {y} vs {r}"
+        );
+    }
+
+    /// Presence must lift the top, not notch the band below its corner. The old
+    /// 2nd-order highpass summed 180° out of phase there.
+    #[test]
+    fn presence_does_not_notch_below_its_corner() {
+        let sr = 48_000.0;
+        let mut p = DynamicPresence::new(sr, 2_500.0, 6.0, 0.0);
+        p.set_knob(6.0);
+        let n = 48_000usize;
+        let mut e = 0.0f64;
+        for i in 0..n {
+            let x = (2.0 * PI * 1_200.0 * i as f32 / sr).sin();
+            let y = p.process(x, 0.0);
+            if i > n / 2 {
+                e += f64::from(y * y);
+            }
+        }
+        let rms = (e / (n / 2) as f64).sqrt() as f32;
+        // Input RMS is 0.707; a first-order lift reads ~0.77 here.
+        assert!(
+            rms > 0.68,
+            "presence notched the band below its corner: {rms}"
         );
     }
 

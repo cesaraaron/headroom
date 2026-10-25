@@ -312,7 +312,7 @@ impl Amplifier for Mesa {
 
         // Output trim: level-match the Recto to the other models so switching
         // doesn't jump in volume. The master's level is in the power-amp input scale.
-        x * MASTER_DRIVE_REF * 5.492
+        x * MASTER_DRIVE_REF * 5.3722
     }
 }
 

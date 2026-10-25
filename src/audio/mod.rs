@@ -1037,10 +1037,15 @@ impl InputState {
         // Live-master gain reduction since the last callback (take resets the
         // latch, so this covers exactly this callback's chunks).
         self.levels.gr_db.store(self.chain.take_gr_db(), Relaxed);
-        // Fade rather than latch, so the indicator releases on its own. The
-        // per-sample loop sets it to 1.0 whenever the ceiling engaged during
-        // this callback, so this only ever decays.
-        self.limit_indicator *= self.limit_decay;
+        // Fade rather than latch, so the indicator releases on its own. The final
+        // stage's limiter is the authoritative "output touched the ceiling"
+        // signal: its knee *is* the ceiling, unlike the old 0.95 guess (which was
+        // the retired soft-clip knee and lit before the limiter did anything).
+        if self.final_limiter.take_gr_db() < 0.0 {
+            self.limit_indicator = 1.0;
+        }
+        // The decay is a per-sample coefficient; apply it once per callback.
+        self.limit_indicator *= self.limit_decay.powi(frames as i32);
         self.levels.limiting.store(self.limit_indicator, Relaxed);
     }
 
@@ -1238,11 +1243,6 @@ impl InputState {
             // transient stays readable. The `output` meter is a *follower*: it
             // tracks level but does not hold a peak; this is its peak-hold pair.
             self.out_peak.push(out_left, out_right);
-            // Did the ceiling actually have to work on this sample? The knee
-            // opens at 0.95, so anything the limiter changes was above that.
-            if (live_l + take_l).abs() > 0.95 || (live_r + take_r).abs() > 0.95 {
-                self.limit_indicator = 1.0;
-            }
 
             // Fan the stereo pair out to the device channels: L→0, R→1, any extra
             // channels get the mono sum; a mono device gets the sum.

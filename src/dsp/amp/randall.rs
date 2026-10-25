@@ -296,7 +296,7 @@ impl Amplifier for Randall {
         // under overtones (`fundamental_is_not_buried_under_overtones`) and
         // breaks the DS-chain level match. Re-tuning it means re-tuning the cab.
         // The master's level is in the power-amp input scale above.
-        x * MASTER_DRIVE_REF * 0.8819
+        x * MASTER_DRIVE_REF * 0.8820
     }
 }
 
