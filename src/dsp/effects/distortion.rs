@@ -1,4 +1,4 @@
-use super::param_changed;
+use super::{SmoothedGain, param_changed};
 use crate::dsp::biquad::Biquad;
 use crate::dsp::oversample::Oversampler4;
 
@@ -62,6 +62,10 @@ pub struct Distortion {
     tone_low: Biquad,
     tone_high: Biquad,
     last_tone: f32,
+    /// Drive gain into the clipper, smoothed (a MIDI/knob step must not click).
+    drive_smooth: SmoothedGain,
+    /// Output level, smoothed.
+    level_smooth: SmoothedGain,
 }
 
 impl Distortion {
@@ -92,6 +96,8 @@ impl Distortion {
             tone_low: Biquad::low_shelf(sr, 500.0, 0.0),
             tone_high: Biquad::high_shelf(sr, 1800.0, 0.0),
             last_tone: -1.0,
+            drive_smooth: SmoothedGain::with_ms(1.0, 8.0, sr),
+            level_smooth: SmoothedGain::with_ms(1.0, 8.0, sr),
         };
         d.update_tone(0.5);
         d
@@ -116,7 +122,8 @@ impl Distortion {
         let x = self.input_hp.process(x);
         let x = self.mid_emphasis.process(x);
 
-        let gain = 1.0 + drive * 40.0;
+        self.drive_smooth.set(1.0 + drive * 40.0);
+        let gain = self.drive_smooth.step();
 
         // 4× oversampled clip stage — tighten lows (pre-clip HP) then clip, per
         // high-rate sample. `pre_clip_hp` is borrowed directly so it doesn't alias
@@ -125,7 +132,10 @@ impl Distortion {
         let pre_clip_lp = &mut self.pre_clip_lp;
         let x = self.os.process(x, |u| {
             let u = pre_clip_lp.process(pre_clip_hp.process(u));
-            ds1_clip(u * gain) / gain.sqrt()
+            // Fixed rails: dividing the clipped signal by sqrt(gain) shrank the
+            // ceiling as DRIVE rose (-16.1 dB at full drive), so turning the
+            // knob up made the pedal quieter.
+            ds1_clip(u * gain)
         });
 
         // Tighten the low end the clipper produced, then apply the tilt tone.
@@ -135,7 +145,12 @@ impl Distortion {
         // Tame the residual top-end clip fizz before it hits the amp.
         let x = self.post_clip_lp.process(x);
 
-        x * level * 0.6
+        self.level_smooth.set(level.clamp(0.0, 1.0));
+        // Fixed rail trim: the clipper now runs to its rails at any drive, so the
+        // output is scaled by one constant instead of by `1/sqrt(gain)` (which
+        // made the pedal quieter as DRIVE rose). 0.15 keeps the pedal under unity
+        // at typical settings so it does not slam the amp.
+        x * self.level_smooth.step() * 0.15
     }
 }
 
@@ -169,6 +184,31 @@ mod tests {
     use std::f32::consts::PI;
 
     const SR: f32 = 48_000.0;
+
+    /// The clipper's rails are fixed, so raising DRIVE must not lower the
+    /// saturated output. The old `/ sqrt(gain)` dropped it by up to 16.1 dB.
+    #[test]
+    fn saturated_level_does_not_fall_as_drive_rises() {
+        let level = |drive: f32| {
+            let mut d = Distortion::new(SR);
+            let n = 24_000usize;
+            let mut e = 0.0f64;
+            for i in 0..n {
+                let x = (2.0 * PI * 1_000.0 * i as f32 / SR).sin() * 0.2;
+                let y = d.process(x, drive, 0.5, 0.7);
+                if i > n / 2 {
+                    e += f64::from(y * y);
+                }
+            }
+            (e / (n / 2) as f64).sqrt()
+        };
+        let low = level(0.2);
+        let high = level(1.0);
+        assert!(
+            high > low * 0.9,
+            "drive dropped the saturated output: {low:.4} -> {high:.4}"
+        );
+    }
 
     /// Single-bin amplitude estimate via the Goertzel algorithm (a unit sine reads
     /// ~1.0 over integer cycles). Computed in `f64`: the recurrence's poles sit on

@@ -3002,10 +3002,12 @@ mod tests {
             // Relative: the actual content of the finding. Reordering has no gain
             // compensation, so some deviation is expected -- the EQs and the
             // compressor genuinely hit different stages in a different order. What
-            // is a defect is an *unbounded* one.
+            // is a defect is an *unbounded* one. 16 dB: the compressor's threshold
+            // now sits inside the guitar's calibrated range (audit 2.1), so a
+            // reorder that puts it after the drives compresses ~4 dB more.
             let delta = db - reference;
             assert!(
-                delta.abs() < 14.0,
+                delta.abs() < 16.0,
                 "chain {order:?} is {delta:+.1} dB against the shipped order \
                  ({db:.1} vs {reference:.1} dBFS): reordering moves the level far \
                  more than a position change should"

@@ -60,6 +60,10 @@ const MAN_F_MIN: f32 = 250.0;
 const MAN_F_MAX: f32 = 2500.0;
 /// A little resonant boost at the peak so the wah quacks rather than just filters.
 const WAH_BOOST: f32 = 1.6;
+/// Calibrated DI reference peak (~-20 dBFS). The envelope is normalized against
+/// this so the auto-wah sweeps at realistic pickup levels; assuming ~0 dBFS made
+/// it barely move on a calibrated guitar.
+const DI_REF: f32 = 0.1;
 
 impl Wah {
     pub fn new(sr: f32) -> Self {
@@ -129,7 +133,7 @@ impl Wah {
                 self.base_hz = F_MIN * (F_MAX / F_MIN).powf(freq.clamp(0.0, 1.0));
                 self.last_freq = freq;
             }
-            let sweep = (self.env * sens.clamp(0.0, 1.0) * SWEEP_OCT).exp2();
+            let sweep = ((self.env / DI_REF) * sens.clamp(0.0, 1.0) * SWEEP_OCT).exp2();
             self.base_hz * sweep
         }
         .clamp(120.0, self.sr * 0.45);
@@ -168,6 +172,28 @@ impl Wah {
 
 #[cfg(test)]
 mod tests {
+    /// A calibrated DI (~-20 dBFS peak) must actually sweep the auto-wah. The
+    /// old envelope assumed near-0 dBFS and moved the peak only a few percent.
+    #[test]
+    fn auto_wah_sweeps_on_a_calibrated_di() {
+        let mut w = Wah::new(48_000.0);
+        let (mut lo, mut hi) = (f32::MAX, 0.0f32);
+        for i in 0..9_600 {
+            let t = i as f32 / 48_000.0;
+            let env = (-t * 8.0).exp();
+            let x = 0.1 * env * (2.0 * PI * 220.0 * t).sin();
+            w.process(x, 0.5, 0.55, 0.5, 1.0, 0.0, 0.5);
+            if i > 240 {
+                lo = lo.min(w.cutoff_hz());
+                hi = hi.max(w.cutoff_hz());
+            }
+        }
+        assert!(
+            hi > lo * 1.5,
+            "auto-wah barely swept: {lo:.0} -> {hi:.0} Hz"
+        );
+    }
+
     /// A treadle jump (a MIDI CC step, or the knob) must not step the SVF's
     /// cutoff: at high Q a one-sample coefficient jump rings.
     #[test]
@@ -280,21 +306,30 @@ mod tests {
         );
     }
 
-    /// SENS turns it into an auto-wah: with sensitivity up, a loud input sweeps the
-    /// peak up toward a high note (passing it well), while a quiet input leaves the
-    /// peak parked low (attenuating it). Compared as output/input ratios so the raw
-    /// level difference cancels out.
+    /// SENS turns it into an auto-wah: with sensitivity up, a calibrated-level
+    /// attack must open the filter much further than a quiet one. Measured on the
+    /// cutoff itself: the old output-ratio proxy inverted once the sweep range was
+    /// corrected (the loud case opened *past* the probe note).
     #[test]
     fn sens_sweeps_the_peak_with_the_envelope() {
-        let ratio = |amp: f32| {
-            let out = render(1200.0, amp, 0.1, 1.0, 0.5, 1.0);
-            rms(&out) / amp as f64 // input rms ∝ amp; normalise it out
+        let peak = |amp: f32| {
+            let mut w = Wah::new(SR);
+            let n = SR as usize;
+            let mut hi = 0.0f32;
+            for i in 0..n {
+                let x = (2.0 * PI * 1200.0 * i as f32 / SR).sin() * amp;
+                w.process(x, 0.1, 1.0, 0.5, 0.5, 0.0, 0.5);
+                if i >= n / 4 {
+                    hi = hi.max(w.cutoff_hz());
+                }
+            }
+            hi
         };
-        let loud = ratio(0.9);
-        let quiet = ratio(0.03);
+        let loud = peak(0.1);
+        let quiet = peak(0.01);
         assert!(
             loud > quiet * 1.5,
-            "SENS did not sweep the peak with the envelope (loud {loud:.4} vs quiet {quiet:.4})"
+            "SENS did not sweep the peak with the envelope (loud {loud:.0} Hz vs quiet {quiet:.0} Hz)"
         );
     }
 

@@ -55,24 +55,22 @@ impl Compressor {
 
     /// Recompute the gain computer for a new SUSTAIN.
     ///
-    /// The auto-makeup is **faded out toward the transparent end** of the knob.
-    /// It used to be `db_to_lin(-thresh_db * (1-1/ratio) * 0.5)` with no sustain
-    /// term, which at `sustain = 0` (threshold −6 dB, ratio 2:1) is
-    /// `db_to_lin(1.5)` = **+1.5 dB**: engaging the compressor at its most
-    /// transparent setting was itself a 1.5 dB level step, before any
-    /// compression happened, and bypassing the pedal dropped that 1.5 dB.
-    ///
-    /// The fade is `1 + (full - 1) * sustain`, which is **unity at sustain = 0**
-    /// and **exactly the old value at sustain = 1**, so the top of the knob —
-    /// where the makeup is doing its actual job — is unchanged. Scaling the
-    /// dB directly by `sustain` would also fix the zero but would pull ~4.7 dB
-    /// out of the mid-range, which is more than the defect warrants: it rewrites
-    /// the sound of every preset that uses the compressor mid-way.
+    /// The threshold range starts at −18 dBFS so a calibrated DI (peaks
+    /// −19.7…−24.6 dBFS) reaches it across the knob; the auto-makeup is derived
+    /// only from the depth added *below* −18 dBFS, so it is exactly unity at the
+    /// transparent end instead of a fixed linear boost.
     fn set_sustain(&mut self, sustain: f32) {
-        self.thresh_db = -6.0 - sustain * 34.0; // 0 → −6 dB, 1 → −40 dB
+        // Calibrated DI peaks sit at -19.7…-24.6 dBFS, so the old -6…-40 dB
+        // range kept the lower half of the knob above the signal (no compression)
+        // while its makeup still boosted. Start below a humbucker instead.
+        self.thresh_db = -18.0 - sustain * 30.0; // 0 → −18 dB, 1 → −48 dB
         self.ratio = 2.0 + sustain * 8.0; // 2:1 … 10:1
         self.thresh_lin = db_to_lin(self.thresh_db);
         self.knee_k = 1.0 - 1.0 / self.ratio;
+        // Keep the established makeup law, but fade it out toward the transparent
+        // end: with the threshold now inside the guitar's range, the makeup
+        // accompanies real compression instead of boosting a signal the old
+        // threshold never reached.
         let full = db_to_lin(-self.thresh_db * (1.0 - 1.0 / self.ratio) * 0.5);
         self.auto_makeup = 1.0 + (full - 1.0) * sustain;
         self.last_sustain = sustain;
@@ -132,6 +130,35 @@ mod tests {
     use super::*;
     use crate::dsp::effects::lin_to_db;
     use std::f32::consts::PI;
+
+    /// A calibrated DI must reach the threshold at the default SUSTAIN. The old
+    /// −6…−40 dB range sat above a −20 dBFS guitar for most of the knob, so the
+    /// compressor did nothing while its makeup boosted.
+    #[test]
+    fn compresses_a_calibrated_di_at_the_default_sustain() {
+        let mut c = Compressor::new(48_000.0);
+        let mut min_gain = 1.0f32;
+        for i in 0..24_000 {
+            let t = i as f32 / 48_000.0;
+            let env = (-t * 4.0).exp();
+            let x = 0.1 * env * (2.0 * PI * 110.0 * t).sin();
+            c.process(x, 0.4, 0.4, 0.6);
+            min_gain = min_gain.min(c.gain);
+        }
+        assert!(
+            min_gain < 0.9,
+            "compressor never engaged on a calibrated DI: {min_gain}"
+        );
+    }
+
+    /// At the transparent end the makeup must be exactly unity — engaging the
+    /// pedal must not itself be a level step.
+    #[test]
+    fn makeup_is_unity_at_the_transparent_end() {
+        let mut c = Compressor::new(48_000.0);
+        c.set_sustain(0.0);
+        assert!((c.auto_makeup - 1.0).abs() < 1e-6, "{}", c.auto_makeup);
+    }
 
     /// The compressor must stay finite and actually reduce dynamic range: a loud
     /// passage should come out closer in level to a quiet passage than it went in.
