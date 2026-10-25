@@ -158,6 +158,15 @@ impl Amplifier for Tweed {
         self.speaker.set_load(load.0, load.1);
     }
 
+    /// Drop state that must not survive a model switch: the preamp and power
+    /// stage oversampler histories, and the NFB's last sample. The rectifier-sag
+    /// envelope is deliberately *not* reset (see AGENTS.md).
+    fn reset_switch_state(&mut self) {
+        self.os.reset();
+        self.os_power.reset();
+        self.pf_out = 0.0;
+    }
+
     #[inline]
     fn process(&mut self, sample: f32, knobs: &[f32; AMP_MAX]) -> f32 {
         let gain = knobs[0];
