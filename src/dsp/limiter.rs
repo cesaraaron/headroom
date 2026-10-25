@@ -52,6 +52,22 @@ const MARGIN: f32 = 0.97;
 /// limiter on loud material rather than clipping at the converter.
 pub const MAKEUP: f32 = 1.189; // +1.5 dB
 
+/// Base-rate lag of the 4× true-peak detector: its interpolator's group delay.
+/// The lookahead line is lengthened by this so the gain still anticipates the
+/// full [`LOOKAHEAD_MS`] after the detector's own delay is accounted for.
+const DETECTOR_LAG: usize = 6;
+
+/// The limiter's gain target for a peak-hold envelope.
+///
+/// The knee opens at `ceiling * MARGIN`, not at `ceiling`: feeding the raw
+/// ceiling to the divider put a 0.265 dB step at `env == ceiling` (1.0 below,
+/// `MARGIN` above), so a signal sitting on the threshold chattered.
+#[inline]
+fn gain_target(env: f32, ceiling: f32) -> f32 {
+    let knee = ceiling * MARGIN;
+    if env > knee { knee / env } else { 1.0 }
+}
+
 /// Round-trip peak delay of the corner oversampler, in base-rate samples.
 ///
 /// The linear-phase derivation gives (M·N−1)/N = 11.75, but the decimated
@@ -120,11 +136,10 @@ impl Limiter {
         let sr = sr.max(1.0);
         let release = 1.0 - (-1.0 / (RELEASE_MS / 1000.0 * sr)).exp();
         // The corner below delays the signal by OS_CORNER_DELAY base-rate
-        // samples; shorten the lookahead line by the same so the gain still
-        // lands on the peak it was computed for and total latency is unchanged
-        // (deviation from the plan, which grew the line — growing would add
-        // latency everywhere for no timing benefit; see the plan ledger).
-        let line = look.saturating_sub(OS_CORNER_DELAY).max(1);
+        // samples; shorten the line by that, and lengthen it by the detector's
+        // own lag, so the gain anticipates the full `look` window on the signal
+        // it actually multiplies.
+        let line = (look + DETECTOR_LAG).saturating_sub(OS_CORNER_DELAY).max(1);
         Self {
             delay_l: vec![0.0; line],
             delay_r: vec![0.0; line],
@@ -145,9 +160,9 @@ impl Limiter {
         }
     }
 
-    /// Latency the limiter adds, in samples: lookahead plus the corner's
-    /// round trip. Unchanged by the oversampled corner (the line shrank by
-    /// exactly the corner's delay).
+    /// Latency the limiter adds, in samples: the lookahead, plus the detector's
+    /// lag and the corner's round trip (the line is sized to cancel the latter
+    /// and compensate the former).
     pub fn latency(&self) -> usize {
         self.delay_l.len() + OS_CORNER_DELAY
     }
@@ -203,11 +218,7 @@ impl Limiter {
         // Gain that keeps the envelope at the ceiling; 1.0 when already under it.
         // `MARGIN` leaves a hair of headroom, so the gain's residual lag never even
         // reaches the clamp on ordinary material.
-        let target = if self.env > self.ceiling {
-            self.ceiling * MARGIN / self.env
-        } else {
-            1.0
-        };
+        let target = gain_target(self.env, self.ceiling);
         let coeff = if target < self.gain {
             self.attack
         } else {
@@ -345,8 +356,23 @@ mod tests {
     #[test]
     fn latency_is_the_lookahead_window() {
         let lim = Limiter::new(48_000.0);
-        // 1.5 ms at 48 kHz.
-        assert_eq!(lim.latency(), 72);
+        // 1.5 ms lookahead at 48 kHz, plus the detector's 6-sample lag.
+        assert_eq!(lim.latency(), 78);
+    }
+
+    /// The gain computer must be continuous across the threshold: the old form
+    /// stepped 0.265 dB at `env == ceiling`, so a signal sitting there chattered.
+    #[test]
+    fn the_gain_computer_is_continuous_at_the_ceiling() {
+        let c = CEILING;
+        let below = gain_target(c * (1.0 - 1e-6), c);
+        let above = gain_target(c * (1.0 + 1e-6), c);
+        assert!(
+            (below - above).abs() < 1e-3,
+            "step at the ceiling: {below} vs {above}"
+        );
+        assert!(gain_target(c * MARGIN, c) <= 1.0 + 1e-6);
+        assert!((gain_target(c * MARGIN * 2.0, c) - 0.5).abs() < 1e-5);
     }
 
     #[test]
@@ -431,18 +457,18 @@ mod tests {
         );
     }
 
-    /// Total latency is invariant: the corner's round-trip group delay is
-    /// compensated by shortening the lookahead line, so `latency()` reports
-    /// the same totals as before (72 @ 48 kHz, 66 @ 44.1 kHz) and export
-    /// onset accounting needs no change. Characterization: passes before and
-    /// after; guards the shrink decision. Four points pin the scaling
-    /// (lookahead rounds per rate, corner delay is rate-independent).
+    /// The corner's round-trip group delay is compensated by shortening the
+    /// lookahead line, and the detector's 6-sample lag is added back, so the
+    /// gain anticipates the full 1.5 ms on the signal it multiplies. The
+    /// reported total is therefore the lookahead plus 6 (78 @ 48 kHz). Four
+    /// points pin the scaling (lookahead rounds per rate, the other terms are
+    /// rate-independent).
     #[test]
-    fn limiter_latency_totals_unchanged() {
-        assert_eq!(Limiter::new(48_000.0).latency(), 72);
-        assert_eq!(Limiter::new(44_100.0).latency(), 66);
-        assert_eq!(Limiter::new(32_000.0).latency(), 48);
-        assert_eq!(Limiter::new(96_000.0).latency(), 144);
+    fn limiter_latency_is_lookahead_plus_detector_lag() {
+        assert_eq!(Limiter::new(48_000.0).latency(), 78);
+        assert_eq!(Limiter::new(44_100.0).latency(), 72);
+        assert_eq!(Limiter::new(32_000.0).latency(), 54);
+        assert_eq!(Limiter::new(96_000.0).latency(), 150);
     }
 
     /// Silence must read exactly 0.0 dB — finite, never negative, never NaN.
