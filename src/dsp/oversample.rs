@@ -79,12 +79,17 @@ impl<const N: usize> Oversampler<N> {
             *tap = sinc * win;
         }
 
-        // Normalise so the interpolator preserves unity (total gain = N, i.e. each
-        // of the N phases sums to ~1), then derive the decimation copy (gain 1).
-        let sum: f32 = proto.iter().sum();
-        let scale = N as f32 / sum;
-        for t in &mut proto {
-            *t *= scale;
+        // Normalise each polyphase branch to unity individually. Normalising the
+        // grand total made the *average* phase unity but left a small gain ripple
+        // at fs across the N branches; each phase must sum to 1.
+        for p in 0..N {
+            let sum: f32 = (0..M).map(|j| proto[p + j * N]).sum();
+            if sum.abs() > 1e-9 {
+                let scale = 1.0 / sum;
+                for j in 0..M {
+                    proto[p + j * N] *= scale;
+                }
+            }
         }
         let proto_dec: Vec<f32> = proto.iter().map(|&t| t / N as f32).collect();
 
@@ -206,6 +211,17 @@ pub type Oversampler8 = Oversampler<OVERSAMPLE8_FACTOR>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every polyphase branch must sum to unity. Normalising the grand total left
+    /// the average phase unity but a small gain ripple at fs across the branches.
+    #[test]
+    fn every_polyphase_branch_has_unity_gain() {
+        let os = Oversampler::<8>::new(48_000.0);
+        for p in 0..8 {
+            let sum: f32 = (0..M).map(|j| os.proto[p + j * 8]).sum();
+            assert!((sum - 1.0).abs() < 1e-5, "phase {p} sums to {sum}");
+        }
+    }
 
     /// A linear (no nonlinearity) round trip through up- then down-sampling must
     /// preserve a passband signal at unity gain, up to the filter's group delay.

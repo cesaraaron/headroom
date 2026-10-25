@@ -70,7 +70,6 @@ pub struct Distortion {
 
 impl Distortion {
     pub fn new(sr: f32) -> Self {
-        let sr4 = sr * 4.0;
         let mut d = Self {
             sr,
             dc_block: Biquad::highpass(sr, 10.0, 0.707),
@@ -80,12 +79,12 @@ impl Distortion {
             mid_emphasis: Biquad::peak_eq(sr, 800.0, 0.9, 3.0),
             os: Oversampler4::new(sr),
             // 130 Hz pre-clip HP: trims low-mid mud before the clipper.
-            pre_clip_hp: Biquad::highpass(sr4, 130.0, 0.707),
+            pre_clip_hp: Biquad::highpass(sr, 130.0, 0.707),
             // 4.5 kHz pre-clip LP: rounds the top off the wave before the clipper so
             // a chord's upper harmonics don't intermodulate into fizz, while leaving
             // the crunch its cut. (It can't shorten the ladder the clipper makes
             // *below* it — that is what the lower gain and soft knee are for.)
-            pre_clip_lp: Biquad::lowpass(sr4, 4500.0, 0.707),
+            pre_clip_lp: Biquad::lowpass(sr, 4500.0, 0.707),
             // 150 Hz post-clip HP: the decisive tightener — keeps the low E present
             // but strips the loose, blubbery woof the clipper produces.
             post_clip_hp: Biquad::highpass(sr, 150.0, 0.707),
@@ -125,13 +124,11 @@ impl Distortion {
         self.drive_smooth.set(1.0 + drive * 40.0);
         let gain = self.drive_smooth.step();
 
-        // 4× oversampled clip stage — tighten lows (pre-clip HP) then clip, per
-        // high-rate sample. `pre_clip_hp` is borrowed directly so it doesn't alias
-        // the `os` borrow inside the closure.
-        let pre_clip_hp = &mut self.pre_clip_hp;
-        let pre_clip_lp = &mut self.pre_clip_lp;
+        // The pre-clip filters are linear, so they run once at base rate before
+        // the oversampler instead of 4× inside it: a 130 Hz biquad at 192 kHz has
+        // its pole 6 epsilon from the unit circle, and the 4× work bought nothing.
+        let x = self.pre_clip_lp.process(self.pre_clip_hp.process(x));
         let x = self.os.process(x, |u| {
-            let u = pre_clip_lp.process(pre_clip_hp.process(u));
             // Fixed rails: dividing the clipped signal by sqrt(gain) shrank the
             // ceiling as DRIVE rose (-16.1 dB at full drive), so turning the
             // knob up made the pedal quieter.

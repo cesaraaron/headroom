@@ -1660,6 +1660,11 @@ impl HumNoise {
             self.c * self.cos_w - self.s * self.sin_w,
             self.s * self.cos_w + self.c * self.sin_w,
         );
+        // Keep the phasor exactly on the unit circle: the rotation is f32, so an
+        // unnormalised phasor drifts in amplitude over a multi-hour session. The
+        // first-order correction is exact to O(|1 - r²|²).
+        let g = 1.5 - 0.5 * (c * c + s * s);
+        let (c, s) = (c * g, s * g);
         self.c = c;
         self.s = s;
         // Chebyshev: sin2θ = 2sc, sin3θ = 3s − 4s³.
@@ -2472,12 +2477,13 @@ impl DspChain {
     }
 }
 
-/// Master bus: stereo-widen, DC-block, limit, then output gain. `width` pushes
+/// Master bus: stereo-widen, DC-block, output gain, then limit. `width` pushes
 /// the cab/reverb decorrelation out for a wider, deeper image without losing
 /// mono punch (the mid is untouched); `1.0` is the neutral reference
-/// (wire-transparent sides). The lookahead [`Limiter`] turns peaks down cleanly
-/// and lifts the program to a consumer-loud ceiling; the `output` knob is applied
-/// *after* it, so it is a genuine output gain that cannot re-saturate the rig.
+/// (wire-transparent sides). The `output` knob is applied *before* the
+/// [`Limiter`], so it is the drive into the limiter: backing it off gives the
+/// limiter headroom, and turning it up is caught cleanly instead of re-saturating
+/// the rig.
 ///
 /// The DC blockers and the limiter are the state in the bus. The blockers are
 /// needed because the built-in amps each end with a ~12 Hz high-pass, but that is
@@ -2653,6 +2659,18 @@ impl CompDelay {
 
 #[cfg(test)]
 mod tests {
+    /// The hum phasor rotates in f32; without renormalisation its amplitude drifts
+    /// over a long session (and the hum level with it).
+    #[test]
+    fn the_hum_phasor_stays_on_the_unit_circle() {
+        let mut hum = HumNoise::new(48_000.0);
+        for _ in 0..1_000_000 {
+            let _ = hum.next();
+        }
+        let r2 = hum.c * hum.c + hum.s * hum.s;
+        assert!((r2 - 1.0).abs() < 1e-4, "phasor radius^2 drifted to {r2}");
+    }
+
     /// The mic-position knob must reach the **external IR** path, not just the
     /// built-in cabs.
     ///

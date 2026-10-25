@@ -120,7 +120,7 @@ impl Supro {
             out_hp: Biquad::highpass(sr, 12.0, 0.707),
             envelope: 0.0,
             // Valve-rectified mains ripple rides the sagging rail.
-            ripple: SupplyRipple::new(sr, 100.0, 0.04),
+            ripple: SupplyRipple::new(sr, 120.0, 0.04),
             // Small single speaker: higher resonance (~110 Hz), boxy dynamic bloom.
             speaker: SpeakerLoad::new(sr, 110.0, 1.0, 0.06, 0.3, 0.8, 0.35),
         };
