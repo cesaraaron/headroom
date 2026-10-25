@@ -148,7 +148,7 @@ pub fn load_ir(path: impl AsRef<Path>, target_sr: f32, max_len: usize) -> Result
     conform(&mut r, max_len);
     remove_dc(&mut l);
     remove_dc(&mut r);
-    normalize_pair(&mut l, &mut r);
+    normalize_pair(&mut l, &mut r, target_sr);
 
     let name = path
         .file_stem()
@@ -190,10 +190,12 @@ fn remove_dc(ir: &mut [f32]) {
 /// Scale both channels by a single gain so the pair carries unit energy — a loud or
 /// quiet source IR lands at a predictable level — while keeping the L/R balance the
 /// recording captured.
-fn normalize_pair(l: &mut [f32], r: &mut [f32]) {
+fn normalize_pair(l: &mut [f32], r: &mut [f32], sr: f32) {
     let e = l.iter().chain(r.iter()).map(|v| v * v).sum::<f32>().sqrt();
     if e > 1e-9 {
-        let g = 1.0 / e;
+        // L2 energy normalisation leaves the convolution passband gain ∝ √sr:
+        // the same 48 kHz capture resampled to 96 kHz came out +3 dB hot.
+        let g = (48_000.0 / sr.max(1.0)).sqrt() / e;
         for v in l.iter_mut().chain(r.iter_mut()) {
             *v *= g;
         }
@@ -267,6 +269,21 @@ impl Cabinet for ExternalIrCab {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// L2 normalisation leaves the passband gain proportional to √sr; the same
+    /// capture at 96 kHz must not come out +3 dB hotter.
+    #[test]
+    fn normalisation_is_sample_rate_invariant() {
+        let (mut l48, mut r48) = (vec![1.0f32], vec![1.0f32]);
+        normalize_pair(&mut l48, &mut r48, 48_000.0);
+        let (mut l96, mut r96) = (vec![1.0f32], vec![1.0f32]);
+        normalize_pair(&mut l96, &mut r96, 96_000.0);
+        let ratio = l48[0] / l96[0];
+        assert!(
+            (ratio - 2.0_f32.sqrt()).abs() < 1e-6,
+            "96 kHz copy is not scaled by √(48/96): ratio {ratio}"
+        );
+    }
 
     /// Toggling the external cab off and on must not replay the last phrase:
     /// `FftConvolver` returns the block it last filled and keeps the previous

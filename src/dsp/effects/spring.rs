@@ -123,6 +123,7 @@ pub struct SpringReverb {
     wet_norm: f32,
     last_decay: f32,
     last_damp: f32,
+    sr: f32,
 }
 
 impl SpringReverb {
@@ -145,6 +146,7 @@ impl SpringReverb {
             wet_norm: 1.0,
             last_decay: -1.0,
             last_damp: -1.0,
+            sr,
         };
         r.update_params(0.5, 0.4);
         r
@@ -154,7 +156,9 @@ impl SpringReverb {
         let decay = decay.clamp(0.0, 1.0);
         let damp = damp.clamp(0.0, 1.0);
         let fb = 0.45 + decay * 0.45;
-        let d = 0.12 + damp * 0.5;
+        // Per-sample damping must be re-derived for the rate or the spring loses
+        // its top twice as fast at 96 kHz. See the reverb comb for the same law.
+        let d = (0.12 + damp * 0.5).powf(48_000.0 / self.sr);
         for s in &mut self.springs {
             s.set_params(fb, d);
         }
@@ -203,6 +207,20 @@ impl SpringReverb {
 
 #[cfg(test)]
 mod tests {
+    /// The spring's feedback low-pass is a per-sample coefficient; it must be
+    /// re-derived for the rate or the tail darkens twice as fast at 96 kHz.
+    #[test]
+    fn damping_follows_the_sample_rate() {
+        let mut a = SpringReverb::new(48_000.0);
+        a.update_params(0.5, 0.7);
+        let mut b = SpringReverb::new(96_000.0);
+        b.update_params(0.5, 0.7);
+        let d48 = a.springs[0].damp;
+        let d96 = b.springs[0].damp;
+        assert!(d48 > 0.0 && d48 < 1.0, "bad 48k damping {d48}");
+        assert!((d96 - d48.sqrt()).abs() < 1e-6, "{d48} vs {d96}");
+    }
+
     use super::*;
 
     fn tail_energy(rv: &mut SpringReverb, decay: f32, damp: f32, n: usize) -> f64 {
