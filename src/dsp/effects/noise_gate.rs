@@ -25,6 +25,8 @@ pub struct NoiseGate {
     /// Last threshold knob position; the linear threshold below is recomputed
     /// only when this moves (per-sample `powf` for a knob-rate value).
     last_threshold: f32,
+    /// Last RELEASE position; the close-ramp coefficient follows it.
+    last_release: f32,
     /// Cached `db_to_lin((threshold - 1.0) * 80.0)`.
     threshold_lin: f32,
 }
@@ -39,7 +41,10 @@ const HOLD_RANGE_MS: f32 = 490.0;
 /// 0.9, a **0.21 ms** time constant, which gated a pick transient as hard as a
 /// switch and clicked on every note. A real gate opens in roughly 0.5–2 ms.
 const OPEN_MS: f32 = 1.0;
-const CLOSE_MS: f32 = 5.0;
+/// Close ramp bounds. The old fixed 5 ms chopped a decaying low note inside a
+/// single cycle of the low E (12 ms); it now scales with RELEASE.
+const CLOSE_MIN_MS: f32 = 15.0;
+const CLOSE_RANGE_MS: f32 = 135.0;
 
 /// One-pole coefficient for a one-pole smoother with time constant `ms`.
 #[inline]
@@ -51,7 +56,8 @@ impl NoiseGate {
     pub fn new(sr: f32) -> Self {
         Self {
             envelope: 0.0,
-            gain: 1.0,
+            // Start closed: opening on the first sample leaked ~20 ms of noise.
+            gain: 0.0,
             hold_left: 0.0,
             sr,
             // Detector: ~1 ms attack so a pick transient is caught immediately,
@@ -64,8 +70,9 @@ impl NoiseGate {
             attack_coeff: smoother(1.0, sr),
             release_coeff: smoother(10.0, sr),
             open_coeff: smoother(OPEN_MS, sr),
-            close_coeff: smoother(CLOSE_MS, sr),
+            close_coeff: smoother(CLOSE_MIN_MS, sr),
             last_threshold: -1.0,
+            last_release: -1.0,
             threshold_lin: 1.0,
         }
     }
@@ -87,17 +94,28 @@ impl NoiseGate {
             self.last_threshold = threshold;
         }
         let threshold_lin = self.threshold_lin;
+        if param_changed(release, self.last_release) {
+            // The close ramp scales with RELEASE: 15 ms at the bottom, 150 ms at
+            // the top, so a decaying note is not chopped inside one cycle.
+            let close_ms = CLOSE_MIN_MS + release.clamp(0.0, 1.0) * CLOSE_RANGE_MS;
+            self.close_coeff = smoother(close_ms, self.sr);
+            self.last_release = release;
+        }
 
         // Hold: while the signal is above the threshold the timer is reloaded
         // and the gate is open. Below it, the timer counts down; the gate only
         // starts closing once it expires.
+        let max_hold = (HOLD_MIN_MS + release.clamp(0.0, 1.0) * HOLD_RANGE_MS) * 0.001 * self.sr;
         let open = self.envelope >= threshold_lin;
         if open {
             // `hold_left` counts samples, so convert the knob's milliseconds.
-            self.hold_left = (HOLD_MIN_MS + release * HOLD_RANGE_MS) * 0.001 * self.sr;
+            self.hold_left = max_hold;
         } else if self.hold_left > 0.0 {
             self.hold_left -= 1.0;
         }
+        // A RELEASE turned down while the gate is closed must shorten the hold
+        // immediately instead of leaving a stale long countdown.
+        self.hold_left = self.hold_left.min(max_hold);
         let target = if self.hold_left > 0.0 { 1.0 } else { 0.0 };
 
         // Smooth the gain so a transition is a ramp, not a step.
@@ -118,6 +136,31 @@ mod tests {
     use std::f32::consts::PI;
 
     const SR: f32 = 48_000.0;
+
+    /// A freshly constructed gate must be closed. Starting open leaked the first
+    /// ~20 ms of amp hiss before the envelope had a chance to close it.
+    #[test]
+    fn a_fresh_gate_starts_closed() {
+        let mut g = NoiseGate::new(SR);
+        let y = g.process(0.001, 0.6, 0.5);
+        assert!(y.abs() < 1e-4, "gate leaked its first sample: {y}");
+    }
+
+    /// The close ramp follows RELEASE. The old fixed 5 ms ramp chopped a decaying
+    /// low note within one cycle; at RELEASE 0 the new ramp is 15 ms.
+    #[test]
+    fn the_close_ramp_follows_release() {
+        let mut g = NoiseGate::new(SR);
+        for _ in 0..4_800 {
+            g.process(0.5, 0.5, 0.0);
+        }
+        let mut n = 0;
+        while g.gain > 0.1 && n < 48_000 {
+            g.process(0.0, 0.5, 0.0);
+            n += 1;
+        }
+        assert!(n > 1_500, "gate closed in {n} samples: too abrupt");
+    }
 
     /// A loud tone above the threshold must pass; a quiet tone below it must be
     /// gated down to near silence. Output stays finite throughout.
@@ -226,10 +269,11 @@ mod tests {
             slow > fast * 2.0,
             "RELEASE knob does not change the hold time: {fast:.1} ms vs {slow:.1} ms"
         );
-        // The knob's documented range is 10–500 ms. The measured value is the
-        // hold plus most of the close ramp, so allow headroom on both sides.
+        // The knob's documented hold range is 10–500 ms, and the close ramp now
+        // follows the knob too (15–150 ms, to 5% of the probe), so the measured
+        // value is the hold plus most of that ramp. Allow headroom on both sides.
         assert!(
-            fast > 5.0 && slow < 800.0,
+            fast > 5.0 && slow < 1_200.0,
             "hold time out of the intended range: {fast:.1}..{slow:.1} ms"
         );
     }

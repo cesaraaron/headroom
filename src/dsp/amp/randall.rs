@@ -218,6 +218,9 @@ impl Amplifier for Randall {
         // harmonics do not overpower the fundamental. The gain split is still
         // more aggressive than the tube amps, which preserves the Randall's
         // buzzy, solid-state edge without over-squaring the waveform.
+        // The gain split depends only on the knob, so compute it once per sample
+        // rather than 8x inside the oversampled loop.
+        let (k1, k2) = split_gain(PREAMP_GAIN_COEFF * pregain, pregain, 0.2568, 0.7);
         let up = self.os.upsample(x);
         let mut down = [0.0f32; 8];
         for (o, &u) in down.iter_mut().zip(up.iter()) {
@@ -227,7 +230,6 @@ impl Amplifier for Randall {
             // each clipper rather than by the drive. All three Warhead curves have
             // unit small-signal slope, so unlike the tube stages there is no
             // insertion loss to divide out here.
-            let (k1, k2) = split_gain(PREAMP_GAIN_COEFF * pregain, pregain, 0.2568, 0.7);
             let s = fet_clip_asym((u + bias) * k1);
             let s = self.stage_hp_1.process(s);
             let s = bjt_clip(s * k2);

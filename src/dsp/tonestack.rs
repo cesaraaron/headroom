@@ -94,7 +94,6 @@ pub struct ToneStack {
     a1: f32,
     a2: f32,
     a3: f32,
-    makeup: f32,
     // Direct Form I state.
     x1: f32,
     x2: f32,
@@ -116,7 +115,6 @@ impl ToneStack {
             a1: 0.0,
             a2: 0.0,
             a3: 0.0,
-            makeup: 1.0,
             x1: 0.0,
             x2: 0.0,
             x3: 0.0,
@@ -214,18 +212,29 @@ impl ToneStack {
 
         // Peak-normalise: a passive stack only cuts, so scale the response so its
         // loudest band is unity. This keeps the amp's downstream gain staging put.
-        self.makeup = 1.0 / self.peak_magnitude().max(1e-6);
+        // Bake it into the numerator coefficients (*not* only into the output
+        // path): `y1..y3` must be stored at the same scale the new coefficients
+        // expect, or a pot move leaves the state at the old scale and transients.
+        let makeup = 1.0 / self.peak_magnitude().max(1e-6);
+        self.b0 *= makeup;
+        self.b1 *= makeup;
+        self.b2 *= makeup;
+        self.b3 *= makeup;
     }
 
     /// Largest |H(e^{jω})| over a log-spaced sweep of the audio band.
     fn peak_magnitude(&self) -> f32 {
         let mut peak = 0.0f32;
         let mut f = 20.0f32;
-        while f < 18_000.0 {
+        // Never evaluate at or above Nyquist (a low-rate device would otherwise
+        // fold the top of the sweep), and derive 2w/3w from 1w instead of paying
+        // six trig calls per point.
+        let top = (self.sr * 0.49).min(18_000.0);
+        while f < top {
             let w = 2.0 * PI * f / self.sr;
             let (c1, s1) = (w.cos(), w.sin());
-            let (c2, s2) = ((2.0 * w).cos(), (2.0 * w).sin());
-            let (c3, s3) = ((3.0 * w).cos(), (3.0 * w).sin());
+            let (c2, s2) = (2.0 * c1 * c1 - 1.0, 2.0 * s1 * c1);
+            let (c3, s3) = (4.0 * c1 * c1 * c1 - 3.0 * c1, 3.0 * s1 - 4.0 * s1 * s1 * s1);
             // Numerator / denominator evaluated at e^{-jω}.
             let nr = self.b0 + self.b1 * c1 + self.b2 * c2 + self.b3 * c3;
             let ni = -(self.b1 * s1 + self.b2 * s2 + self.b3 * s3);
@@ -250,7 +259,7 @@ impl ToneStack {
         self.y3 = self.y2;
         self.y2 = self.y1;
         self.y1 = y;
-        y * self.makeup
+        y
     }
 }
 
@@ -365,17 +374,14 @@ mod tests {
 
     /// Peak normalisation exists so the stack colours tone without moving the
     /// amp's gain staging. The loudest band must land at unity for every knob
-    /// position, which is what `makeup` is for.
+    /// position; the scale is baked into the numerator coefficients so the
+    /// stored state stays at the same scale across a pot move.
     #[test]
     fn peak_normalisation_keeps_the_loudest_band_at_unity() {
         let probe = |bass, mid, treble| {
             let mut ts = ToneStack::new(SR, Components::MARSHALL);
             ts.update(bass, mid, treble);
-            let peak = ts.peak_magnitude() * ts.makeup;
-            // `makeup` is set from `peak_magnitude`, so this is 1.0 by
-            // construction — assert it anyway, because a later change that
-            // decouples the two would silently re-level every amp.
-            peak
+            ts.peak_magnitude()
         };
         for (b, m, t) in [(0.0, 0.0, 0.0), (0.5, 0.5, 0.5), (1.0, 1.0, 1.0)] {
             let peak = probe(b, m, t);
