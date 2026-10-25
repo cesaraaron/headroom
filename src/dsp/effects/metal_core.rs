@@ -68,7 +68,6 @@ pub struct MetalCore {
 
 impl MetalCore {
     pub fn new(sr: f32) -> Self {
-        let sr8 = sr * 8.0;
         let mut m = Self {
             sr,
             dc_block: Biquad::highpass(sr, 10.0, 0.707),
@@ -80,12 +79,12 @@ impl MetalCore {
             mid_scoop: Biquad::peak_eq(sr, 650.0, 0.8, -3.5),
             os: Oversampler8::new(sr),
             // 150 Hz pre-clip HP: keeps the cascade from turning low notes to mush.
-            pre_clip_hp: Biquad::highpass(sr8, 150.0, 0.707),
+            pre_clip_hp: Biquad::highpass(sr, 150.0, 0.707),
             // 3.8 kHz pre-clip LP: rounds the top off the wave before the huge gain
             // so a chord's upper harmonics don't intermodulate into fizz, while
             // leaving the voice its metal cut. (It can't shorten the ladder the
             // cascade makes below it — that's what the lower gain is for.)
-            pre_clip_lp: Biquad::lowpass(sr8, 3800.0, 0.707),
+            pre_clip_lp: Biquad::lowpass(sr, 3800.0, 0.707),
             // 120 Hz post-clip HP: keeps the low E present but strips the woof and
             // the clip asymmetry's DC.
             post_clip_hp: Biquad::highpass(sr, 120.0, 0.707),
@@ -142,10 +141,10 @@ impl MetalCore {
         // 8× oversampled cascaded clip: tighten (pre-clip HP), saturate, then push
         // into a second, gentler stage. `pre_clip_hp` is borrowed directly so it
         // doesn't alias the `os` borrow.
-        let pre_clip_hp = &mut self.pre_clip_hp;
-        let pre_clip_lp = &mut self.pre_clip_lp;
+        // Linear pre-clip filters: base rate, before the oversampler (see the
+        // distortion pedal for why 8x bought nothing but pole-quantisation risk).
+        let x = self.pre_clip_lp.process(self.pre_clip_hp.process(x));
         let x = self.os.process(x, |u| {
-            let u = pre_clip_lp.process(pre_clip_hp.process(u));
             let s1 = ml2_stage(u * gain);
             // Second cascaded stage adds the long, compressed metal sustain. Its
             // push is kept modest (1.6×) so the cascade saturates smoothly instead

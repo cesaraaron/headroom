@@ -21,16 +21,20 @@ pub fn resample(x: &[f32], ratio: f32) -> Vec<f32> {
 
     let out_len = ((x.len() as f32) * ratio).round() as usize;
     let mut out = vec![0.0f32; out_len.max(1)];
+    // Positions in f64: at ~2^23 input samples an f32 loses its fractional bits,
+    // collapsing the 32-tap sinc to nearest-neighbour and then to a 2-sample
+    // staircase. Backing tracks are minutes long, so this is not hypothetical.
+    let ratio64 = f64::from(ratio);
     for (m, o) in out.iter_mut().enumerate() {
-        let center = m as f32 / ratio; // position in input samples
-        let i0 = (center - half).floor() as isize;
-        let i1 = (center + half).ceil() as isize;
+        let center = source_pos(m, ratio64);
+        let i0 = (center - f64::from(half)).floor() as isize;
+        let i1 = (center + f64::from(half)).ceil() as isize;
         let (mut acc, mut wsum) = (0.0f32, 0.0f32);
         for i in i0..=i1 {
             if i < 0 || i as usize >= x.len() {
                 continue;
             }
-            let t = center - i as f32;
+            let t = (center - i as f64) as f32;
             let w = sinc(t * cutoff) * cutoff * lanczos(t, half);
             acc += w * x[i as usize];
             wsum += w;
@@ -38,6 +42,13 @@ pub fn resample(x: &[f32], ratio: f32) -> Vec<f32> {
         *o = if wsum.abs() > 1e-9 { acc / wsum } else { 0.0 };
     }
     out
+}
+
+/// Position of output sample `m` in the input, in f64 so the fraction survives
+/// past the f32 mantissa limit.
+#[inline]
+fn source_pos(m: usize, ratio: f64) -> f64 {
+    m as f64 / ratio
 }
 
 #[inline]
@@ -57,6 +68,19 @@ fn lanczos(t: f32, half: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    /// Past ~2^23 samples the old all-f32 position lost its fraction entirely
+    /// (ULP 1.0), so the sinc interpolator degenerated to nearest-neighbour.
+    #[test]
+    fn source_positions_keep_fractional_precision_past_f32_range() {
+        let ratio = 48_000.0f64 / 44_100.0;
+        let m = 10_000_001usize; // center ≈ 9.19M > 2^23
+        let p = source_pos(m, ratio);
+        assert!(p.fract() > 1e-4, "f64 position lost its fraction: {p}");
+        // The old computation, for comparison.
+        let old = (m as f32 / (48_000.0f32 / 44_100.0)).fract();
+        assert_eq!(old, 0.0, "expected the old f32 collapse at this m");
+    }
+
     use super::*;
 
     #[test]
