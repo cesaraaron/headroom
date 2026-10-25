@@ -21,7 +21,8 @@ use std::f32::consts::PI;
 
 /// Time-domain texture applied on top of the magnitude skeleton.
 pub struct Texture {
-    /// Mic-distance pre-delay, in samples (small for close-mic).
+    /// Mic-distance pre-delay, in samples **at 48 kHz** (small for close-mic).
+    /// `synth` scales it for the engine rate.
     pub predelay: usize,
     /// Early reflections as (time_ms, signed_gain). Signs alternate to create
     /// the characteristic comb peaks and notches.
@@ -95,10 +96,14 @@ pub fn synth(sr: f32, len: usize, voicing: &mut dyn FnMut(f32) -> f32, tex: &Tex
     //    × window) multiply-adds of mostly zeros — the measured bulk of
     //    `CabBank::new`. Summing only the nonzero taps is the same arithmetic
     //    in a different order (float dust only, proven by the harness).
+    // Pre-delay is authored in samples at 48 kHz, so scale it to the engine rate:
+    // a raw sample count would halve the room-mic delay (and the Haas width) at
+    // 96 kHz.
+    let predelay = (tex.predelay as f32 * sr / 48_000.0).round() as usize;
     let mut taps: Vec<(usize, f32)> = Vec::with_capacity(tex.reflections.len() + 1);
-    taps.push((tex.predelay, 1.0));
+    taps.push((predelay, 1.0));
     for &(ms, g) in tex.reflections {
-        taps.push((tex.predelay + (ms * sr / 1000.0) as usize, g));
+        taps.push((predelay + (ms * sr / 1000.0) as usize, g));
     }
 
     // 3. Convolve skeleton with the sparse taps → body with comb coloration.
@@ -143,6 +148,10 @@ pub fn synth(sr: f32, len: usize, voicing: &mut dyn FnMut(f32) -> f32, tex: &Tex
     //    matching the direct `nn = n - predelay` form sample for sample.
     let scatter: Vec<(f32, f32, f32)> = tex.scatter.iter().flat_map(|s| s.modes()).collect();
     for &(f, t60_ms, g) in tex.modes.iter().chain(scatter.iter()) {
+        // A decaying sinusoid's DTFT peak is proportional to g·sr, while the
+        // biquad body scales as 1/sr; left alone the modes are +6 dB at 96 kHz.
+        // Scale the amplitude by 48k/sr to keep the level rate-invariant.
+        let g = g * 48_000.0 / sr;
         // t60 (−60 dB) → exponential time constant: ln(1000) ≈ 6.908.
         let tau = (t60_ms / 1000.0) * sr / 6.908;
         let w = 2.0 * PI * f / sr;
@@ -150,7 +159,7 @@ pub fn synth(sr: f32, len: usize, voicing: &mut dyn FnMut(f32) -> f32, tex: &Tex
         let (rc, rs) = (decay * w.cos(), decay * w.sin());
         let (mut c, mut s) = (1.0f32, 0.0f32);
         for (n, out) in ir.iter_mut().enumerate() {
-            if n >= tex.predelay {
+            if n >= predelay {
                 *out += g * s;
                 let nc = c * rc - s * rs;
                 let ns = s * rc + c * rs;
@@ -402,6 +411,37 @@ pub mod analysis {
 mod tests {
     use super::*;
     use std::f32::consts::PI;
+
+    /// Modal levels and the pre-delay are times/levels, not sample counts: the
+    /// same texture at 96 kHz must keep the mode's level and its arrival time.
+    #[test]
+    fn modal_level_and_predelay_are_sample_rate_invariant() {
+        let tex = Texture {
+            predelay: 96,
+            reflections: &[],
+            modes: &[(400.0, 200.0, 0.2)],
+            scatter: &[],
+        };
+        let mut flat48 = |x: f32| x;
+        let ir48 = synth(48_000.0, ir_len(48_000.0), &mut flat48, &tex);
+        let mut flat96 = |x: f32| x;
+        let ir96 = synth(96_000.0, ir_len(96_000.0), &mut flat96, &tex);
+
+        let first = |ir: &[f32]| ir.iter().position(|&v| v.abs() > 0.5).unwrap();
+        let t48 = first(&ir48) as f32 / 48.0;
+        let t96 = first(&ir96) as f32 / 96.0;
+        assert!((t48 - t96).abs() < 0.1, "predelay {t48} ms vs {t96} ms");
+
+        // The cab hears the *raw* DTFT (convolution gain), not the amplitude
+        // average `goertzel` returns: multiply back by the window length. A
+        // decaying mode's raw sum doubles with sr, hence the 48k/sr amplitude
+        // scaling.
+        let gain = |ir: &[f32], sr: f32| analysis::goertzel(ir, 400.0, sr) * ir.len() as f32;
+        let g48 = gain(&ir48, 48_000.0);
+        let g96 = gain(&ir96, 96_000.0);
+        let db = 20.0 * (g96 / g48).log10();
+        assert!(db.abs() < 1.5, "modal level moved {db:.2} dB at 96 kHz");
+    }
 
     /// A declared mode must actually appear in the synthesised IR at its stated
     /// frequency and decay at (approximately) its stated T60 — proving the synth

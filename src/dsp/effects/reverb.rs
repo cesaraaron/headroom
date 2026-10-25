@@ -184,7 +184,10 @@ impl Reverb {
 
     fn update_params(&mut self, room: f32, damp: f32) {
         let room_size = room * SCALE_ROOM + OFFSET_ROOM;
-        let damp_scaled = damp * SCALE_DAMP;
+        // The comb's one-pole coefficient is a *per-sample* damping constant;
+        // left raw, the damping cutoff doubles with the sample rate. Raise it to
+        // 48k/sr so the cutoff in Hz is unchanged.
+        let damp_scaled = (damp * SCALE_DAMP).powf(48_000.0 / self.sr);
         self.left.set_params(room_size, damp_scaled);
         self.right.set_params(room_size, damp_scaled);
         self.last_room = room;
@@ -253,6 +256,20 @@ impl Reverb {
 
 #[cfg(test)]
 mod tests {
+    /// The comb damping coefficient is per-sample; it must be re-derived for the
+    /// rate or the damping cutoff doubles at 96 kHz.
+    #[test]
+    fn damping_follows_the_sample_rate() {
+        let mut a = Reverb::new(48_000.0);
+        a.update_params(0.5, 0.7);
+        let mut b = Reverb::new(96_000.0);
+        b.update_params(0.5, 0.7);
+        let d48 = a.left.combs[0].damp1;
+        let d96 = b.left.combs[0].damp1;
+        assert!(d48 > 0.0 && d48 < 1.0, "bad 48k damping {d48}");
+        assert!((d96 - d48.sqrt()).abs() < 1e-6, "{d48} vs {d96}");
+    }
+
     use super::*;
 
     /// `mix = 0` must return the dry signal untouched (pure bypass).
