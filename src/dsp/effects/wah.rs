@@ -1,4 +1,4 @@
-use super::SmoothedGain;
+use super::{SmoothedGain, param_changed};
 use std::f32::consts::PI;
 
 /// Auto-wah — a resonant bandpass whose peak is swept by an envelope follower, so
@@ -35,6 +35,17 @@ pub struct Wah {
     /// Wet/dry, smoothed. `wah_position` is the primary MIDI CC target in this
     /// app, so a pedal sweep lands here continuously.
     mix: SmoothedGain,
+    /// Peak frequency, smoothed. `wah_position` arrives in 1/128 MIDI steps and
+    /// the SVF can be running at Q 6.5, so an unsmoothed cutoff zippers/rings.
+    fc: SmoothedGain,
+    /// Cached knob-rate mappings: the `powf`s are not per-sample work.
+    last_freq: f32,
+    base_hz: f32,
+    last_pos: f32,
+    manual_hz: f32,
+    /// The cutoff actually handed to the SVF this sample (test diagnostic).
+    #[cfg(test)]
+    last_fc: f32,
 }
 
 /// Lowest base peak frequency (FREQ at 0) — the heel-down position.
@@ -63,7 +74,22 @@ impl Wah {
             ic2: 0.0,
             // `DEFAULT_WAH_MIX`.
             mix: SmoothedGain::new(0.90, sr),
+            // ~6 ms: long enough to break the MIDI staircase, short enough to
+            // still feel like a treadle.
+            fc: SmoothedGain::with_ms(F_MIN, 6.0, sr),
+            last_freq: -1.0,
+            base_hz: F_MIN,
+            last_pos: -1.0,
+            manual_hz: MAN_F_MIN,
+            #[cfg(test)]
+            last_fc: F_MIN,
         }
+    }
+
+    /// The cutoff the SVF actually used, for tests.
+    #[cfg(test)]
+    fn cutoff_hz(&self) -> f32 {
+        self.last_fc
     }
 
     /// Mono wah. `freq` 0–1 (auto base position), `sens` 0–1 (auto sweep), `q`,
@@ -91,15 +117,28 @@ impl Wah {
         // Peak centre: a manual treadle across the full wah range, or the auto
         // base position swept up by the envelope.
         let manual = mode >= 0.5;
-        let fc = if manual {
+        let target = if manual {
             let pos = position.clamp(0.0, 1.0);
-            MAN_F_MIN * (MAN_F_MAX / MAN_F_MIN).powf(pos)
+            if param_changed(position, self.last_pos) {
+                self.manual_hz = MAN_F_MIN * (MAN_F_MAX / MAN_F_MIN).powf(pos);
+                self.last_pos = position;
+            }
+            self.manual_hz
         } else {
-            let base = F_MIN * (F_MAX / F_MIN).powf(freq.clamp(0.0, 1.0));
+            if param_changed(freq, self.last_freq) {
+                self.base_hz = F_MIN * (F_MAX / F_MIN).powf(freq.clamp(0.0, 1.0));
+                self.last_freq = freq;
+            }
             let sweep = (self.env * sens.clamp(0.0, 1.0) * SWEEP_OCT).exp2();
-            base * sweep
+            self.base_hz * sweep
         }
         .clamp(120.0, self.sr * 0.45);
+        self.fc.set(target);
+        let fc = self.fc.step();
+        #[cfg(test)]
+        {
+            self.last_fc = fc;
+        }
 
         // Resonance: Q 1.5–6.5. Higher = a narrower, sharper quack.
         let q_val = 1.5 + q.clamp(0.0, 1.0) * 5.0;
@@ -129,6 +168,31 @@ impl Wah {
 
 #[cfg(test)]
 mod tests {
+    /// A treadle jump (a MIDI CC step, or the knob) must not step the SVF's
+    /// cutoff: at high Q a one-sample coefficient jump rings.
+    #[test]
+    fn a_treadle_jump_is_smoothed() {
+        let mut w = Wah::new(48_000.0);
+        for _ in 0..960 {
+            w.process(0.05, 0.5, 0.0, 0.5, 1.0, 1.0, 0.0);
+        }
+        let heel = w.cutoff_hz();
+        w.process(0.05, 0.5, 0.0, 0.5, 1.0, 1.0, 1.0);
+        let after_one = w.cutoff_hz();
+        for _ in 0..9_600 {
+            w.process(0.05, 0.5, 0.0, 0.5, 1.0, 1.0, 1.0);
+        }
+        let settled = w.cutoff_hz();
+        assert!(
+            settled > heel * 5.0,
+            "the treadle did not move: {heel} -> {settled}"
+        );
+        assert!(
+            (after_one - heel).abs() < 0.2 * (settled - heel),
+            "the cutoff jumped in one sample: {heel} -> {after_one} -> {settled}"
+        );
+    }
+
     use super::*;
     use std::f32::consts::PI;
 

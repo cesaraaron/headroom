@@ -23,8 +23,10 @@ use std::f32::consts::TAU;
 pub struct Pitch {
     buf: Vec<f32>,
     write: usize,
-    /// Grain phase in [0, 1). `phase * GRAIN` is the delay of the first read tap;
-    /// the second tap reads half a grain away. Advances by `(1 − ratio)/GRAIN`.
+    /// Grain length in samples, derived from the sample rate (see [`GRAIN_SECS`]).
+    grain: f32,
+    /// Grain phase in [0, 1). `phase * grain` is the delay of the first read tap;
+    /// the second tap reads half a grain away. Advances by `(1 − ratio)/grain`.
     phase: f32,
     tone: OnePoleLp,
     last_tone: f32,
@@ -32,28 +34,39 @@ pub struct Pitch {
     /// `exp2` maps a knob-rate value, so it is recomputed only on change.
     last_pitch: f32,
     ratio: f32,
+    /// Smoothed ratio: a pitch sweep must glide, not step the delay tap.
+    ratio_smooth: SmoothedGain,
+    /// How much the wet is faded to dry at unison (1 = fully dry), smoothed.
+    unison: f32,
+    unison_coeff: f32,
     /// Wet/dry, smoothed. A MIDI CC sweep of the whammy's mix would otherwise be
     /// an audio-rate staircase.
     mix: SmoothedGain,
     sr: f32,
 }
 
-/// Grain length in samples. ~43 ms at 48 kHz — long enough to hide the wrap under
-/// the window, short enough that transposed transients don't smear badly.
-const GRAIN: f32 = 2048.0;
-/// Ring buffer length (power of two ≥ `GRAIN` + interpolation headroom).
-const BUF_LEN: usize = 4096;
+/// Grain length in **seconds**. ~43 ms — long enough to hide the wrap under the
+/// window, short enough that transposed transients don't smear badly. It is a
+/// time, not a sample count: 2048 samples would halve to 21 ms at 96 kHz.
+const GRAIN_SECS: f32 = 0.0427;
 
 impl Pitch {
     pub fn new(sr: f32) -> Self {
+        let grain = (GRAIN_SECS * sr).round();
+        // Power-of-two ring at least twice the grain, plus interpolation headroom.
+        let buf_len = (((grain * 2.0) as usize) + 8).next_power_of_two();
         let mut p = Self {
-            buf: vec![0.0; BUF_LEN],
+            buf: vec![0.0; buf_len],
             write: 0,
+            grain,
             phase: 0.0,
             tone: OnePoleLp::new(),
             last_tone: -1.0,  // force first update
             last_pitch: -1.0, // force first update
             ratio: 1.0,
+            ratio_smooth: SmoothedGain::with_ms(1.0, 12.0, sr),
+            unison: 1.0,
+            unison_coeff: 1.0 - (-1.0 / (0.010 * sr)).exp(),
             // `DEFAULT_PITCH_MIX`.
             mix: SmoothedGain::new(0.50, sr),
             sr,
@@ -104,21 +117,38 @@ impl Pitch {
             self.ratio = (semis / 12.0).exp2();
             self.last_pitch = pitch;
         }
-        let ratio = self.ratio;
+        self.ratio_smooth.set(self.ratio);
+        let ratio = self.ratio_smooth.step();
+
+        // At unison the tap stops drifting, so it would freeze into a static comb
+        // of two half-grain-spaced copies of the input. Fade the wet to the dry
+        // input there (a real whammy at unison is the dry signal).
+        let target = if (ratio - 1.0).abs() < 1.0e-3 {
+            1.0
+        } else {
+            0.0
+        };
+        self.unison += (target - self.unison) * self.unison_coeff;
 
         // The read taps must advance `ratio` samples per output sample while the
         // write head advances one, so the tap *delay* drifts by `(1 − ratio)` per
-        // sample; dividing by GRAIN expresses that drift in grain-phase units.
-        self.phase += (1.0 - ratio) / GRAIN;
-        self.phase -= self.phase.floor(); // wrap into [0, 1)
+        // sample; dividing by the grain expresses that drift in phase units.
+        if (ratio - 1.0).abs() < 1.0e-6 {
+            // Nothing is moving the tap; walk it home so leaving unison starts
+            // from zero delay.
+            self.phase = (self.phase - 1.0 / self.grain).max(0.0);
+        } else {
+            self.phase += (1.0 - ratio) / self.grain;
+            self.phase -= self.phase.floor(); // wrap into [0, 1)
+        }
         let phase_b = {
             let p = self.phase + 0.5;
             p - p.floor()
         };
 
         let wet = {
-            let tap_a = self.phase * GRAIN;
-            let tap_b = phase_b * GRAIN;
+            let tap_a = self.phase * self.grain;
+            let tap_b = phase_b * self.grain;
             // Raised-cosine grain windows (single `cos`; the taps are half a
             // grain apart so their gains sum to unity — see `grain_windows`).
             let (win_a, win_b) = Self::grain_windows(self.phase);
@@ -126,9 +156,9 @@ impl Pitch {
                 + win_b * Self::read(&self.buf, self.write, tap_b)
         };
 
-        self.write = (self.write + 1) % BUF_LEN;
+        self.write = (self.write + 1) % self.buf.len();
 
-        let wet = self.tone.process(wet);
+        let wet = self.tone.process(wet) * (1.0 - self.unison) + x * self.unison;
         self.mix.set(mix.clamp(0.0, 1.0));
         let mix = self.mix.step();
         x * (1.0 - mix) + wet * mix
@@ -186,6 +216,33 @@ mod tests {
             let y = p.process(x, 1.0, 0.0, 0.5);
             assert!((y - x).abs() < 1e-6, "dry mix altered the signal at {n}");
         }
+    }
+
+    /// The grain is a time, not a sample count: the warp/window has to stay ~43 ms
+    /// at every supported rate. A fixed 2048 samples would halve it at 96 kHz.
+    #[test]
+    fn grain_length_is_a_time_not_a_sample_count() {
+        for sr in [44_100.0f32, 48_000.0, 96_000.0] {
+            let p = Pitch::new(sr);
+            let ms = p.grain / p.sr * 1000.0;
+            assert!((ms - 42.7).abs() < 0.5, "grain {ms} ms at {sr} Hz");
+        }
+    }
+
+    /// At unison the wet tap has nothing to track, so it used to freeze into a
+    /// static half-grain comb. The pedal must pass the dry signal instead.
+    #[test]
+    fn unison_passes_the_dry_signal() {
+        let mut p = Pitch::new(SR);
+        let mut worst = 0.0f32;
+        for n in 0..48_000 {
+            let x = (2.0 * PI * 440.0 * n as f32 / SR).sin() * 0.5;
+            let y = p.process(x, 0.5, 1.0, 1.0);
+            if n > 24_000 {
+                worst = worst.max((y - x).abs());
+            }
+        }
+        assert!(worst < 0.01, "unison is not transparent: {worst}");
     }
 
     /// Extreme settings must stay finite and bounded — the unity-sum windows mean the
