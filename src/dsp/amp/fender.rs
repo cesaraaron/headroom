@@ -257,6 +257,6 @@ impl Amplifier for Fender {
         let x = self.out_hp.process(x);
 
         // Fixed output trim (level-matched to the other models).
-        x * 5.429
+        x * 5.4315
     }
 }

@@ -374,6 +374,6 @@ impl Amplifier for Marshall {
         // Output trim: level-matches the JCM800 to the other models so switching
         // doesn't jump in volume. The master's level comes from the power-amp input
         // scale above; this is a fixed trim referenced to the default.
-        x * MASTER_DRIVE_REF * 6.560
+        x * MASTER_DRIVE_REF * 6.4480
     }
 }

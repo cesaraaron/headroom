@@ -207,6 +207,6 @@ impl Amplifier for Tweed {
         let x = self.speaker.process(x, self.envelope);
         let x = self.out_hp.process(x);
 
-        x * 1.650
+        x * 1.6700
     }
 }
