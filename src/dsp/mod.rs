@@ -1720,6 +1720,11 @@ pub struct DspChain {
     declick_target: f32,
     /// Per-sample ramp increment for the declick.
     declick_step: f32,
+    /// Whether the external-IR cab owned the cab stage on the previous sample.
+    cab_ext_live: bool,
+    /// Declick ramp for a cab-source switch (0 = muted, 1 = open).
+    cab_declick: f32,
+    cab_declick_step: f32,
     /// Master-bus DC blockers, one per channel.
     master_dc: MasterDc,
     /// Master-bus lookahead limiter. Replaces the old memoryless clip so peaks
@@ -1770,6 +1775,9 @@ impl DspChain {
             declick_gain: 1.0,
             declick_target: 1.0,
             declick_step: 1.0 / (DECLICK_SECS * sr).max(1.0),
+            cab_ext_live: false,
+            cab_declick: 1.0,
+            cab_declick_step: 1.0 / (BYPASS_DECLICK_SECS * sr).max(1.0),
             master_dc: MasterDc::new(sr),
             master_limiter: Limiter::new(sr),
             hum: HumNoise::new(sr),
@@ -1917,8 +1925,22 @@ impl DspChain {
     fn cab_stage(&mut self, x: f32) -> (f32, f32) {
         let p = &self.params;
         let mic_pos = p.mic_pos.load(Relaxed);
-        match self.ext_cab.as_mut() {
-            Some(ext) if p.cab_external_active.load(Relaxed) => {
+        let ext_active = self.ext_cab.is_some() && p.cab_external_active.load(Relaxed);
+        // A source switch is not free: the incoming convolver holds the tail it
+        // was last advanced on, and the built-in bank was not clocked while the
+        // IR owned the stage. Clear the incoming path and fade through zero over
+        // the bypass declick instead of cutting on whatever sample happens to be
+        // in flight.
+        if ext_active != self.cab_ext_live {
+            self.cab_ext_live = ext_active;
+            if let Some(ext) = self.ext_cab.as_mut() {
+                ext.clear();
+            }
+            self.cab.reset();
+            self.cab_declick = 0.0;
+        }
+        let (l, r) = match self.ext_cab.as_mut() {
+            Some(ext) if ext_active => {
                 use cab::Cabinet;
                 ext.process(x, mic_pos, 0.0, 0.0)
             }
@@ -1929,7 +1951,12 @@ impl DspChain {
                 p.mic_blend.load(Relaxed),
                 p.mic_room.load(Relaxed),
             ),
+        };
+        if self.cab_declick < 1.0 {
+            self.cab_declick = (self.cab_declick + self.cab_declick_step).min(1.0);
+            return (l * self.cab_declick, r * self.cab_declick);
         }
+        (l, r)
     }
 
     /// Position of `stage` in `order`, falling back to a sane default slot when

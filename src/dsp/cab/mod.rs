@@ -1023,6 +1023,17 @@ impl CabBank {
         }
     }
 
+    /// Force the next `process` to clear the selected cab and start from silence.
+    ///
+    /// The bank is not clocked while an external IR (or a full-rig AU) owns the
+    /// cab stage, so on return it still holds the tail it was mid-way through.
+    /// Clearing `live` makes the normal selection path clear it first.
+    pub(crate) fn reset(&mut self) {
+        self.live = None;
+        self.fading = None;
+        self.ramp = 1.0;
+    }
+
     #[inline]
     pub fn process(
         &mut self,

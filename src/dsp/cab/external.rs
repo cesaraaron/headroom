@@ -234,6 +234,20 @@ impl ExternalIrCab {
     pub fn name(&self) -> &str {
         &self.name
     }
+
+    /// Zero every piece of state the IR has accumulated.
+    ///
+    /// `FftConvolver` returns the block it filled while it was last advanced, and
+    /// its frequency-domain delay line holds the previous input spectra for a
+    /// further IR length. Without this, re-activating a loaded IR replays up to
+    /// 128 stale samples and then convolves ~93 ms of foreign input — the last
+    /// phrase you played through it. See `ExternalIrCab`'s toggle in `DspChain`.
+    pub fn clear(&mut self) {
+        self.speaker.clear();
+        self.conv_l.clear();
+        self.conv_r.clear();
+        self.mic.clear();
+    }
 }
 
 impl Cabinet for ExternalIrCab {
@@ -253,6 +267,30 @@ impl Cabinet for ExternalIrCab {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Toggling the external cab off and on must not replay the last phrase:
+    /// `FftConvolver` returns the block it last filled and keeps the previous
+    /// input spectra in its FDL, so `clear()` has to zero both.
+    #[test]
+    fn clear_drops_the_previous_tail() {
+        let ir = LoadedIr {
+            l: (0..512).map(|i| (-(i as f32) * 0.02).exp()).collect(),
+            r: (0..512).map(|i| (-(i as f32) * 0.02).exp() * 0.9).collect(),
+            name: "clear-test".to_owned(),
+        };
+        let mut cab = ExternalIrCab::new(48_000.0, ir);
+        for _ in 0..4_000 {
+            let _ = cab.process(0.5, 0.5, 0.0, 0.0);
+        }
+        cab.clear();
+        for n in 0..super::super::LIVE_MAX_IR_LEN {
+            let (l, r) = cab.process(0.0, 0.5, 0.0, 0.0);
+            assert!(
+                l.abs() < 1e-6 && r.abs() < 1e-6,
+                "stale tail at {n}: {l}, {r}"
+            );
+        }
+    }
 
     /// Write a one-channel-per-`chans` interleaved WAV to a temp path and return it.
     fn write_wav(tag: &str, sr: u32, chans: u16, interleaved: &[f32]) -> std::path::PathBuf {
