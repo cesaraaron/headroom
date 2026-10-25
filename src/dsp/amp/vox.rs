@@ -232,6 +232,9 @@ impl Amplifier for Vox {
         let bias = self.bloom.follow(x) * 0.07;
 
         // ── 8× oversampled nonlinear section ──────────────────────────────────
+        // The gain split depends only on the knob, so compute it once per sample
+        // rather than 8x inside the oversampled loop.
+        let (k1, k2) = split_gain(PREAMP_GAIN_COEFF * pregain, pregain, 0.09307, 1.0);
         let up = self.os.upsample(x);
         let mut down = [0.0f32; 8];
         for (o, &u) in down.iter_mut().zip(up.iter()) {
@@ -239,13 +242,11 @@ impl Amplifier for Vox {
             // Dynamic cathode bias shifts the operating point under hard drive
             // before the stage-1 waveshaper; the inter-stage HP strips its DC.
             let d = self.cathode.shift(u + bias);
-            let (k1, k2) = split_gain(PREAMP_GAIN_COEFF * pregain, pregain, 0.09307, 1.0);
             let s = TubeClip::EL84.stage(d, k1);
             let s = self.stage_hp.process(s);
             // The second stage's share is fixed relative to the first (was a
             // hard-coded 3.0), kept here so the pair still sums to the
             // designed total.
-            let _ = k2;
             *o = TubeClip::EL84.stage(s, k2);
         }
         let x = self.os.downsample(down);

@@ -90,10 +90,12 @@ impl UniVibe {
         // Four swept first-order all-passes, staggered per stage. `fc` glides
         // exponentially across the sweep band; each stage's all-pass coefficient
         // a = (tan(π·fc/sr) − 1) / (tan(π·fc/sr) + 1) puts its −90° point at `fc`.
+        // The sweep position does not depend on the stage, so one `powf` per
+        // sample instead of four inside the loop.
+        let sweep = F_MIN * (F_MAX / F_MIN).powf(depth * lfo);
         let mut s = x;
         for (zi, &spread) in self.z.iter_mut().zip(STAGE_SPREAD.iter()) {
-            let fc =
-                (F_MIN * (F_MAX / F_MIN).powf(depth * lfo) * spread).clamp(20.0, self.sr * 0.45);
+            let fc = (sweep * spread).clamp(20.0, self.sr * 0.45);
             let t = (PI * fc / self.sr).tan();
             let a = (t - 1.0) / (t + 1.0);
             let y = a * s + *zi;
@@ -103,11 +105,13 @@ impl UniVibe {
         let wet = s;
 
         // Chorus blends dry + phase; vibrato runs fully wet (the moving group delay
-        // alone gives the pitch shimmer). `mode` slides between the two.
-        self.mix.set(mix.clamp(0.0, 1.0));
-        let mix = self.mix.step();
+        // alone gives the pitch shimmer). `mode` slides between the two. Combine
+        // them *before* the smoother: applying mode after `step()` stepped the wet
+        // amount in one sample when MODE was toggled.
+        let mix = mix.clamp(0.0, 1.0);
         let mode = mode.clamp(0.0, 1.0);
-        let wet_amt = mix + (1.0 - mix) * mode;
+        self.mix.set(mix + (1.0 - mix) * mode);
+        let wet_amt = self.mix.step();
         x * (1.0 - wet_amt) + wet * wet_amt
     }
 }
@@ -118,6 +122,28 @@ mod tests {
     use std::f32::consts::PI;
 
     const SR: f32 = 48_000.0;
+
+    /// A MODE toggle must ramp through the same smoother as MIX; applying it
+    /// after the smoother stepped the wet amount in one sample.
+    #[test]
+    fn mode_changes_are_smoothed() {
+        let mut v = UniVibe::new(SR);
+        for _ in 0..2_000 {
+            v.process(0.1, 0.5, 0.5, 0.5, 0.0);
+        }
+        let before = v.mix.current;
+        v.process(0.1, 0.5, 0.5, 0.5, 1.0);
+        let after_one = v.mix.current;
+        for _ in 0..2_000 {
+            v.process(0.1, 0.5, 0.5, 0.5, 1.0);
+        }
+        let settled = v.mix.current;
+        assert!(settled > before + 0.3, "mode did not move the wet amount");
+        assert!(
+            (after_one - before).abs() < 0.2 * (settled - before),
+            "mode stepped: {before} -> {after_one} -> {settled}"
+        );
+    }
 
     /// A windowed peak-amplitude envelope of the output, sampled past a warm-up.
     fn window_peaks<F: FnMut(usize) -> f32>(
