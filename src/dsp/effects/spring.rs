@@ -58,6 +58,11 @@ impl Allpass {
         }
         y
     }
+
+    fn clear(&mut self) {
+        self.buf.fill(0.0);
+        self.pos = 0;
+    }
 }
 
 /// One damped recirculating spring.
@@ -96,6 +101,12 @@ impl Spring {
     fn set_params(&mut self, fb: f32, damp: f32) {
         self.fb = fb;
         self.damp = damp;
+    }
+
+    fn clear(&mut self) {
+        self.buf.fill(0.0);
+        self.pos = 0;
+        self.lp = 0.0;
     }
 }
 
@@ -154,6 +165,20 @@ impl SpringReverb {
 
     /// `decay` 0–1, `damp` 0–1. Mono in, mono wet out; the caller sets dry/wet.
     #[inline]
+    /// Zero the tank and its filters, so a model that is re-entered after a
+    /// switch does not replay the tail it was ringing when it was left.
+    pub fn clear(&mut self) {
+        for ap in &mut self.ap {
+            ap.clear();
+        }
+        for spring in &mut self.springs {
+            spring.clear();
+        }
+        self.in_hp.clear();
+        self.out_hp.clear();
+        self.out_lp.clear();
+    }
+
     pub fn process(&mut self, input: f32, decay: f32, damp: f32) -> f32 {
         if param_changed(decay, self.last_decay) || param_changed(damp, self.last_damp) {
             self.update_params(decay, damp);

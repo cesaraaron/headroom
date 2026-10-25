@@ -446,7 +446,11 @@ impl DynamicPresence {
 /// the signal off at the zero crossing leaves a small amount of crossover content
 /// that adds odd-harmonic complexity and "bite" without an audible hard kink.
 pub(crate) struct OutputTransformer {
-    lf: Biquad,
+    /// The crossover is a sharp nonlinearity at the zero crossing, so it runs at
+    /// 8× like the power stage: at base rate its odd harmonics folded back into
+    /// the audio band.
+    os: crate::dsp::oversample::Oversampler8,
+    lf: crate::dsp::effects::OnePoleLp,
     drive: f32,
     xover: f32,
 }
@@ -456,8 +460,12 @@ impl OutputTransformer {
     /// `drive` sets how hard the core is pushed (higher = more LF compression), and
     /// `xover` the depth of the class-AB crossover content.
     pub fn new(sr: f32, lf_corner: f32, drive: f32, xover: f32) -> Self {
+        let mut lf = crate::dsp::effects::OnePoleLp::new();
+        // Clocked at 8× inside `process`, so design the split there.
+        lf.set_cutoff(lf_corner, sr * POWER_OS_RATE);
         Self {
-            lf: Biquad::lowpass(sr, lf_corner, 0.707),
+            os: crate::dsp::oversample::Oversampler8::new(sr),
+            lf,
             drive,
             xover,
         }
@@ -465,16 +473,25 @@ impl OutputTransformer {
 
     #[inline]
     pub fn process(&mut self, x: f32) -> f32 {
-        // Split the low-frequency flux (which saturates the core) from the highs.
-        let low = self.lf.process(x);
-        let high = x - low;
-        // Core saturation acts on the lows only; normalised so small-signal gain is
-        // unity (tanh(low·d)/d → low as low → 0) and only larger flux compresses.
-        let y = (low * self.drive).tanh() / self.drive + high;
-        // A touch of crossover: gain dips slightly through the zero-crossing handoff
-        // and vanishes for larger swings, so it adds odd-harmonic bite, not a kink.
-        let cross = self.xover * y * (-(y * y) * 25.0).exp();
-        y - cross
+        let Self {
+            os,
+            lf,
+            drive,
+            xover,
+        } = self;
+        os.process(x, |u| {
+            // First-order complementary split: `low + high` is exactly `u` at every
+            // frequency, so the saturating path does not leave an out-of-phase
+            // residue at the corner the way the 2nd-order split did.
+            let low = lf.process(u);
+            let high = u - low;
+            // Core saturation acts on the lows only; normalised so small-signal
+            // gain is unity and only larger flux compresses.
+            let y = (low * *drive).tanh() / *drive + high;
+            // A touch of crossover: gain dips slightly through the zero-crossing
+            // handoff and vanishes for larger swings.
+            y - *xover * y * (-(y * y) * 25.0).exp()
+        })
     }
 }
 
@@ -952,6 +969,11 @@ impl PowerOs {
         }
     }
 
+    /// Zero both FIR histories, so the stage starts from silence after a switch.
+    pub fn reset(&mut self) {
+        self.os.reset();
+    }
+
     /// Run the power-stage curve at 8× with the global NFB loop closed *inside*
     /// the oversampled loop.
     ///
@@ -989,6 +1011,10 @@ impl PowerOs {
 pub trait Amplifier {
     fn process(&mut self, sample: f32, knobs: &[f32; AMP_MAX]) -> f32;
 
+    /// Drop state that must not survive a model switch (oversampler histories,
+    /// a spring tank). The rectifier-sag envelope must be preserved.
+    fn reset_switch_state(&mut self) {}
+
     /// Adopt the selected cabinet's speaker load as `(fs, q)`.
     ///
     /// On the trait rather than inherent-per-model because it is part of every
@@ -1010,6 +1036,16 @@ pub struct AmpBank {
     fender: Fender,
     supro: Supro,
     tweed: Tweed,
+    /// The model that processed the previous sample.
+    live: Option<AmpModel>,
+    /// The model fading out after a switch.
+    fading: Option<AmpModel>,
+    /// Crossfade position, 0 = all `fading`, 1 = all `live`.
+    ramp: f32,
+    ramp_step: f32,
+    /// The knobs passed on the previous sample; they belong to the outgoing
+    /// model once the selection changes.
+    prev_knobs: [f32; AMP_MAX],
 }
 
 impl AmpBank {
@@ -1024,6 +1060,43 @@ impl AmpBank {
             fender: Fender::new(sr),
             supro: Supro::new(sr),
             tweed: Tweed::new(sr),
+            live: None,
+            fading: None,
+            ramp: 1.0,
+            ramp_step: 1.0 / (0.006 * sr).max(1.0),
+            prev_knobs: [0.0; AMP_MAX],
+        }
+    }
+
+    /// One model's output. Split out so the crossfade can run the outgoing model
+    /// alongside the incoming one.
+    #[inline]
+    fn process_model(&mut self, model: AmpModel, sample: f32, knobs: &[f32; AMP_MAX]) -> f32 {
+        match model {
+            AmpModel::Marshall => self.marshall.process(sample, knobs),
+            AmpModel::Mesa => self.mesa.process(sample, knobs),
+            AmpModel::Randall => self.randall.process(sample, knobs),
+            AmpModel::Vox => self.vox.process(sample, knobs),
+            AmpModel::Hiwatt => self.hiwatt.process(sample, knobs),
+            AmpModel::Plexi => self.plexi.process(sample, knobs),
+            AmpModel::Fender => self.fender.process(sample, knobs),
+            AmpModel::Supro => self.supro.process(sample, knobs),
+            AmpModel::Tweed => self.tweed.process(sample, knobs),
+        }
+    }
+
+    #[inline]
+    fn clear_switch_state(&mut self, model: AmpModel) {
+        match model {
+            AmpModel::Marshall => self.marshall.reset_switch_state(),
+            AmpModel::Mesa => self.mesa.reset_switch_state(),
+            AmpModel::Randall => self.randall.reset_switch_state(),
+            AmpModel::Vox => self.vox.reset_switch_state(),
+            AmpModel::Hiwatt => self.hiwatt.reset_switch_state(),
+            AmpModel::Plexi => self.plexi.reset_switch_state(),
+            AmpModel::Fender => self.fender.reset_switch_state(),
+            AmpModel::Supro => self.supro.reset_switch_state(),
+            AmpModel::Tweed => self.tweed.reset_switch_state(),
         }
     }
 
@@ -1048,17 +1121,30 @@ impl AmpBank {
         self.fender.set_load(load);
         self.supro.set_load(load);
         self.tweed.set_load(load);
-        match model {
-            AmpModel::Marshall => self.marshall.process(sample, knobs),
-            AmpModel::Mesa => self.mesa.process(sample, knobs),
-            AmpModel::Randall => self.randall.process(sample, knobs),
-            AmpModel::Vox => self.vox.process(sample, knobs),
-            AmpModel::Hiwatt => self.hiwatt.process(sample, knobs),
-            AmpModel::Plexi => self.plexi.process(sample, knobs),
-            AmpModel::Fender => self.fender.process(sample, knobs),
-            AmpModel::Supro => self.supro.process(sample, knobs),
-            AmpModel::Tweed => self.tweed.process(sample, knobs),
+        if self.live != Some(model) {
+            // The incoming model has not been advanced while inactive, so its
+            // oversampler/spring state is stale: clear it, then fade from the
+            // outgoing model instead of cutting on a single sample.
+            self.clear_switch_state(model);
+            self.fading = self.live;
+            self.ramp = 0.0;
+            self.live = Some(model);
         }
+        let next = self.process_model(model, sample, knobs);
+        let out = if let Some(old) = self.fading {
+            let prev_knobs = self.prev_knobs;
+            let prev = self.process_model(old, sample, &prev_knobs);
+            let ramp = self.ramp;
+            self.ramp = (ramp + self.ramp_step).min(1.0);
+            if self.ramp >= 1.0 {
+                self.fading = None;
+            }
+            prev + (next - prev) * ramp
+        } else {
+            next
+        };
+        self.prev_knobs = *knobs;
+        out
     }
 }
 
@@ -1720,7 +1806,10 @@ mod tests {
     fn all_amp_models_are_latency_aligned() {
         const IMPULSE: f32 = 0.9;
         const ONSET_FRACTION: f32 = 0.01;
-        const MAX_SPREAD: usize = 8;
+        // 16 since the output transformer runs its crossover at 8× (audit 3.5):
+        // the round trip adds the same group delay to every model, but the
+        // 1%-of-peak onset metric spreads with each model's harmonic content.
+        const MAX_SPREAD: usize = 16;
 
         let onset = |model: crate::dsp::AmpModel| -> usize {
             let (_name, _m, mut amp) = each_amp()
@@ -2579,6 +2668,34 @@ mod tests {
         assert!(
             low > high * 0.15,
             "the divider's LF corner is not 220 Hz: 200 Hz {low:.3}, 2 kHz {high:.3}"
+        );
+    }
+
+    /// A model switch must start from the outgoing model's output, not cut
+    /// straight to the incoming one; the first sample of the fade is all old.
+    #[test]
+    fn a_model_switch_crossfades_from_the_old_model() {
+        let sr = 48_000.0;
+        let a = standard_knobs(AmpModel::Marshall, 0.8, 0.5, 0.5, 0.6, 0.5, 0.6);
+        let b = standard_knobs(AmpModel::Fender, 0.8, 0.5, 0.5, 0.6, 0.5, 0.6);
+        let load = crate::dsp::CabModel::Mesa.speaker_load();
+        let mut bank = AmpBank::new(sr);
+        let mut reference = Marshall::new(sr);
+        reference.set_load(load);
+        for i in 0..2_000 {
+            let x = (2.0 * PI * 220.0 * i as f32 / sr).sin() * 0.4;
+            let y = bank.process(AmpModel::Marshall, x, &a, load);
+            let r = reference.process(x, &a);
+            if i > 1_900 {
+                assert!((y - r).abs() < 1e-5, "no-switch path diverged at {i}");
+            }
+        }
+        let x = (2.0 * PI * 220.0 * 2_000.0 / sr).sin() * 0.4;
+        let y = bank.process(AmpModel::Fender, x, &b, load);
+        let r = reference.process(x, &a);
+        assert!(
+            (y - r).abs() < 1e-5,
+            "switch cut to the new model instead of fading: {y} vs {r}"
         );
     }
 
