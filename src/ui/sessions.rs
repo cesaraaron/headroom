@@ -1,6 +1,6 @@
 //! Session (project) browser modal: New / Save / Save As / Load / Delete for
-//! portable session folders under `~/.config/rusty-riff/sessions/`, plus
-//! recovery of dry takes abandoned in `~/.config/rusty-riff/recovery/`.
+//! portable session folders under `~/.config/headroom/sessions/`, plus
+//! recovery of dry takes abandoned in `~/.config/headroom/recovery/`.
 //!
 //! The recovery section is meant for takes left behind by a crash. A normal exit
 //! saves or discards the running session's takes (which cleans its recovery

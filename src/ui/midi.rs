@@ -201,7 +201,7 @@ pub(super) fn render_midi(f: &mut Frame, ui: &MidiUi, state: &MidiState, port: O
 
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            "bound to ~/.config/rusty-riff/midi.conf",
+            "bound to ~/.config/headroom/midi.conf",
             Style::default().fg(theme().dim),
         )))
         .alignment(Alignment::Center),

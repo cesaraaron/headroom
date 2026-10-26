@@ -1,4 +1,4 @@
-//! rusty-riff — a guitar amplifier and effects simulator.
+//! headroom — a guitar amplifier and effects simulator.
 //!
 //! The crate is split into a library (this file) and a thin binary (`main.rs`) so
 //! the DSP, preset, recording, and UI modules can be unit-tested and reused
@@ -26,25 +26,33 @@ pub mod session;
 pub mod tap_tempo;
 pub mod ui;
 
-/// One-time migration of the legacy `~/.config/rusty-amp` directory to
-/// `~/.config/rusty-riff`, so existing presets, external IRs, sessions, and
-/// recovery takes survive the project rename. Best-effort and intended to run
-/// once on the control thread at startup.
+/// One-time migration of the legacy config directories (`~/.config/rusty-riff`
+/// from the previous name, `~/.config/rusty-amp` from the original fork) into
+/// `~/.config/headroom`, so existing presets, external IRs, sessions, and
+/// recovery takes survive the project rename. The newest legacy directory wins,
+/// so a user who skipped a release still lands in the right place. Best-effort
+/// and intended to run once on the control thread at startup.
 pub fn migrate_legacy_config_dir() {
     let Some(home) = dirs::home_dir() else {
         return;
     };
     let config = home.join(".config");
-    let old = config.join("rusty-amp");
-    let new = config.join("rusty-riff");
-    if new.exists() || !old.exists() {
+    let new = config.join("headroom");
+    if new.exists() {
         return;
     }
-    if std::fs::rename(&old, &new).is_ok() {
-        return;
-    }
-    if copy_dir_recursive(&old, &new).is_ok() {
-        std::fs::remove_dir_all(&old).ok();
+    for legacy in ["rusty-riff", "rusty-amp"] {
+        let old = config.join(legacy);
+        if !old.exists() {
+            continue;
+        }
+        if std::fs::rename(&old, &new).is_ok() {
+            return;
+        }
+        if copy_dir_recursive(&old, &new).is_ok() {
+            std::fs::remove_dir_all(&old).ok();
+            return;
+        }
     }
 }
 

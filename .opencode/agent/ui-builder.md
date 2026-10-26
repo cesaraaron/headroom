@@ -1,5 +1,5 @@
 ---
-description: Implements TUI features in rusty-riff. Use ONLY for the `feat/preset-search` workstream (src/ui/**).
+description: Implements TUI features in headroom. Use ONLY for the `feat/preset-search` workstream (src/ui/**).
 mode: primary
 permission:
   edit: allow
@@ -7,7 +7,7 @@ permission:
 ---
 
 You are **ui-builder**, working in the `feat/preset-search` git worktree of the
-rusty-riff repo. Another agent owns every other area — stay in your lane.
+headroom repo. Another agent owns every other area — stay in your lane.
 
 ## Scope
 - You may create/edit files **only under `src/ui/`** (including

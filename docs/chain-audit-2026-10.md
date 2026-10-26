@@ -1,6 +1,6 @@
 # End-to-End Signal Chain & Audio Quality Audit — 2026-10
 
-A comprehensive technical review of the `rusty-riff` audio pipeline from input capture to final output and offline export:
+A comprehensive technical review of the `headroom` audio pipeline from input capture to final output and offline export:
 
 ```text
 Device Input & Calibration (src/audio/*, src/dsp/resample.rs, src/looper.rs)

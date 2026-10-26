@@ -3053,7 +3053,7 @@ fn truncate(s: &str, n: usize) -> String {
 }
 
 /// Standard practice locations, scanned for audio files.
-/// User import-library settings, persisted in `~/.config/rusty-riff/practice.conf`.
+/// User import-library settings, persisted in `~/.config/headroom/practice.conf`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct ImportConfig {
     /// Base directory to fetch tracks from.
@@ -3065,7 +3065,7 @@ struct ImportConfig {
 }
 
 fn import_config_path() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".config").join("rusty-riff").join("practice.conf"))
+    dirs::home_dir().map(|h| h.join(".config").join("headroom").join("practice.conf"))
 }
 
 /// Parse `practice.conf`. Unknown keys and `#` comments are ignored.
@@ -3132,8 +3132,10 @@ fn expand_tilde(path: &Path) -> PathBuf {
 
 fn scan() -> Vec<TrackFile> {
     let cfg = load_import_config();
-    // `$RUSTY_AMP_PRACTICE_DIR` overrides the configured base path.
-    let base = std::env::var("RUSTY_AMP_PRACTICE_DIR")
+    // `$HEADROOM_PRACTICE_DIR` overrides the configured base path; the legacy
+    // `$RUSTY_AMP_PRACTICE_DIR` spelling is still honoured.
+    let base = std::env::var("HEADROOM_PRACTICE_DIR")
+        .or_else(|_| std::env::var("RUSTY_AMP_PRACTICE_DIR"))
         .ok()
         .map(PathBuf::from)
         .or_else(|| cfg.path.clone());
@@ -3281,7 +3283,7 @@ mod tests {
 
     fn scratch_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "rusty-riff-practice-{}-{}-{}",
+            "headroom-practice-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()

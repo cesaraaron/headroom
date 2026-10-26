@@ -1,4 +1,4 @@
-# rusty-riff user guide
+# headroom user guide
 
 A practical walkthrough of the terminal guitar rig. For the exhaustive key list
 press `K` in the app; this guide covers the workflows most people need.
@@ -9,8 +9,8 @@ Requires Rust 1.96+, a guitar, an audio interface with a high-impedance
 instrument input, and speakers or headphones.
 
 ```bash
-git clone https://github.com/cesaraaron/rusty-riff
-cd rusty-riff
+git clone https://github.com/cesaraaron/headroom
+cd headroom
 cargo run --release
 ```
 
@@ -111,7 +111,7 @@ inside the preset browser.)
 
 ## Expression pedal (MIDI)
 
-MIDI is on by default: rusty-riff connects to the first MIDI input and binds the
+MIDI is on by default: headroom connects to the first MIDI input and binds the
 standard **Expression** CC (11). Moving the pedal drives the wah's treadle and
 switches it to manual mode, overriding a preset's auto-wah. You can also set the
 wah's `MODE` knob to manual and play `POSITION` by hand.
@@ -122,7 +122,7 @@ want to use — the next CC it sends binds to that target. `D` unbinds, `↑`/`�
 move, `R` reconnects the input, and `Esc` leaves. Every change is written straight
 back to `midi.conf`, and bindings take effect immediately.
 
-You can also edit `~/.config/rusty-riff/midi.conf` by hand (`<cc> = <target>` maps
+You can also edit `~/.config/headroom/midi.conf` by hand (`<cc> = <target>` maps
 another CC; targets include `wah_position`, `wah_mode`, `delay_time`, `delay_mix`,
 `reverb_mix`, `boost_gain`, `master_width`, …):
 
@@ -159,11 +159,11 @@ ship with the app and your saved ones add a `user` tag.
 
 Where things live:
 
-- Presets: `~/.config/rusty-riff/presets/`
-- External IRs: `~/.config/rusty-riff/irs/`
-- Sessions: `~/.config/rusty-riff/sessions/`
-- Recoverable takes: `~/.config/rusty-riff/recovery/`
-- Import library: `~/.config/rusty-riff/practice.conf`
+- Presets: `~/.config/headroom/presets/`
+- External IRs: `~/.config/headroom/irs/`
+- Sessions: `~/.config/headroom/sessions/`
+- Recoverable takes: `~/.config/headroom/recovery/`
+- Import library: `~/.config/headroom/practice.conf`
 
 Sessions bundle the rig plus timeline tracks (and clips the referenced IR) into a
 portable folder. Press `J` for the session browser: `N` new, `S` save, `A` save
@@ -186,7 +186,7 @@ so abandoned recordings are only offered back after a crash.
   a file adds it as a track at the playhead; `/` searches the list. `L` opens the
   **library** settings: the directory to fetch from, plus *only this path* and
   *include subpaths* (off by default), persisted in
-  `~/.config/rusty-riff/practice.conf`:
+  `~/.config/headroom/practice.conf`:
 
   ```text
   path     = ~/Music/guitar

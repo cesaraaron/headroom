@@ -7,7 +7,7 @@ needs (live bindings, a learn channel, config write-back). No audio-path change.
 
 ## Intent
 
-Today a CC can only be bound by hand-editing `~/.config/rusty-riff/midi.conf`
+Today a CC can only be bound by hand-editing `~/.config/headroom/midi.conf`
 (`src/midi.rs` reads it once at startup and the binding list is frozen inside the
 `midir` callback). The single highest-friction gap called out in the module doc is
 "a learn/bind screen is not built yet".
@@ -75,7 +75,7 @@ pub struct MidiState {
 - `MidiState::cc_since(seq) -> Option<(u8, u8, u64)>` — the learn read: `None`
   when `cc_seq == seq`, else `(cc, value, new_seq)` from `last_cc`. The caller
   stores `new_seq` so a second event doesn't re-fire.
-- `MidiState::write_conf()` — rewrites `~/.config/rusty-riff/midi.conf` from the
+- `MidiState::write_conf()` — rewrites `~/.config/headroom/midi.conf` from the
   table (`enabled`, `clock`, then one `<cc> = <target>` line per binding), via a
   temp file + rename so a crash mid-write can't truncate it.
 

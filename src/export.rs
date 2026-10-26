@@ -428,7 +428,7 @@ mod tests {
     /// `tag` keeps parallel test temp dirs apart.
     fn render_take(tag: &str, rig: Preset, samples: &[f32]) -> Vec<(f32, f32)> {
         let dir =
-            std::env::temp_dir().join(format!("rusty-riff-export-{tag}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("headroom-export-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let take = dir.join("take.wav");
@@ -555,8 +555,7 @@ mod tests {
 
     #[test]
     fn exports_a_take_to_stereo_float() {
-        let dir =
-            std::env::temp_dir().join(format!("rusty-riff-export-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("headroom-export-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let take = dir.join("take.wav");
@@ -599,7 +598,7 @@ mod tests {
     #[test]
     fn places_clips_at_their_start() {
         let dir =
-            std::env::temp_dir().join(format!("rusty-riff-export-start-{}", std::process::id()));
+            std::env::temp_dir().join(format!("headroom-export-start-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let first = dir.join("first.wav");
@@ -648,7 +647,7 @@ mod tests {
     #[test]
     fn empty_job_is_rejected() {
         let dir =
-            std::env::temp_dir().join(format!("rusty-riff-export-empty-{}", std::process::id()));
+            std::env::temp_dir().join(format!("headroom-export-empty-{}", std::process::id()));
         let params = Params::new();
         let job = ExportJob {
             dest: dir.join("out.wav"),
@@ -671,7 +670,7 @@ mod tests {
     #[test]
     fn range_export_writes_only_the_window() {
         let dir =
-            std::env::temp_dir().join(format!("rusty-riff-export-range-{}", std::process::id()));
+            std::env::temp_dir().join(format!("headroom-export-range-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let take = dir.join("take.wav");
@@ -712,7 +711,7 @@ mod tests {
     #[test]
     fn region_export_feeds_pre_window_audio_to_the_chain() {
         let dir =
-            std::env::temp_dir().join(format!("rusty-riff-export-prefeed-{}", std::process::id()));
+            std::env::temp_dir().join(format!("headroom-export-prefeed-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let take = dir.join("take.wav");
@@ -761,7 +760,7 @@ mod tests {
     #[test]
     fn range_export_rejects_an_empty_region() {
         let dir = std::env::temp_dir().join(format!(
-            "rusty-riff-export-range-empty-{}",
+            "headroom-export-range-empty-{}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);

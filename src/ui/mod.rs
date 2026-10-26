@@ -195,10 +195,14 @@ fn select_devices(
         crate::audio::log_line(&line);
     }
 
-    // Reuse the last good selection unless asked to prompt (`RUSTY_AMP_DEVICE_PROMPT`
-    // or the in-app device-change hotkey). Delete `~/.config/rusty-riff/audio.conf`
-    // to be prompted again.
-    let saved = if force_prompt || std::env::var_os("RUSTY_AMP_DEVICE_PROMPT").is_some() {
+    // Reuse the last good selection unless asked to prompt (`HEADROOM_DEVICE_PROMPT`,
+    // or the legacy `RUSTY_AMP_DEVICE_PROMPT`, or the in-app device-change hotkey).
+    // Delete `~/.config/headroom/audio.conf` to be prompted again.
+    let saved = if force_prompt
+        || std::env::var_os("HEADROOM_DEVICE_PROMPT")
+            .or_else(|| std::env::var_os("RUSTY_AMP_DEVICE_PROMPT"))
+            .is_some()
+    {
         None
     } else {
         crate::audio::load_selection(&devices)

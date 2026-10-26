@@ -1,9 +1,9 @@
 ---
 name: add-pedal
-description: Add a new pedal / DSP effect to rusty-riff end to end. Use when asked to add, create, or contribute a new pedal, stompbox, or rack effect (e.g. a chorus, phaser, flanger, octaver, EQ). Covers the DSP code, the UI wiring, presets, and tests.
+description: Add a new pedal / DSP effect to headroom end to end. Use when asked to add, create, or contribute a new pedal, stompbox, or rack effect (e.g. a chorus, phaser, flanger, octaver, EQ). Covers the DSP code, the UI wiring, presets, and tests.
 ---
 
-# Add a pedal to rusty-riff
+# Add a pedal to headroom
 
 A pedal is a self-contained DSP effect wired into the fixed signal chain, the TUI, and the preset format. Adding one is **one coordinated body of work**: the Rust implementation plus its tests, all in the same commit.
 

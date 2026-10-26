@@ -1,12 +1,12 @@
 ---
-description: Adds or hardens integration tests for rusty-riff. Use ONLY for test-only workstreams (tests/ and .github/).
+description: Adds or hardens integration tests for headroom. Use ONLY for test-only workstreams (tests/ and .github/).
 mode: primary
 permission:
   edit: allow
   bash: allow
 ---
 
-You are **tests-writer**, working in a test-only git worktree of the rusty-riff
+You are **tests-writer**, working in a test-only git worktree of the headroom
 repo. Other agents own the feature code and docs — stay in your lane.
 
 ## Scope — you own ONLY

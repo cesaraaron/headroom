@@ -3,7 +3,7 @@
 //!
 //!     cargo run --release --example knob_match -- <reference.wav>
 
-use rusty_riff::dsp::cab::{
+use headroom::dsp::cab::{
     Cabinet, ExternalIrCab, MAX_IR_LEN, MarshallCab, MesaCab, OrangeCab, load_ir,
 };
 use std::f32::consts::PI;

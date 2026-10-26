@@ -1,7 +1,7 @@
 # IRs — external cabinet captures (Phase A1)
 
 Drop third-party / self-recorded `.wav` cabinet IRs here for auditioning, or into
-`~/.config/rusty-riff/irs/` (same layout, survives reinstalls). The in-app IR
+`~/.config/headroom/irs/` (same layout, survives reinstalls). The in-app IR
 browser (`I`) scans the config dir; project saves copy the chosen file into
 `<project>/irs/`.
 
@@ -36,7 +36,7 @@ works — loading resamples offline to the engine rate.
 ## Open-license sources
 
 Prefer permissively-licensed packs (e.g. MIT/CC0 community IRs). Do not commit
-proprietary commercial IRs — keep those in `~/.config/rusty-riff/irs/` only.
+proprietary commercial IRs — keep those in `~/.config/headroom/irs/` only.
 
 ## Knobs with an external IR
 

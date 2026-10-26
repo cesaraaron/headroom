@@ -315,7 +315,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("rusty_riff_ir_{tag}_{nanos}.wav"));
+        let path = std::env::temp_dir().join(format!("headroom_ir_{tag}_{nanos}.wav"));
         let spec = hound::WavSpec {
             channels: chans,
             sample_rate: sr,

@@ -9,9 +9,9 @@
 //! checking presets on parallel threads (each render rebuilds the DSP chain, so
 //! a per-preset cost dominates the sweep).
 
-use rusty_riff::analysis::render::{RenderOpts, render_preset};
-use rusty_riff::analysis::synth::{Phrase, phrase};
-use rusty_riff::preset::{Preset, PresetSource};
+use headroom::analysis::render::{RenderOpts, render_preset};
+use headroom::analysis::synth::{Phrase, phrase};
+use headroom::preset::{Preset, PresetSource};
 
 fn bundled_paths() -> Vec<std::path::PathBuf> {
     let mut paths: Vec<_> = std::fs::read_dir("presets")

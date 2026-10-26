@@ -1,9 +1,9 @@
 ---
 name: add-bundled-preset
-description: Add a new pre-built (bundled) preset to rusty-riff. Use when asked to create, add, or contribute a bundled/artist/factory preset — a .toml tone shipped with the repo.
+description: Add a new pre-built (bundled) preset to headroom. Use when asked to create, add, or contribute a bundled/artist/factory preset — a .toml tone shipped with the repo.
 ---
 
-# Add a bundled preset to rusty-riff
+# Add a bundled preset to headroom
 
 A bundled preset is a read-only `.toml` tone shipped with the repo in `presets/`. Bundled presets cannot be deleted by users, so only add tones that are genuinely useful and well-tuned.
 
@@ -24,7 +24,7 @@ Create `presets/<name>.toml`. Use a short, lowercase, filesystem-safe file name 
 ### 2. Test it
 
 ```bash
-cargo test --package rusty-riff --lib -- preset::tests
+cargo test --package headroom --lib -- preset::tests
 ```
 
 Then run the app and press `P` to confirm the preset loads and sounds as intended.
