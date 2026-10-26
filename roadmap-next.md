@@ -30,6 +30,7 @@ and the working conventions.
 | Amp gaps remainder (C2–C5) | `1edf712`…`c83b89a` | Randall load-only ripple, `SpeakerLoad` rename; Vox/Hiwatt/Fender ripple measured inaudible and reverted (tests `#[ignore]`d); no re-bless needed; `…/2026-10-11-amps*` |
 | Palette + pedal rename (3.3) | `2177d70`…`f23db93` | `Theme` registry (single default), F3 + `ui.conf`, product tile names; `…/2026-10-12-palette*` (spec) / `2026-10-11-amps.md`-dated plans live under `docs/superpowers/plans/` |
 | Equal IN/OUT meter chrome | `03b166b` | `src/ui/draw.rs` unified meter chrome |
+| Rename → `headroom` (v0.3.0) | `293dffd` | crate/binary, config dir with a chained one-time migration, `HEADROOM_*` env vars (legacy `RUSTY_AMP_*` still read), CLAP host id, release assets, snapshots re-blessed; GitHub repo renamed `cesaraaron/headroom` |
 
 ### Chain audit 2026-10 (Phases 1–2 complete; Phase 3 offline-complete)
 

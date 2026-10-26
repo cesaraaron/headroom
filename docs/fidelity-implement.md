@@ -19,6 +19,7 @@ before reviewing or continuing. (This file was formerly
 | Area | State | Where |
 | --- | --- | --- |
 | De-fork cleanup — docs site removed, project renamed `rusty-riff` | **Done** | increment log |
+| Rename — project renamed `headroom` (crate, config dir, env vars) | **Done** (v0.3.0) | increment log |
 | Phase 1 — bypass transparency, order snapshot, route tests, studio-master width | **Done** (see review: the order snapshot needs A1) | below |
 | Phase 2 items 1–4 — Amp/Cab split, migration, UI | **Done** | below |
 | Phase 2 item 5 — real preamp/loop/power-amp split | **Closed — out of scope** (the plan marks it *optional*; see "Findings closed") | plan Phase 2.5 |
@@ -351,6 +352,7 @@ Append one row per commit from Workstreams A/B onward.
 | `a100885` | chore | Removed the Eleventy docs site (`site/`), `.eleventy.js`, `package.json`, and the Pages workflow; kept `demo.gif`/`screenshot.png` as `assets/`. | n/a | site docs retired |
 | `d6b8b53` | refactor | Renamed the crate/binary, config dir, CLAP host id, workspace file, release assets, and UI snapshots from `rusty-amp` to `rusty-riff`; added a one-time `~/.config/rusty-amp` → `~/.config/rusty-riff` migration. | `cargo test --all-features` (snapshot re-blessed) | — |
 | `5c0fa6f` | docs | Replaced the README with a rusty-riff version; added `NOTICE` crediting the original project. | n/a | — |
+| `293dffd` | refactor | Renamed the project `rusty-riff` → `headroom`: crate and binary, every `use headroom::…`, config dir `~/.config/headroom`, CLAP host id and repository URL, workspace file, release asset names and build path, and the 13 UI snapshots (files renamed to the new crate path). The config-dir migration is now a chain over `rusty-riff` and `rusty-amp` (newest legacy dir wins), and `HEADROOM_IR_DIR` / `HEADROOM_PRACTICE_DIR` / `HEADROOM_DEVICE_PROMPT` still accept the legacy `RUSTY_AMP_*` spellings that the first rename left behind. Version bumped to 0.3.0. | `cargo test --all-features` (638 passed); `cargo fmt --check`; `clippy --all-targets --all-features -D warnings`; two snapshots re-blessed | dated records (`docs/superpowers/**` and earlier rows here) were intentionally not rewritten, so this file still says `rusty-riff` where it describes the past; the upstream `rusty-amp` attribution in `NOTICE` is unchanged; the only visual delta is modal text centering shifting by one space because the name is two characters shorter |
 | `26359e2` | docs | Rewrote `CONTRIBUTING.md` as local development notes (no fork/PR/site flow). | n/a | — |
 | `3a13c5f` | docs | Updated and renamed `Agents.md` → `AGENTS.md`; dropped the docs-site section and old config paths. | n/a | — |
 | `52d3195` | docs | Rewrote `.claude/skills/add-*` without the docs-site steps or PR flow. | n/a | — |
