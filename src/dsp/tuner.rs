@@ -23,10 +23,11 @@ const SPEC_FMAX: f32 = 1200.0;
 const DET_FMIN: f32 = 55.0;
 const DET_FMAX: f32 = 1400.0;
 
-/// Analysis window and hop (samples). The window is ~43 ms at 48 kHz — long
-/// enough for a couple of periods of the lowest notes, short enough to track.
-const WINDOW: usize = 2048;
-const HOP: usize = 1024;
+/// Analysis window, in **seconds**. ~43 ms — long enough for a couple of periods
+/// of the lowest notes, short enough to track. It is scaled by the engine rate:
+/// a fixed 2048 samples shrinks to 21 ms at 96 kHz, leaving under 20 % of a
+/// 55 Hz period for the NSDF overlap.
+const WINDOW_SECS: f32 = 0.0427;
 
 /// Below this input RMS the window is treated as silence (no note played).
 /// Very low on purpose: a plucked string keeps ringing long after it has fallen
@@ -126,6 +127,9 @@ pub struct TunerDetector {
     bins: [f32; SPECTRUM_BINS],
     min_lag: usize,
     max_lag: usize,
+    /// Analysis window and hop, in samples (scaled from [`WINDOW_SECS`]).
+    window: usize,
+    hop: usize,
     /// Analyses remaining before a stale reading is cleared (see [`HOLD_SECS`]).
     hold: u32,
     /// Analyses in one hold period, at the engine rate.
@@ -134,18 +138,22 @@ pub struct TunerDetector {
 
 impl TunerDetector {
     pub fn new(sr: f32) -> Self {
+        let window = ((WINDOW_SECS * sr).round() as usize).max(64);
+        let hop = (window / 2).max(1);
         let min_lag = (sr / DET_FMAX).floor().max(2.0) as usize;
-        let max_lag = ((sr / DET_FMIN).ceil() as usize).min(WINDOW - 1);
+        let max_lag = ((sr / DET_FMIN).ceil() as usize).min(window - 1);
         Self {
             sr,
-            buf: Vec::with_capacity(WINDOW * 2 + crate::audio::MAX_BLOCK),
-            work: vec![0.0; WINDOW],
+            buf: Vec::with_capacity(window * 2 + crate::audio::MAX_BLOCK),
+            work: vec![0.0; window],
             nsdf: vec![0.0; max_lag + 1],
             bins: std::array::from_fn(spectrum_bin_freq),
+            window,
+            hop,
             min_lag,
             max_lag,
             hold: 0,
-            hold_max: ((sr * HOLD_SECS) / HOP as f32).round().max(1.0) as u32,
+            hold_max: ((sr * HOLD_SECS) / hop as f32).round().max(1.0) as u32,
         }
     }
 
@@ -153,23 +161,24 @@ impl TunerDetector {
     /// has accumulated.
     pub fn process(&mut self, input: &[f32], out: &Tuner) {
         self.buf.extend_from_slice(input);
-        while self.buf.len() >= WINDOW {
+        while self.buf.len() >= self.window {
             self.analyze(out);
-            let drop = HOP.min(self.buf.len());
+            let drop = self.hop.min(self.buf.len());
             self.buf.drain(0..drop);
         }
     }
 
     fn analyze(&mut self, out: &Tuner) {
         // DC-remove the window into `work` and measure its level.
-        let mean = self.buf[..WINDOW].iter().sum::<f32>() / WINDOW as f32;
+        let window = self.window;
+        let mean = self.buf[..window].iter().sum::<f32>() / window as f32;
         let mut sumsq = 0.0f32;
-        for (w, &s) in self.work.iter_mut().zip(&self.buf[..WINDOW]) {
+        for (w, &s) in self.work.iter_mut().zip(&self.buf[..window]) {
             let v = s - mean;
             *w = v;
             sumsq += v * v;
         }
-        let rms = (sumsq / WINDOW as f32).sqrt();
+        let rms = (sumsq / window as f32).sqrt();
 
         let (freq, clarity) = if rms >= NOISE_RMS {
             self.detect_pitch()
@@ -315,6 +324,23 @@ fn goertzel(s: &[f32], f: f32, sr: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The window must leave at least one full period of the lowest search note
+    /// in the NSDF overlap at every rate. A fixed 2048 samples left 302 samples
+    /// (3 ms) at 96 kHz, less than a fifth of a 55 Hz period.
+    #[test]
+    fn the_analysis_window_fits_a_55_hz_period_at_every_rate() {
+        for sr in [44_100.0f32, 48_000.0, 96_000.0, 192_000.0] {
+            let d = TunerDetector::new(sr);
+            let period = (sr / 55.0).ceil() as usize;
+            assert!(
+                d.window >= d.max_lag + period,
+                "{sr} Hz: window {} max_lag {} period {period}",
+                d.window,
+                d.max_lag
+            );
+        }
+    }
 
     #[test]
     fn note_naming_is_correct() {
