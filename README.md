@@ -3,6 +3,13 @@
 A guitar amp and pedalboard rig that runs in your terminal. Keyboard- and
 mouse-driven, with live metering and artist-inspired presets.
 
+![headroom in Ghostty: the Hiwatt DR103 amp panel, the practice timeline with a backing track, and the pedal row](docs/media/screenshot.webp)
+
+Recording a take — the timeline, the loop region, and the pedal row all live on
+one screen:
+
+![Recording a take in the timeline: the waveform grows as the take is captured](docs/media/demo.gif)
+
 See the [user guide](docs/guide.md) for a walkthrough of calibration, the signal
 chain, presets, practice, and plugins.
 
