@@ -417,6 +417,8 @@ Append one row per commit from Workstreams A/B onward.
 
 | `chain-audit-p3f` | looper/tuner | **Chain audit Phase 3, batch F.** (1.6) a second overdub pass takes a fresh snapshot when the level rises, so Undo removes only that pass instead of both (mutation-verified: without it Undo restores the pre-pass-1 buffer). (1.7) the tuner's analysis window is 42.7 ms at every rate instead of a fixed 2048 samples (it left 302 samples of NSDF overlap at 96 kHz, under a fifth of a 55 Hz period). | `a_second_overdub_pass_snapshots_again`, `the_analysis_window_fits_a_55_hz_period_at_every_rate`; full suite (637); baseline `--check` OK | **Partial 1.6/1.7.** Looper boundary/punch-in crossfades and moving `TunerDetector::analyze` off the audio thread are not in this batch; the XRUN file I/O remains on the stream error callback. These need a live interface / a control-thread tuner design. 5.5 (AU switch) is untouched. |
 
+| `chain-audit-p3g` | effects | **Chain audit Phase 3, batch G.** (2.7) the TS-808's feedback-network pole is designed at 4× and clocked inside the oversampled clip loop (it ran at base rate, above Nyquist at low drive); the drive smoother is unprimed after construction so the first real DRIVE value snaps instead of ramping over ~35 ms. | `the_first_drive_value_is_adopted_without_a_ramp`; full suite (638); baseline regenerated + `--check` OK (8) | Drift: up to 0.33 dB in four LTAS bands of the presets that enable the TS-808 (the pole now rolls off at the oversampled rate). |
+
 ### Reference rig (B8)
 
 - **Interface:** Focusrite Scarlett Solo, 4th gen — **INST on** (correct high-Z
