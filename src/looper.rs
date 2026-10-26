@@ -193,7 +193,14 @@ impl Looper {
         if ctl.stop.swap(false, Relaxed) {
             self.stop();
         }
-        self.overdub = ctl.overdub.load(Relaxed);
+        let now_overdub = ctl.overdub.load(Relaxed);
+        if now_overdub && !self.overdub {
+            // A new overdub pass must snapshot the buffer as it is *now*. The
+            // flag is otherwise only cleared on transport changes, so a second
+            // pass reused the first pass's snapshot and Undo wiped both layers.
+            self.snapshotted = false;
+        }
+        self.overdub = now_overdub;
         self.publish(ctl);
     }
 
@@ -424,6 +431,44 @@ mod tests {
         // A second undo with nothing captured is a no-op.
         l.undo();
         assert!(l.buf[..4].iter().all(|&x| (x - 0.5).abs() < 1e-6));
+    }
+
+    /// Toggling overdub off to listen and back on for a second pass must take a
+    /// fresh snapshot; otherwise Undo restores the pre-pass-1 layer and both
+    /// passes are lost.
+    #[test]
+    fn a_second_overdub_pass_snapshots_again() {
+        let (ctl, mut l) = looper();
+        l.start_recording();
+        for _ in 0..4 {
+            l.process(0.5);
+        }
+        l.finish_recording();
+
+        // Pass 1: 0.5 + 0.25 = 0.75.
+        ctl.toggle_overdub();
+        l.poll_controls(&ctl);
+        for _ in 0..4 {
+            l.process(0.25);
+        }
+        // Listen, then start pass 2.
+        ctl.toggle_overdub();
+        l.poll_controls(&ctl);
+        for _ in 0..4 {
+            l.process(0.0);
+        }
+        ctl.toggle_overdub();
+        l.poll_controls(&ctl);
+        for _ in 0..4 {
+            l.process(0.5);
+        }
+
+        l.undo();
+        assert!(
+            l.buf[..4].iter().all(|&x| (x - 0.75).abs() < 1e-6),
+            "undo lost pass 1: {:?}",
+            &l.buf[..4]
+        );
     }
 
     #[test]
