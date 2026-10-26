@@ -113,9 +113,14 @@ separate docs website.
 - `docs/fidelity-references.md` is the evidence matrix for historical gear claims.
 - `docs/retired-presets.md` indexes the twelve retired bundled presets, why they
   were retired, and the one-line git recipe to restore any of them.
-- `docs/dsp-findings-2026-09.md` is the open DSP/tone audit (limiter ceiling,
-  biquad state resets, amp gain staging, cab loading, export parity) that the
-  current rework phases come from.
+- `docs/dsp-findings-2026-09.md` is the previous DSP/tone audit (limiter
+  ceiling, biquad state resets, amp gain staging, cab loading, export parity)
+  that the current rework phases came from.
+- `docs/chain-audit-2026-10.md` is the current end-to-end chain audit. Its
+  status block at the top is the source of truth: Phases 1–2 are complete and
+  Phase 3 is complete for everything offline-verifiable; the remaining items
+  need a live interface or a control-thread redesign. The as-built record is the
+  `chain-audit-*` rows in `docs/fidelity-implement.md`.
 - The timeline/session export and storage contracts were folded into the module
   docs of `src/export.rs` and `src/project.rs`; the session invariants live in
   `src/session.rs`.

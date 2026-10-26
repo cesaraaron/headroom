@@ -197,6 +197,13 @@ impl SmoothedGain {
         self.target = value;
     }
 
+    /// Forget the primed flag, so the next `set` snaps again. Used when a
+    /// constructor seeds a placeholder that the first real control value must
+    /// replace outright.
+    pub(crate) fn unprime(&mut self) {
+        self.primed = false;
+    }
+
     /// Advance one sample and return the smoothed value. Named `step`
     /// rather than `next` so it does not read as an `Iterator` method.
     #[inline]

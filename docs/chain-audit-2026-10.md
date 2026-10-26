@@ -27,12 +27,28 @@ Every item below has been verified against `HEAD` with exact `file:line` referen
 
 ---
 
-## Phase 1 status (2026-10)
+## Status (2026-10-25)
 
-Findings **1.1, 1.2, 3.1, 3.2, 4.1, 4.2 and 5.1** are fixed on `main` in
-`chain-audit-p1`; the as-built record (including the measured tone drift and the
-re-derived level trims) is in `docs/fidelity-implement.md` → increment log.
-Everything from Phase 2 onward is still open.
+Phases 1 and 2 are **complete**; Phase 3 is complete for everything that can be
+verified offline. Per-batch as-built notes, tests, measured drift and deviations
+are in `docs/fidelity-implement.md` → increment log (`chain-audit-p1` … `p3g`).
+
+- **Phase 1 (CRITICAL):** 1.1, 1.2, 3.1, 3.2, 4.1, 4.2, 5.1 — fixed.
+- **Phase 2 (HIGH):** 2.1–2.6, 3.3–3.5, 4.3–4.5, 5.2, 5.3 — fixed.
+- **Phase 3 (MEDIUM/LOW):** 1.5, 2.7–2.10, 3.6–3.9, 4.6–4.8, 5.6, 5.7 — fixed.
+
+**Remaining** (all need a live interface or a control-thread redesign):
+
+- **1.3** output-rate fallback; **1.4** inter-stream ring prefill/watermark.
+- **1.6** loop-wrap and punch-in/out crossfades (the overdub-undo bug is fixed).
+- **1.7** `TunerDetector::analyze` off the audio thread and XRUN logging off the
+  stream error callback (the rate-aware window is fixed).
+- **5.4** frozen `SmoothedGain` values while a stage is bypassed, and the 6 ms
+  dry/wet comb during the bypass fade (the boot ramp state is fixed).
+- **5.5** AU switch mid-block mute, stale `comp_delay`, `replace_ext_amp` sync.
+
+A listening pack for the whole audit is under `target/listening/` (gitignored):
+blind, loudness-matched A/B renders of `9e0fc1b` vs the current `main`.
 
 ## Executive Summary Matrix
 

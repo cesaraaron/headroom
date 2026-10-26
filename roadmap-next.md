@@ -31,6 +31,21 @@ and the working conventions.
 | Palette + pedal rename (3.3) | `2177d70`…`f23db93` | `Theme` registry (single default), F3 + `ui.conf`, product tile names; `…/2026-10-12-palette*` (spec) / `2026-10-11-amps.md`-dated plans live under `docs/superpowers/plans/` |
 | Equal IN/OUT meter chrome | `03b166b` | `src/ui/draw.rs` unified meter chrome |
 
+### Chain audit 2026-10 (Phases 1–2 complete; Phase 3 offline-complete)
+
+`docs/chain-audit-2026-10.md` is the spec and carries the live status block;
+`docs/fidelity-implement.md` is the as-built record (`chain-audit-p1` … `p3g`).
+All **5 CRITICAL** and **14 HIGH** findings are fixed. Phase 3 is fixed for
+everything offline-verifiable: 1.5, 2.7–2.10, 3.6–3.9, 4.6–4.8, 5.6, 5.7.
+
+Still open, and why: **1.3** (output-rate fallback), **1.4** (ring
+prefill/watermark), **1.6** (loop-wrap/punch crossfades; undo is fixed), **1.7**
+(tuner analysis/XRUN off the audio thread; the window is fixed), **5.4** (frozen
+smoothers while bypassed, 6 ms dry/wet comb; ramp init is fixed), **5.5** (AU
+switch mid-block mute/`comp_delay`). Each needs a live interface or a
+control-thread redesign. The fidelity baseline is re-blessed with each tone
+change; the blind A/B listening pack lives in `target/listening/` (gitignored).
+
 Key findings to not re-derive: sweeping-notch stages keep exact
 per-sample coefficients (control-rate interpolation moves LTAS bins —
 see `uni_vibe.rs::last_rate` note); `sagged_rail` cancels supply exactly

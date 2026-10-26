@@ -88,6 +88,9 @@ impl TubeScreamer {
         };
         ts.set_tone(0.6);
         ts.set_drive(0.0);
+        // The drive smoother was primed with the placeholder 0.0; the first real
+        // DRIVE value must snap to it instead of ramping in over ~35 ms.
+        ts.shelf_gain.unprime();
         ts
     }
 
@@ -105,7 +108,9 @@ impl TubeScreamer {
         self.shelf_hp.set_cutoff(CORNER_720_HZ, self.sr);
         self.shelf_gain
             .set((ZF_FIXED_OHMS + drive * DRIVE_POT_OHMS) / ZI_OHMS);
-        self.fb_lp.set_cutoff(feedback_corner_hz(drive), self.sr);
+        // Clocked inside the 4× loop, so design it at the oversampled rate.
+        self.fb_lp
+            .set_cutoff(feedback_corner_hz(drive), self.sr * 4.0);
         self.last_drive = drive;
     }
 
@@ -125,12 +130,11 @@ impl TubeScreamer {
         let hp = x - self.shelf_hp.process(x);
         let x = x + self.shelf_gain.step() * hp;
 
-        // 4× oversampled symmetric diode soft-clip.
-        let x = self.os.process(x, soft_clip);
-
-        // Feedback-network pole: the clipping stage's own treble loss, moving down
-        // from ~61 kHz to ~5.7 kHz as drive raises Zf.
-        let x = self.fb_lp.process(x);
+        // 4× oversampled symmetric diode soft-clip, with the feedback-network
+        // pole (the stage's treble loss, ~61 kHz → 5.7 kHz as drive raises Zf)
+        // clocked inside the oversampled loop at the same rate.
+        let fb_lp = &mut self.fb_lp;
+        let x = self.os.process(x, |u| fb_lp.process(soft_clip(u)));
 
         // The real pedal's output coupling cap; strips any residual offset.
         let x = self.out_dc_block.process(x);
@@ -153,6 +157,21 @@ mod tests {
     use std::f32::consts::PI;
 
     const SR: f32 = 48_000.0;
+
+    /// The constructor seeds the drive smoother with the placeholder 0.0 for the
+    /// filter designs; the first real DRIVE value must be adopted outright, not
+    /// ramped in over ~35 ms.
+    #[test]
+    fn the_first_drive_value_is_adopted_without_a_ramp() {
+        let mut ts = TubeScreamer::new(SR);
+        ts.process(0.1, 1.0, 0.5, 0.5);
+        let want = (ZF_FIXED_OHMS + DRIVE_POT_OHMS) / ZI_OHMS;
+        assert!(
+            (ts.shelf_gain.current - want).abs() < 1e-3,
+            "drive ramped from {} instead of {want}",
+            ts.shelf_gain.current
+        );
+    }
 
     /// Single-bin amplitude estimate via the Goertzel algorithm (a unit sine reads
     /// ~1.0 over integer cycles). Computed in `f64`: the recurrence's poles sit on
