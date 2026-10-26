@@ -323,7 +323,7 @@ impl AmpBrowser {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().accent))
+            .border_style(Style::default().fg(theme().border))
             .title(Span::styled(
                 title,
                 Style::default()

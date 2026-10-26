@@ -100,8 +100,9 @@ soft limiting — just as winding up a real power amp does.
 
 The **OUT** meter shows the true peak (held tick) plus the limiter's gain
 reduction in dB beside the `LIM` badge, so you can see exactly how hard the
-ceiling is working. Press **`F3`** to cycle the UI theme; the choice is saved
-and restored on restart.
+ceiling is working. Press **`F3`** to cycle the UI theme — `teal` (the default) or
+`rust`, the warm amber-orange of the project this one is forked from; the choice
+is saved and restored on restart.
 
 `W` toggles the master-bus stereo width (neutral / wide).
 

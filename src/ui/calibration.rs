@@ -222,7 +222,7 @@ impl CalibrationUi {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().accent))
+            .border_style(Style::default().fg(theme().border))
             .title(Span::styled(
                 " I N P U T   C A L I B R A T I O N ",
                 Style::default()

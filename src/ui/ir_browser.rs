@@ -180,7 +180,7 @@ impl IrBrowser {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().accent))
+            .border_style(Style::default().fg(theme().border))
             .title(Span::styled(
                 " C A B I N E T   I R s ",
                 Style::default()

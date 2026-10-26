@@ -29,7 +29,7 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().accent))
+        .border_style(Style::default().fg(theme().border))
         .title(Span::styled(
             " M E T R O N O M E ",
             Style::default()

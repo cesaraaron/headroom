@@ -10,8 +10,14 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 /// Everything a palette owns. Pedal liveries are deliberately NOT here —
 /// stompbox colors are fixed real-world liveries (`PEDAL_*` below).
 pub(super) struct Theme {
-    pub amber: Color,
+    /// Structural chrome: panel, modal, and tile frames, plus the amp/cab
+    /// grille before it is shaded. Deliberately separate from `accent`, so a
+    /// palette can sink its frames into the background while focus stays hot.
+    pub border: Color,
+    /// Focus and selection: the focused knob's frame, dial, label and value, the
+    /// reversed chips, the selected chain stage, and list highlights.
     pub accent: Color,
+    pub amber: Color,
     pub dim: Color,
     pub chrome: Color,
     pub grid: Color,
@@ -21,9 +27,11 @@ pub(super) struct Theme {
     pub off: Color,
 }
 
-const DEFAULT: Theme = Theme {
-    amber: Color::Rgb(255, 200, 60),
+/// The original palette: one teal for both frames and focus.
+const TEAL: Theme = Theme {
+    border: Color::Rgb(0x5F, 0xB3, 0xB3),
     accent: Color::Rgb(0x5F, 0xB3, 0xB3),
+    amber: Color::Rgb(255, 200, 60),
     dim: Color::Rgb(80, 80, 80),
     chrome: Color::Rgb(180, 180, 190),
     grid: Color::Rgb(118, 118, 128),
@@ -33,8 +41,26 @@ const DEFAULT: Theme = Theme {
     off: Color::Rgb(50, 50, 50),
 };
 
-/// Built-in palettes: (id, theme). One entry today; theme #2 lands here.
-static THEMES: [(&str, Theme); 1] = [("default", DEFAULT)];
+/// The palette of the project this one is forked from: warm amber-orange frames
+/// and grille (`#C86400`), with a brighter orange for focus and selection
+/// (`#FF8C00`) so the active control sits a step above the chrome around it.
+const RUST: Theme = Theme {
+    border: Color::Rgb(200, 100, 0),
+    accent: Color::Rgb(255, 140, 0),
+    amber: Color::Rgb(255, 200, 60),
+    dim: Color::Rgb(80, 80, 80),
+    chrome: Color::Rgb(180, 180, 190),
+    grid: Color::Rgb(118, 118, 128),
+    hot: Color::Rgb(220, 30, 30),
+    safe: Color::Rgb(40, 180, 40),
+    warn: Color::Rgb(220, 180, 0),
+    off: Color::Rgb(50, 50, 50),
+};
+
+/// Built-in palettes: (id, theme). Index 0 is the legacy palette
+/// value-for-value, so a saved `ui.conf` keeps its look and every existing
+/// snapshot stays valid.
+static THEMES: [(&str, Theme); 2] = [("teal", TEAL), ("rust", RUST)];
 static THEME_INDEX: AtomicU8 = AtomicU8::new(0);
 
 /// The active palette.
@@ -59,8 +85,8 @@ pub(super) fn theme_index() -> u8 {
     THEME_INDEX.load(Ordering::Relaxed)
 }
 
-/// Advance to the next palette, wrapping. With one built-in this is an
-/// idempotent toast + write-back; theme #2 makes it a real switch.
+/// Advance to the next palette, wrapping (`F3`). The store clamps, so the
+/// written conf is always a canonical index.
 pub(super) fn cycle_theme() {
     set_theme(theme_index().wrapping_add(1));
 }
@@ -173,10 +199,12 @@ mod tests {
     /// equals the pre-refactor `Rgb` triple. Any drift here breaks every UI
     /// snapshot, so the triples are spelled out, not derived.
     #[test]
-    fn default_theme_matches_legacy_triples() {
+    fn teal_theme_matches_legacy_triples() {
         let t = theme();
-        assert_eq!(t.amber, Color::Rgb(255, 200, 60));
+        assert_eq!(theme_name(), "teal");
+        assert_eq!(t.border, Color::Rgb(0x5F, 0xB3, 0xB3));
         assert_eq!(t.accent, Color::Rgb(0x5F, 0xB3, 0xB3));
+        assert_eq!(t.amber, Color::Rgb(255, 200, 60));
         assert_eq!(t.dim, Color::Rgb(80, 80, 80));
         assert_eq!(t.chrome, Color::Rgb(180, 180, 190));
         assert_eq!(t.grid, Color::Rgb(118, 118, 128));
@@ -186,14 +214,40 @@ mod tests {
         assert_eq!(t.off, Color::Rgb(50, 50, 50));
     }
 
-    /// An out-of-range theme id clamps into the registry (forward-compat for
-    /// theme #2 files naming ids this build doesn't know). Resets to 0 so no
-    /// state leaks into other tests.
+    /// `rust` is the original project's palette: frames and grille in the darker
+    /// orange, focus one step brighter. The two must differ, or the split into
+    /// `border`/`accent` would be pointless; `teal` keeps them equal so its look
+    /// is unchanged from before the split.
+    #[test]
+    fn rust_theme_separates_frames_from_focus() {
+        let rust = &THEMES[1].1;
+        assert_eq!(THEMES[1].0, "rust");
+        assert_eq!(rust.border, Color::Rgb(200, 100, 0));
+        assert_eq!(rust.accent, Color::Rgb(255, 140, 0));
+        assert_ne!(rust.border, rust.accent);
+        assert_eq!(TEAL.border, TEAL.accent, "teal's frames must not shift");
+        // Everything that is not chrome is shared with the default palette, so a
+        // theme switch never moves the meters or the text hierarchy.
+        assert_eq!(rust.amber, TEAL.amber);
+        assert_eq!(rust.dim, TEAL.dim);
+        assert_eq!(rust.chrome, TEAL.chrome);
+        assert_eq!(rust.grid, TEAL.grid);
+        assert_eq!(rust.hot, TEAL.hot);
+        assert_eq!(rust.safe, TEAL.safe);
+        assert_eq!(rust.warn, TEAL.warn);
+        assert_eq!(rust.off, TEAL.off);
+    }
+
+    /// An out-of-range theme id clamps into the registry (forward-compat for a
+    /// conf naming an id this build doesn't know). Resets to 0 so no state leaks
+    /// into other tests.
     #[test]
     fn theme_index_clamps() {
         set_theme(255);
-        assert_eq!(theme().accent, Color::Rgb(0x5F, 0xB3, 0xB3));
+        assert_eq!(theme_name(), "rust", "255 clamps to a real palette");
+        assert_eq!(theme().accent, Color::Rgb(255, 140, 0));
         set_theme(0);
+        assert_eq!(theme_name(), "teal");
     }
 
     /// A missing `ui.conf` is the fresh-install case: default theme, no
@@ -202,7 +256,7 @@ mod tests {
     fn theme_conf_missing_means_default() {
         let dir = std::env::temp_dir().join("headroom-no-such-dir-xyz");
         load_theme_conf_at(&dir.join("ui.conf"));
-        assert_eq!(theme_name(), "default");
+        assert_eq!(theme_name(), "teal");
     }
 
     /// A conf round-trips: write index, read it back. Uses a temp path so
@@ -214,24 +268,29 @@ mod tests {
         write_theme_conf_at(&path, 0).expect("write conf");
         set_theme(255);
         load_theme_conf_at(&path);
-        assert_eq!(theme_name(), "default");
+        assert_eq!(theme_name(), "teal");
         set_theme(0);
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Cycling with one built-in stays on index 0 (and the written conf says
-    /// `theme = 0`, not a drifting counter): the store clamps, so a conf of
-    /// e.g. 47 resolves canonically when theme #2 lands.
+    /// Cycling visits every palette and wraps, writing the canonical index each
+    /// time — not a drifting counter.
     #[test]
-    fn cycle_theme_with_single_theme_stays_at_zero() {
+    fn cycle_theme_visits_every_palette() {
         set_theme(0);
-        cycle_theme();
-        assert_eq!(theme_index(), 0, "cycle drifted the stored index");
         let path = std::env::temp_dir().join("headroom-theme-cycle-test-ui.conf");
         let _ = std::fs::remove_file(&path);
+
+        assert_eq!(theme_name(), "teal");
+        cycle_theme();
+        assert_eq!(theme_name(), "rust");
         write_theme_conf_at(&path, theme_index()).expect("write conf");
         let body = std::fs::read_to_string(&path).expect("read conf");
-        assert_eq!(body, "theme = 0\n", "conf drifted: {body:?}");
+        assert_eq!(body, "theme = 1\n");
+
+        cycle_theme();
+        assert_eq!(theme_name(), "teal", "cycling must wrap");
+
         let _ = std::fs::remove_file(&path);
         set_theme(0);
     }

@@ -35,7 +35,7 @@ pub(super) fn render_tuner(f: &mut Frame, tuner: &Tuner) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().accent))
+        .border_style(Style::default().fg(theme().border))
         .title(Span::styled(
             " T U N E R ",
             Style::default()

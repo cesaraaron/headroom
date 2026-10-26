@@ -32,7 +32,7 @@ pub(super) fn render_preset_modal(
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().accent))
+        .border_style(Style::default().fg(theme().border))
         .title(Span::styled(
             if filter.is_empty() {
                 " P R E S E T S ".to_string()
@@ -409,7 +409,7 @@ pub(super) fn render_path_dialog(
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().accent))
+        .border_style(Style::default().fg(theme().border))
         .title(Span::styled(
             title,
             Style::default()
@@ -451,7 +451,7 @@ pub(super) fn render_path_dialog(
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
-                .border_style(Style::default().fg(theme().accent)),
+                .border_style(Style::default().fg(theme().border)),
         ),
         rows[1],
     );

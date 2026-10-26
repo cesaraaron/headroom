@@ -690,7 +690,7 @@ fn render_amp_box(
     render_grille(
         f,
         parts[2],
-        shade(theme().accent, if box_active { 0.45 } else { 0.18 }),
+        shade(theme().border, if box_active { 0.45 } else { 0.18 }),
     );
 }
 
@@ -793,7 +793,7 @@ fn render_cab_box(
     render_grille(
         f,
         parts[2],
-        shade(theme().accent, if box_active { 0.45 } else { 0.18 }),
+        shade(theme().border, if box_active { 0.45 } else { 0.18 }),
     );
 }
 
@@ -1766,7 +1766,7 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().accent))
+        .border_style(Style::default().fg(theme().border))
         .title(Span::styled(
             " K E Y B I N D I N G S ",
             Style::default()
@@ -1817,7 +1817,7 @@ pub(super) fn render_add_pedal_modal(f: &mut Frame, available: &[usize], cursor:
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().accent))
+        .border_style(Style::default().fg(theme().border))
         .title(Span::styled(
             " A D D   P E D A L ",
             Style::default()
@@ -1910,7 +1910,7 @@ fn picker_shell(f: &mut Frame, title: &str, rows: usize) -> Rect {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().accent))
+        .border_style(Style::default().fg(theme().border))
         .title(Span::styled(
             title.to_owned(),
             Style::default()
@@ -2119,29 +2119,29 @@ fn shade(c: Color, factor: f32) -> Color {
     }
 }
 
-/// Border style for a structural panel: full-bright [`ACCENT`] when the region is
-/// active/focused, otherwise a heavily faded accent with the terminal's `DIM`
-/// attribute. A terminal has no alpha channel, so `DIM` + a dark shade is the
-/// closest we get to a "transparent" inactive border — it recedes so the focused
-/// region stands out.
+/// Border style for a structural panel: the full [`Theme::border`] when the
+/// region is active/focused, otherwise a heavily faded border with the
+/// terminal's `DIM` attribute. A terminal has no alpha channel, so `DIM` + a
+/// dark shade is the closest we get to a "transparent" inactive border — it
+/// recedes so the focused region stands out.
 fn border_style(active: bool) -> Style {
     if active {
         Style::default()
-            .fg(theme().accent)
+            .fg(theme().border)
             .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
-            .fg(shade(theme().accent, 0.35))
+            .fg(shade(theme().border, 0.35))
             .add_modifier(Modifier::DIM)
     }
 }
 
-/// Accent color for a region's on-border glyphs (titles), matching [`border_style`].
+/// Color for a region's on-border glyphs (titles), matching [`border_style`].
 fn border_glyph(active: bool) -> Color {
     if active {
-        theme().accent
+        theme().border
     } else {
-        shade(theme().accent, 0.35)
+        shade(theme().border, 0.35)
     }
 }
 

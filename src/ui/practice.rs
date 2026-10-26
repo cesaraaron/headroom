@@ -2492,7 +2492,7 @@ impl PracticeUi {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().accent))
+            .border_style(Style::default().fg(theme().border))
             .title(Span::styled(
                 title,
                 Style::default()
@@ -2733,7 +2733,7 @@ impl PracticeUi {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().accent))
+            .border_style(Style::default().fg(theme().border))
             .title(Span::styled(
                 " T R A C K   G A I N ",
                 Style::default()
@@ -2795,7 +2795,7 @@ impl PracticeUi {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().accent))
+            .border_style(Style::default().fg(theme().border))
             .title(Span::styled(
                 " M O V E   C L I P ",
                 Style::default()
@@ -3254,16 +3254,16 @@ fn shade(c: Color, factor: f32) -> Color {
 
 fn border_style(active: bool) -> Style {
     Style::default().fg(if active {
-        theme().accent
+        theme().border
     } else {
-        shade(theme().accent, 0.5)
+        shade(theme().border, 0.5)
     })
 }
 
-/// Dimmed accent used for the gutter/timeline divider (matches an unfocused
+/// Dimmed border used for the gutter/timeline divider (matches an unfocused
 /// pane border).
 fn divider_style() -> Style {
-    Style::default().fg(shade(theme().accent, 0.5))
+    Style::default().fg(shade(theme().border, 0.5))
 }
 
 #[cfg(test)]
