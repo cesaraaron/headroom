@@ -6,7 +6,7 @@
 //! blocking wait anywhere near the callback — the same discipline as the
 //! UI/control thread.
 //!
-//! Control Changes are bound to targets in `~/.config/rusty-riff/midi.conf`. The
+//! Control Changes are bound to targets in `~/.config/headroom/midi.conf`. The
 //! legacy single binding (`cc = 11`) drives the wah treadle; add more as
 //! `<cc> = <target>`, and opt into MIDI-clock sync with `clock = true`:
 //!
@@ -254,7 +254,7 @@ impl MidiState {
         self.lock().retain(|&(_, t)| t != target);
     }
 
-    /// Rewrite `~/.config/rusty-riff/midi.conf` from the current table, via a
+    /// Rewrite `~/.config/headroom/midi.conf` from the current table, via a
     /// temp file + rename so a crash mid-write cannot truncate it.
     pub fn write_conf(&self) -> std::io::Result<()> {
         let Some(path) = midi_config_path() else {
@@ -305,9 +305,9 @@ fn write_conf_at(path: &std::path::Path, body: &str) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// `~/.config/rusty-riff/midi.conf`.
+/// `~/.config/headroom/midi.conf`.
 fn midi_config_path() -> Option<std::path::PathBuf> {
-    dirs::home_dir().map(|h| h.join(".config").join("rusty-riff").join("midi.conf"))
+    dirs::home_dir().map(|h| h.join(".config").join("headroom").join("midi.conf"))
 }
 
 /// A MIDI **system real-time** message we act on. Real-time bytes are single-byte
@@ -514,7 +514,7 @@ pub fn connect(state: &Arc<MidiState>, params: Arc<Params>) -> Option<MidiHandle
     }
     let clock = state.clock();
 
-    let mut input = MidiInput::new("rusty-riff").ok()?;
+    let mut input = MidiInput::new("headroom").ok()?;
     input.ignore(Ignore::None);
     let port = input.ports().into_iter().next()?;
     let name = input
@@ -529,7 +529,7 @@ pub fn connect(state: &Arc<MidiState>, params: Arc<Params>) -> Option<MidiHandle
     let conn = input
         .connect(
             &port,
-            "rusty-riff-midi",
+            "headroom-midi",
             move |ts, msg, _| {
                 if clock && let Some(ev) = parse_realtime(msg) {
                     match tempo.feed(ev, ts) {

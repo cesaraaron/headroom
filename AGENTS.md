@@ -1,8 +1,8 @@
-# Agents.md — rusty-riff
+# Agents.md — headroom
 
 ## Project overview
 
-rusty-riff is a real-time guitar amplifier emulator that runs in the terminal. It captures audio from an audio interface, processes it through a full signal chain (noise gate → overdrive pedals → amp model → cabinet simulation → EQ → flanger → delay → reverb), and writes the processed signal back out. The UI is a ratatui TUI with live VU meters, knob sections, and a preset browser.
+headroom is a real-time guitar amplifier emulator that runs in the terminal. It captures audio from an audio interface, processes it through a full signal chain (noise gate → overdrive pedals → amp model → cabinet simulation → EQ → flanger → delay → reverb), and writes the processed signal back out. The UI is a ratatui TUI with live VU meters, knob sections, and a preset browser.
 
 **Platform:** multiplatform (via cpal)
 **Language:** Rust
@@ -59,7 +59,7 @@ disposed of on the control thread.
 | Amp models | Three distinct DSP paths (tube soft-clip, silicon clip, solid-state rail-clip) with per-model tone stacks and rectifier sag simulation |
 | Cabinet sim | Multi-stage biquad EQ chains that model close-mic'd 4×12 responses |
 | TUI | ratatui-based UI: selector row (amp + cabinet), pedals row, amp/FX row, VU meters, practice timeline pane, preset browser overlay; the pedalboard, amp panel, and timeline can be shown/hidden with `1`/`2`/`3` |
-| Preset system | TOML files loaded from `./presets/` and `~/.config/rusty-riff/presets/`. The boot rig is a **vanilla** clean Plexi + Greenback with every pedal off and neutral stereo width (`DEFAULT_*` in `src/dsp/mod.rs`) — deliberately not a sound in its own right. Twelve bundled presets were retired on 2026-09-29 because the tone models changed under them; they are recoverable from git and indexed in [`docs/retired-presets.md`](docs/retired-presets.md). |
+| Preset system | TOML files loaded from `./presets/` and `~/.config/headroom/presets/`. The boot rig is a **vanilla** clean Plexi + Greenback with every pedal off and neutral stereo width (`DEFAULT_*` in `src/dsp/mod.rs`) — deliberately not a sound in its own right. Twelve bundled presets were retired on 2026-09-29 because the tone models changed under them; they are recoverable from git and indexed in [`docs/retired-presets.md`](docs/retired-presets.md). |
 | Practice / jam-along | `src/practice.rs` (shared transport + offline decode via symphonia), `src/dsp/player.rs` (audio-thread `PlayerVoice`), `src/ui/practice.rs` (timeline pane + track browser), `src/dsp/resample.rs` (shared windowed-sinc resampler) |
 | Sessions / export | `src/session.rs` (runtime session/track state), `src/project.rs` (portable project folders), `src/export.rs` (offline take render) |
 | Plugin hosting | `src/host/` — CLAP effect insert (`clap` feature) and macOS Audio Unit amp override (`au` feature) |
@@ -89,7 +89,7 @@ The repository includes several standalone analysis utilities under `examples/` 
 - `examples/cone_interference.rs`, `examples/di_compare.rs`, `examples/knob_match.rs`, and `examples/rig_loudness.rs` — compare signal paths, input stages, and loudness behavior
 - `examples/fidelity_render.rs` — the fidelity harness: renders presets offline over the synthetic corpus or a DI manifest, reports loudness/tone/level metrics, and checks against `docs/fidelity/baseline-synth-48k.toml` (see `CONTRIBUTING.md` → "Fidelity harness")
 
-External impulse responses (IRs) for cabinet simulation are stored in `~/.config/rusty-riff/irs/`.
+External impulse responses (IRs) for cabinet simulation are stored in `~/.config/headroom/irs/`.
 
 ---
 

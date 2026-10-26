@@ -957,7 +957,7 @@ impl Preset {
 /// The user presets directory, created on demand.
 fn user_preset_dir() -> Result<PathBuf> {
     let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("cannot find home dir"))?;
-    let dir = home.join(".config").join("rusty-riff").join("presets");
+    let dir = home.join(".config").join("headroom").join("presets");
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
 }
@@ -1006,7 +1006,7 @@ pub fn find_preset_files() -> Vec<(PathBuf, PresetSource)> {
     result.extend(scan(&system_dir, PresetSource::System));
 
     if let Some(home) = dirs::home_dir() {
-        let user_dir = home.join(".config").join("rusty-riff").join("presets");
+        let user_dir = home.join(".config").join("headroom").join("presets");
         result.extend(scan(&user_dir, PresetSource::User));
     }
 
@@ -1016,7 +1016,7 @@ pub fn find_preset_files() -> Vec<(PathBuf, PresetSource)> {
 /// Favorite preset names, persisted one per line in the config dir. Keyed by
 /// name so embedded (path-less) presets work too.
 fn favorites_file() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".config").join("rusty-riff").join("favorites.txt"))
+    dirs::home_dir().map(|h| h.join(".config").join("headroom").join("favorites.txt"))
 }
 
 /// Load the set of favorite preset names (empty if none/unreadable).
@@ -1558,7 +1558,7 @@ mod tests {
     /// collide. Callers remove what they create.
     fn scratch_dir(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "rusty-riff-preset-test-{}-{}",
+            "headroom-preset-test-{}-{}",
             tag,
             std::process::id()
         ))

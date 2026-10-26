@@ -4,10 +4,10 @@
 //! weights the mids far more, so we also measure the 300 Hz–5 kHz band. The
 //! per-amp output trims are matched on this mid-band number (see
 //! `dsp::amp::tests::amps_are_loudness_matched`), not the raw RMS.
-use rusty_riff::dsp::amp::{self, AmpBank};
-use rusty_riff::dsp::biquad::Biquad;
-use rusty_riff::dsp::cab::CabBank;
-use rusty_riff::dsp::{AmpModel, CabModel};
+use headroom::dsp::amp::{self, AmpBank};
+use headroom::dsp::biquad::Biquad;
+use headroom::dsp::cab::CabBank;
+use headroom::dsp::{AmpModel, CabModel};
 const SR: f32 = 48_000.0;
 
 /// Natural cab pairing, for context only (the trims are amp-only).
@@ -61,7 +61,7 @@ fn main() {
                     am,
                     x,
                     &knobs,
-                    rusty_riff::dsp::CabModel::Marshall.speaker_load(),
+                    headroom::dsp::CabModel::Marshall.speaker_load(),
                 )
             })
             .collect();
@@ -95,7 +95,7 @@ fn main() {
                 AmpModel::Marshall,
                 x,
                 &knobs,
-                rusty_riff::dsp::CabModel::Marshall.speaker_load(),
+                headroom::dsp::CabModel::Marshall.speaker_load(),
             )
         })
         .collect();

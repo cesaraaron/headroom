@@ -149,7 +149,7 @@ For every edited preset: list only intended enabled effects, explicitly set any 
 
 ## Cross-cutting compatibility, docs, and verification
 
-- Keep old preset files and saved knob values loadable. `ampcab` migration, `type` enums, model names, absent `[chain]`, amp-specific knobs and mic settings need explicit regression fixtures. Don't accidentally override user work or personal presets under `~/.config/rusty-riff/presets/`.
+- Keep old preset files and saved knob values loadable. `ampcab` migration, `type` enums, model names, absent `[chain]`, amp-specific knobs and mic settings need explicit regression fixtures. Don't accidentally override user work or personal presets under `~/.config/headroom/presets/`.
 - Update the README, `CONTRIBUTING.md`, and the in-app `K` help whenever the relevant routing/claims/UI change. Follow `AGENTS.md` and `CONTRIBUTING.md`: model/control/preset changes should update those docs in the same commit. (The Eleventy docs site was removed in the de-fork cleanup — there is no website to update.)
 - Verify block and single-sample paths where applicable, AU full-rig vs amp-only mode, external IR, CLAP insert, recording tap versus monitor-only practice buses, tuner bypass, mono fold-down, output peak safety, and live parameter/model switches. Maintain preallocation, lock-free control handoff, and stateful filters/sag; do not free displaced IRs/plugins on the callback.
 - Run targeted tests after each phase, then `cargo test`, `cargo fmt --check`, and the repository's normal Clippy checks on relevant feature combinations. Perform audio/performance evaluation using a release build (`cargo run --release`) and real interface hardware when available. Repeat broad checks only when later work changes covered code.
@@ -497,7 +497,7 @@ cargo run --release --example fidelity_render -- [OPTIONS]
   --presets all | <stem>[,<stem>…]   bundled presets from ./presets (default: all)
   --synth                             use analysis::synth::corpus (default if no --di)
   --di <dir>                          user DI corpus with manifest.toml
-                                      (default dir: ~/.config/rusty-riff/fidelity/di/)
+                                      (default dir: ~/.config/headroom/fidelity/di/)
   --sr <hz>                           render rate (default 48000)
   --out <dir>                         default: target/fidelity/<unix-seconds>/
   --width preset | <float>            keep preset master width or override (e.g. 1.0)
@@ -516,7 +516,7 @@ cargo run --release --example fidelity_render -- [OPTIONS]
 file              = "strat_neck_bends.wav"
 guitar            = "Strat, neck single-coil"
 pickup            = "single_coil"     # single_coil | p90 | humbucker
-calibrated        = true              # recorded through rusty-riff after `N` calibration
+calibrated        = true              # recorded through headroom after `N` calibration
 trim_db           = 0.0               # extra trim applied by the harness if not calibrated
 reference_version = 1
 content           = ["lead", "bends", "sustain"]
@@ -526,7 +526,7 @@ notes             = "Gilmour-style phrasing, guitar vol 10"
 The harness warns when a DI's `reference_version` differs from the current
 `REFERENCE_VERSION` or `calibrated = false` with `trim_db = 0`.
 
-**How to record a DI with rusty-riff itself** (document in the README):
+**How to record a DI with headroom itself** (document in the README):
 calibrate (`N`), press `R` to record a dry take, save the session (`J`); the
 take WAV in the session folder is a calibrated DI — copy it into the DI dir and
 add a manifest entry.
@@ -677,7 +677,7 @@ when calibrated, `IN uncal` otherwise, and a red `CLIP` while `raw_clip` is set
 (cleared after ~1 s by the UI). Re-bless insta snapshots and mention it in the
 commit message.
 
-#### B5. Persistence — `~/.config/rusty-riff/input-calibration.toml`
+#### B5. Persistence — `~/.config/headroom/input-calibration.toml`
 
 In `src/audio/calibration.rs` (control-thread functions):
 
@@ -726,7 +726,7 @@ malformed file ⇒ `None`, no panic.
   `src/ui/practice.rs`): read `calibration.trim_db` (unchanged during the take,
   because the wizard refuses to open while recording) and `REFERENCE_VERSION`
   (or `None` when uncalibrated, i.e. trim 0 and no saved entry).
-- Recovery takes (`~/.config/rusty-riff/recovery`) carry no metadata today; leave
+- Recovery takes (`~/.config/headroom/recovery`) carry no metadata today; leave
   them `None` and note it.
 - Timeline row: show a dim `uncal` tag for raw takes with `input_trim_db == None`.
 - Tests: manifest round-trip with and without the fields; an old manifest (no

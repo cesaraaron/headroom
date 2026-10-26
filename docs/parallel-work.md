@@ -1,6 +1,6 @@
 # Parallel work: branches, worktrees, and agents
 
-rusty-riff has a few **central registries** that almost every feature touches —
+headroom has a few **central registries** that almost every feature touches —
 `src/dsp/mod.rs` (`ChainStage`, `Params`, the stage dispatch),
 `src/ui/config.rs` (`KNOBS`/`PEDALS` tables + range consts), `src/preset.rs`
 (sections), and the UI snapshots / fidelity baseline. Two branches that each add
@@ -36,22 +36,22 @@ CI's fidelity `--check` stays valid.
 
 ## Setting up the worktrees
 
-From the main checkout (replace `../rusty-riff-x` with any path outside this
+From the main checkout (replace `../headroom-x` with any path outside this
 repo):
 
 ```bash
-git worktree add ../rusty-riff-bench  -b chore/bench        main
-git worktree add ../rusty-riff-docs   -b docs/guide         main
-git worktree add ../rusty-riff-search -b feat/preset-search main
+git worktree add ../headroom-bench  -b chore/bench        main
+git worktree add ../headroom-docs   -b docs/guide         main
+git worktree add ../headroom-search -b feat/preset-search main
 ```
 
 Then start a separate opencode session **in each worktree**, selecting the
 matching agent, e.g.:
 
 ```bash
-cd ../rusty-riff-bench  && opencode --agent bench-builder
-cd ../rusty-riff-docs   && opencode --agent docs-writer
-cd ../rusty-riff-search && opencode --agent ui-builder
+cd ../headroom-bench  && opencode --agent bench-builder
+cd ../headroom-docs   && opencode --agent docs-writer
+cd ../headroom-search && opencode --agent ui-builder
 ```
 
 (opencode loads agent files from `.opencode/agent/`; **restart** a session after

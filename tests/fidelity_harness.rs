@@ -2,10 +2,10 @@
 //! real `render_preset` path must be deterministic, finite, and land in a sane
 //! loudness range. (Does not spawn the example binary.)
 
-use rusty_riff::analysis::metrics::lufs_integrated;
-use rusty_riff::analysis::render::{RenderOpts, render_preset};
-use rusty_riff::analysis::synth::{Phrase, phrase};
-use rusty_riff::preset::{Preset, PresetSource};
+use headroom::analysis::metrics::lufs_integrated;
+use headroom::analysis::render::{RenderOpts, render_preset};
+use headroom::analysis::synth::{Phrase, phrase};
+use headroom::preset::{Preset, PresetSource};
 
 #[test]
 fn harness_render_is_deterministic_finite_and_loud() {

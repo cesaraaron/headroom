@@ -274,7 +274,7 @@ impl IrBrowser {
         }
         if self.files.is_empty() {
             lines.push(Line::from(Span::styled(
-                "  (no .wav IRs found — drop files in ./irs or ~/.config/rusty-riff/irs)",
+                "  (no .wav IRs found — drop files in ./irs or ~/.config/headroom/irs)",
                 Style::default().fg(theme().dim),
             )));
         }
@@ -287,16 +287,19 @@ impl IrBrowser {
 }
 
 /// Standard IR locations, scanned (recursively, bounded depth) for `.wav` files:
-/// `$RUSTY_AMP_IR_DIR`, `./irs` next to the binary's working dir, and
-/// `~/.config/rusty-riff/irs`.
+/// `$HEADROOM_IR_DIR` (or the legacy `$RUSTY_AMP_IR_DIR`), `./irs` next to the
+/// binary's working dir, and `~/.config/headroom/irs`.
 fn scan() -> Vec<IrFile> {
     let mut roots: Vec<PathBuf> = Vec::new();
-    if let Ok(dir) = std::env::var("RUSTY_AMP_IR_DIR") {
+    let env_dir = std::env::var("HEADROOM_IR_DIR")
+        .or_else(|_| std::env::var("RUSTY_AMP_IR_DIR"))
+        .ok();
+    if let Some(dir) = env_dir {
         roots.push(PathBuf::from(dir));
     }
     roots.push(PathBuf::from("irs"));
     if let Some(home) = dirs::home_dir() {
-        roots.push(home.join(".config").join("rusty-riff").join("irs"));
+        roots.push(home.join(".config").join("headroom").join("irs"));
     }
 
     let mut out: Vec<IrFile> = Vec::new();

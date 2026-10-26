@@ -1,4 +1,4 @@
-# 🎸 rusty-riff
+# 🎸 headroom
 
 A guitar amp and pedalboard rig that runs in your terminal. Keyboard- and
 mouse-driven, with live metering and artist-inspired presets.
@@ -15,8 +15,8 @@ chain, presets, practice, and plugins.
 ## Build & run
 
 ```bash
-git clone https://github.com/cesaraaron/rusty-riff
-cd rusty-riff
+git clone https://github.com/cesaraaron/headroom
+cd headroom
 cargo run --release
 ```
 
@@ -76,8 +76,8 @@ recordings, and every effect see the calibrated signal.
 
 ## Where things live
 
-- Presets: `~/.config/rusty-riff/presets/`
-- External IRs: `~/.config/rusty-riff/irs/`
+- Presets: `~/.config/headroom/presets/`
+- External IRs: `~/.config/headroom/irs/`
 
 ## License
 

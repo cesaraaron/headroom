@@ -6,7 +6,7 @@ permission:
   bash: allow
 ---
 
-You are the **integrator** for rusty-riff. Feature branches were built in
+You are the **integrator** for headroom. Feature branches were built in
 isolated git worktrees; your job is to land them on `main` safely, one at a
 time, in the main worktree.
 

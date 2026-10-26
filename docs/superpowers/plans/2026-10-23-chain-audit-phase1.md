@@ -656,7 +656,7 @@ Add to the `src/export.rs` tests module:
 #[test]
 fn region_export_feeds_pre_window_audio_to_the_chain() {
     let dir = std::env::temp_dir().join(format!(
-        "rusty-riff-export-prefeed-{}",
+        "headroom-export-prefeed-{}",
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&dir);

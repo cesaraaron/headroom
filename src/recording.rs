@@ -346,7 +346,7 @@ mod tests {
     use super::*;
 
     fn temp_path(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("rusty-riff-capture-test-{name}.wav"))
+        std::env::temp_dir().join(format!("headroom-capture-test-{name}.wav"))
     }
 
     #[test]

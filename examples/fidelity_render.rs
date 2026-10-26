@@ -24,16 +24,16 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use rusty_riff::analysis::metrics::{
+use headroom::analysis::metrics::{
     crest_db, db, envelope, ltas_third_octave, lufs_integrated, lufs_short_term_max,
     noise_floor_db, peak, percentile, rms, side_to_mid_db, spectral_centroid, stereo_correlation,
     treble_mod_depth,
 };
-use rusty_riff::analysis::render::{
+use headroom::analysis::render::{
     Render, RenderOpts, read_wav_mono, render_preset, write_wav_f32_stereo,
 };
-use rusty_riff::analysis::synth::{Phrase, corpus, phrase};
-use rusty_riff::preset::{Preset, PresetSource};
+use headroom::analysis::synth::{Phrase, corpus, phrase};
+use headroom::preset::{Preset, PresetSource};
 
 /// Placeholder width recorded when the preset's own master width is kept.
 /// (TOML cannot represent NaN, so a sentinel is used.)
@@ -132,7 +132,7 @@ fn parse_args() -> Result<Args> {
 /// when `--project` is given.
 fn load_presets(args: &Args) -> Result<Vec<(String, Preset)>> {
     if let Some(dir) = &args.project {
-        let manifest = rusty_riff::project::read_manifest(dir)
+        let manifest = headroom::project::read_manifest(dir)
             .with_context(|| format!("reading project {}", dir.display()))?;
         let stem = manifest.name.to_lowercase().replace(' ', "_");
         return Ok(vec![(stem, manifest.rig)]);
@@ -182,7 +182,7 @@ struct DiEntry {
 }
 
 fn default_reference_version() -> u32 {
-    rusty_riff::audio::calibration::REFERENCE_VERSION
+    headroom::audio::calibration::REFERENCE_VERSION
 }
 
 /// `(name, mono samples)` for every DI in the run.

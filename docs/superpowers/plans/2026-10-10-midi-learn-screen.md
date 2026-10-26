@@ -4,7 +4,7 @@
 > superpowers:subagent-driven-development. Steps use `- [ ]` checkboxes.
 
 **Goal:** an `F2` modal that lists the 15 MIDI-bindable targets, learns a binding
-from the physical control, unbinds, and persists to `~/.config/rusty-riff/midi.conf`
+from the physical control, unbinds, and persists to `~/.config/headroom/midi.conf`
 with the running connection picking each change up immediately.
 
 **Architecture:** `src/midi.rs` grows a shareable `MidiState` (binding table behind

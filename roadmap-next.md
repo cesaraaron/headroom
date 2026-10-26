@@ -1,4 +1,4 @@
-# rusty-riff — next-roads plan
+# headroom — next-roads plan
 
 This is the **off-path roadmap**: work deliberately outside the fidelity plan
 ([`docs/fidelity-plan.md`](docs/fidelity-plan.md) /
@@ -145,7 +145,7 @@ only atomic stores cross the boundary (same discipline as A/B and the timeline).
 **manual treadle mode** (`wah mode = 1`) with a `POSITION` knob (250 Hz–2.5 kHz),
 and `src/midi.rs` (new `midir` dependency) connects to the first MIDI input and
 drives `wah_position` from the **Expression CC (11)**, switching the wah to
-manual when the pedal moves. Bindings live in `~/.config/rusty-riff/midi.conf`
+manual when the pedal moves. Bindings live in `~/.config/headroom/midi.conf`
 (`enabled`, the legacy `cc = 11` shorthand, and `<cc> = <target>` for
 `wah_position`, `delay_mix`, `reverb_mix`, `boost_gain`, …). No hardware was
 available to verify the live path here — the parsing/mapping are unit-tested, and
@@ -240,7 +240,7 @@ Finding and comparing tones should not be scrolling.
 selected presets without leaving the modal.
 
 **Status — favorites + search + tags done.** `F` stars the selected preset (a `★`
-column), persisted by name in `~/.config/rusty-riff/favorites.txt`.
+column), persisted by name in `~/.config/headroom/favorites.txt`.
 **Type-to-filter** matches name/description/**tags** (printable keys filter,
 `Backspace` deletes, `Esc` clears then closes; commands are the upper-case
 letters). The `tags = [...]` preset field is defaulted and shown in the list; the
@@ -262,7 +262,7 @@ setup that reuses it.
 **Acceptance.** Relaunch reuses the profile; changing interface prompts once.
 
 **Status — effectively done (pre-existing).** Device selection is remembered by
-*name* in `~/.config/rusty-riff/audio.conf` (survives re-enumeration), and
+*name* in `~/.config/headroom/audio.conf` (survives re-enumeration), and
 `input-calibration.toml` stores **one calibration row per
 `device + channels + channel`** (trim, pickup class, reference version) that is
 matched on startup — i.e. a per-interface profile already. A dedicated
@@ -282,7 +282,7 @@ The narrow-width half landed 2026-10-11; the palette half landed 2026-10-12
 (`2177d70`…`f23db93`, spec `docs/superpowers/specs/2026-10-12-palette-design.md`):
 a `Theme` registry in `src/ui/styles.rs` (single default palette,
 value-for-value legacy — all existing snapshots pass unmodified), ~400 call
-sites migrated flag-day, F3 cycle + `~/.config/rusty-riff/ui.conf` write-back,
+sites migrated flag-day, F3 cycle + `~/.config/headroom/ui.conf` write-back,
 and pedal tiles renamed to product names (CRY BABY, DYNA COMP, BIG MUFF,
 POWER BOOST, GE-7, CE-2; multi-kind pedals stay generic). Verified by
 TestBackend cell-color assertions (snapshots are glyphs-only). Theme #2 is

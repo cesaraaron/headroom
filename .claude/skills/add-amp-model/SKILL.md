@@ -1,9 +1,9 @@
 ---
 name: add-amp-model
-description: Add a new built-in amplifier model to rusty-riff. Use when asked to add, create, or contribute a new amp model/head (e.g. a Vox, Fender, Soldano, Peavey sim) to the amp bank. Covers the DSP code, the AmpModel enum, UI wiring, presets, and tests.
+description: Add a new built-in amplifier model to headroom. Use when asked to add, create, or contribute a new amp model/head (e.g. a Vox, Fender, Soldano, Peavey sim) to the amp bank. Covers the DSP code, the AmpModel enum, UI wiring, presets, and tests.
 ---
 
-# Add an amp model to rusty-riff
+# Add an amp model to headroom
 
 An amp model is a struct implementing the `Amplifier` trait, addressed through the fixed `AmpModel` enum (`Marshall`, `Mesa`, `Randall`, …) and switched live in the TUI. Adding one is **one coordinated body of work**: the Rust implementation plus its tests, all in the same commit.
 

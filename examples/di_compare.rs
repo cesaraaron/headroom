@@ -16,9 +16,9 @@
 //! (palm-muted low-E chugs, power chords, a single-note lick) so runs are
 //! reproducible and machines without a DI library still get the comparison.
 
-use rusty_riff::dsp::amp::AmpBank;
-use rusty_riff::dsp::cab::CabBank;
-use rusty_riff::dsp::{AmpModel, CabModel};
+use headroom::dsp::amp::AmpBank;
+use headroom::dsp::cab::CabBank;
+use headroom::dsp::{AmpModel, CabModel};
 use std::f32::consts::PI;
 
 const SR: f32 = 48_000.0;
@@ -128,7 +128,7 @@ struct Event {
 /// Pitch of a window via autocorrelation on the LF band (fundamental range
 /// 70–350 Hz). Distortion enriches harmonics but the fundamental lag survives.
 fn detect_pitch(win: &[f32]) -> f32 {
-    use rusty_riff::dsp::biquad::Biquad;
+    use headroom::dsp::biquad::Biquad;
     let mut lp = Biquad::lowpass(SR, 400.0, 0.707);
     let s: Vec<f32> = win.iter().map(|&x| lp.process(x)).collect();
     let (lag_min, lag_max) = ((SR / 350.0) as usize, (SR / 70.0) as usize);
@@ -286,7 +286,7 @@ const DEFAULT_KNOBS: Knobs = Knobs {
 fn render_knobs(di: &[f32], k: Knobs) -> Vec<f32> {
     let mut amp = AmpBank::new(SR);
     let mut cab = CabBank::new(SR);
-    let knobs = rusty_riff::dsp::amp::standard_knobs(
+    let knobs = headroom::dsp::amp::standard_knobs(
         AmpModel::Marshall,
         k.gain,
         k.bass,
@@ -301,7 +301,7 @@ fn render_knobs(di: &[f32], k: Knobs) -> Vec<f32> {
                 AmpModel::Marshall,
                 x,
                 &knobs,
-                rusty_riff::dsp::CabModel::Marshall.speaker_load(),
+                headroom::dsp::CabModel::Marshall.speaker_load(),
             );
             let (l, r) = cab.process(CabModel::Marshall, a, k.mic, k.blend, k.room);
             0.5 * (l + r)
@@ -366,11 +366,11 @@ fn match_knobs(di: &[f32], target: &[(f32, f32)]) -> Knobs {
 
 #[cfg(target_os = "macos")]
 fn render_au(di: &[f32], pat: &str) -> (String, Vec<f32>) {
-    let found = rusty_riff::host::au::scan()
+    let found = headroom::host::au::scan()
         .into_iter()
         .find(|a| a.name.to_lowercase().contains(&pat.to_lowercase()))
         .expect("no AU matches");
-    let (_, mut ins) = rusty_riff::host::au::load(&found, SR, 512).expect("AU load");
+    let (_, mut ins) = headroom::host::au::load(&found, SR, 512).expect("AU load");
     let mut out = Vec::with_capacity(di.len());
     for chunk in di.chunks(512) {
         let mut l = chunk.to_vec();
@@ -446,7 +446,7 @@ fn percentile(sorted: &[f32], p: f32) -> f32 {
 /// Treble modulation depth: envelope std/mean of the 1.5–4 kHz band — how much
 /// the top breathes with the playing (IMD/growl under a real performance).
 fn treble_mod_depth(s: &[f32]) -> f32 {
-    use rusty_riff::dsp::biquad::Biquad;
+    use headroom::dsp::biquad::Biquad;
     let mut hp = Biquad::highpass(SR, 1500.0, 0.707);
     let mut lp = Biquad::lowpass(SR, 4000.0, 0.707);
     let band: Vec<f32> = s.iter().map(|&x| lp.process(hp.process(x))).collect();

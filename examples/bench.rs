@@ -1,4 +1,4 @@
-//! Plain timing harness for the rusty-riff DSP chain — no criterion, no new
+//! Plain timing harness for the headroom DSP chain — no criterion, no new
 //! dependencies: just a `main` that times and prints.
 //!
 //! Build the release binary before trusting the numbers (debug construction is
@@ -14,9 +14,9 @@
 //!   3. `CabBank::new` construction time (ms).
 
 use anyhow::Result;
-use rusty_riff::dsp::cab::CabBank;
-use rusty_riff::dsp::{DspChain, Params};
-use rusty_riff::preset::{self, Preset, PresetSource};
+use headroom::dsp::cab::CabBank;
+use headroom::dsp::{DspChain, Params};
+use headroom::preset::{self, Preset, PresetSource};
 use std::f64::consts::TAU;
 use std::hint::black_box;
 use std::sync::Arc;
@@ -34,7 +34,7 @@ const MEASURE_BLOCKS: usize = 2_000;
 fn main() -> Result<()> {
     let presets = pick_presets()?;
 
-    println!("rusty-riff DSP bench — {SR:.0} Hz, {BLOCK}-frame blocks (10.0 ms budget)\n");
+    println!("headroom DSP bench — {SR:.0} Hz, {BLOCK}-frame blocks (10.0 ms budget)\n");
 
     let params = params_for(&presets[0].1);
     bench_chain_construction(&params);

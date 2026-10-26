@@ -112,9 +112,9 @@ pub struct PluginParam {
 
 fn host_info() -> Result<HostInfo> {
     HostInfo::new(
-        "rusty-riff",
-        "rusty-riff",
-        "https://github.com/cesaraaron/rusty-riff",
+        "headroom",
+        "headroom",
+        "https://github.com/cesaraaron/headroom",
         env!("CARGO_PKG_VERSION"),
     )
     .map_err(|e| anyhow!("invalid host info: {e}"))

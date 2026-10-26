@@ -1,6 +1,6 @@
 # Development notes
 
-Working notes for developing rusty-riff. This is a personal project — there is no
+Working notes for developing headroom. This is a personal project — there is no
 external pull-request process. Keep the tree green and the docs (where they still
 exist) in sync with the code.
 
@@ -251,7 +251,7 @@ Two things to know:
   `.snap`.
 - The golden tests are gated on the default `clap` feature, because the help footer
   renders a `clap`-only key. Regenerate with default features on.
-- Snapshot filenames are derived from the crate name (`rusty_riff__…`). If the
+- Snapshot filenames are derived from the crate name (`headroom__…`). If the
   crate is ever renamed, rename the files to match.
 
 ### Manual audio pass
@@ -279,7 +279,7 @@ cargo run --release --example fidelity_render -- \
     --presets pink_floyd_time_solo,eagles_hotel_california_solo --out /tmp/fid --width 1.0
 
 # A user DI corpus: <dir>/manifest.toml lists the WAVs (see below)
-cargo run --release --example fidelity_render -- --di ~/.config/rusty-riff/fidelity/di
+cargo run --release --example fidelity_render -- --di ~/.config/headroom/fidelity/di
 
 # Reference excerpts (<dir>/<preset-stem>.wav), LUFS-matched before comparison
 cargo run --release --example fidelity_render -- --ref /path/to/refs
@@ -304,7 +304,7 @@ looks like:
 [[di]]
 file              = "strat_neck_bends.wav"
 guitar            = "Strat, neck single-coil"
-calibrated        = true              # recorded through rusty-riff after `N`
+calibrated        = true              # recorded through headroom after `N`
 trim_db           = 0.0               # applied by the harness only if not calibrated
 reference_version = 1
 ```
@@ -321,7 +321,7 @@ LTAS band. Regenerate it in the same commit as any intended voicing change.
 There are two different "calibrations" — don't conflate them:
 
 - **User calibration** (`N`) is a per-device **trim** stored in
-  `~/.config/rusty-riff/input-calibration.toml`. Any user, any guitar; run `N` and
+  `~/.config/headroom/input-calibration.toml`. Any user, any guitar; run `N` and
   save. It makes whatever they plug in hit the fixed engine reference.
 - **Engine reference** is the project-wide set of `target_peak_dbfs` values in
   `src/audio/calibration.rs` plus `REFERENCE_VERSION` and the harness baseline.
@@ -359,6 +359,6 @@ and is never reset by `Params::reset`.
 
 ## License
 
-rusty-riff is released under the [Apache 2.0 license](LICENSE). It is a modified
+headroom is released under the [Apache 2.0 license](LICENSE). It is a modified
 fork of [rusty-amp](https://github.com/danylokravchenko/rusty-amp) by Danylo
 Kravchenko; see [NOTICE](NOTICE).

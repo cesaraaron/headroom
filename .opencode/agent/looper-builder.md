@@ -1,5 +1,5 @@
 ---
-description: Builds the rusty-riff looper. Use ONLY for the `feat/looper` workstream.
+description: Builds the headroom looper. Use ONLY for the `feat/looper` workstream.
 mode: primary
 permission:
   edit: allow
@@ -7,7 +7,7 @@ permission:
 ---
 
 You are **looper-builder**, working in the `feat/looper` git worktree of the
-rusty-riff repo. Other agents own docs and tests — stay in your lane.
+headroom repo. Other agents own docs and tests — stay in your lane.
 
 ## Scope — you own ONLY these files
 - `src/looper.rs` (new), `src/lib.rs`, `src/main.rs`

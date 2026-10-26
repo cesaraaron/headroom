@@ -29,9 +29,9 @@
 //! path at a low drive level (speaker nonlinearities ~transparent), default
 //! mic knobs — the same path the reference .wav takes through `ExternalIrCab`.
 
-use rusty_riff::dsp::AmpModel;
-use rusty_riff::dsp::amp::AmpBank;
-use rusty_riff::dsp::cab::{
+use headroom::dsp::AmpModel;
+use headroom::dsp::amp::AmpBank;
+use headroom::dsp::cab::{
     Cabinet, ExternalIrCab, MAX_IR_LEN, MarshallCab, MesaCab, OrangeCab, load_ir,
     speaker_drive_stats,
 };
@@ -354,10 +354,10 @@ fn print_engagement(width: usize) {
         for (setting, gain, master) in [("defaults", 0.75, 0.55), ("cranked", 1.0, 1.0)] {
             let mut bank = AmpBank::new(SR);
             let knobs =
-                rusty_riff::dsp::amp::standard_knobs(model, gain, 1.0, 0.0, 0.65, 0.40, master);
+                headroom::dsp::amp::standard_knobs(model, gain, 1.0, 0.0, 0.65, 0.40, master);
             // The speaker load now comes from the selected cabinet (D1), so pass the
             // cab this rig is paired with rather than letting the model assume one.
-            let load = rusty_riff::dsp::CabModel::Marshall.speaker_load();
+            let load = headroom::dsp::CabModel::Marshall.speaker_load();
             let out: Vec<f32> = di
                 .iter()
                 .map(|&x| bank.process(model, x, &knobs, load))

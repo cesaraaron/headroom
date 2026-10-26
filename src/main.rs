@@ -1,10 +1,10 @@
 use anyhow::Result;
 use std::sync::Arc;
 
-use rusty_riff::{audio, dsp, looper, practice, preset, recording, ui};
+use headroom::{audio, dsp, looper, practice, preset, recording, ui};
 
 fn print_usage(program: &str) {
-    println!("rusty-riff — a guitar amplifier and effects simulator in your terminal");
+    println!("headroom — a guitar amplifier and effects simulator in your terminal");
     println!();
     println!("Usage: {program} [--opaque]");
     println!();
@@ -15,11 +15,11 @@ fn print_usage(program: &str) {
 }
 
 fn main() -> Result<()> {
-    rusty_riff::migrate_legacy_config_dir();
+    headroom::migrate_legacy_config_dir();
 
     let program = std::env::args()
         .next()
-        .unwrap_or_else(|| "rusty-riff".to_owned());
+        .unwrap_or_else(|| "headroom".to_owned());
     let mut opaque = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
@@ -45,7 +45,7 @@ fn main() -> Result<()> {
     // Optional MIDI expression input for the wah; disabled if no controller or
     // `midi.conf` says so. The shared state drives the `F2` bind screen; the
     // handle keeps the connection open for the run.
-    let (midi_state, midi_handle) = rusty_riff::midi::start(params.clone());
+    let (midi_state, midi_handle) = headroom::midi::start(params.clone());
 
     // TUI starts immediately; device selection happens inside via modals.
     ui::run(

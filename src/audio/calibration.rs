@@ -240,9 +240,9 @@ fn current_reference_version() -> u32 {
     REFERENCE_VERSION
 }
 
-/// `~/.config/rusty-riff/input-calibration.toml`.
+/// `~/.config/headroom/input-calibration.toml`.
 pub fn calibration_path() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".config/rusty-riff/input-calibration.toml"))
+    dirs::home_dir().map(|h| h.join(".config/headroom/input-calibration.toml"))
 }
 
 fn read_file(path: &Path) -> CalibrationFile {
@@ -521,7 +521,7 @@ mod tests {
     }
 
     fn scratch(tag: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("rusty-riff-cal-test-{tag}-{}", std::process::id()))
+        std::env::temp_dir().join(format!("headroom-cal-test-{tag}-{}", std::process::id()))
     }
 
     fn identity(device: &str, channels: u16, channel: u16) -> InputIdentity {

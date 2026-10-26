@@ -65,9 +65,9 @@ pub(super) fn cycle_theme() {
     set_theme(theme_index().wrapping_add(1));
 }
 
-/// `~/.config/rusty-riff/ui.conf` (mirrors the `midi.conf` shape).
+/// `~/.config/headroom/ui.conf` (mirrors the `midi.conf` shape).
 fn ui_conf_path() -> Option<std::path::PathBuf> {
-    dirs::home_dir().map(|h| h.join(".config").join("rusty-riff").join("ui.conf"))
+    dirs::home_dir().map(|h| h.join(".config").join("headroom").join("ui.conf"))
 }
 
 /// Load a saved theme id (`theme = <n>`); missing/corrupt files mean the
@@ -200,7 +200,7 @@ mod tests {
     /// error, no state change.
     #[test]
     fn theme_conf_missing_means_default() {
-        let dir = std::env::temp_dir().join("rusty-riff-no-such-dir-xyz");
+        let dir = std::env::temp_dir().join("headroom-no-such-dir-xyz");
         load_theme_conf_at(&dir.join("ui.conf"));
         assert_eq!(theme_name(), "default");
     }
@@ -209,7 +209,7 @@ mod tests {
     /// the real config dir is never touched.
     #[test]
     fn theme_conf_round_trips() {
-        let path = std::env::temp_dir().join("rusty-riff-theme-test-ui.conf");
+        let path = std::env::temp_dir().join("headroom-theme-test-ui.conf");
         let _ = std::fs::remove_file(&path);
         write_theme_conf_at(&path, 0).expect("write conf");
         set_theme(255);
@@ -227,7 +227,7 @@ mod tests {
         set_theme(0);
         cycle_theme();
         assert_eq!(theme_index(), 0, "cycle drifted the stored index");
-        let path = std::env::temp_dir().join("rusty-riff-theme-cycle-test-ui.conf");
+        let path = std::env::temp_dir().join("headroom-theme-cycle-test-ui.conf");
         let _ = std::fs::remove_file(&path);
         write_theme_conf_at(&path, theme_index()).expect("write conf");
         let body = std::fs::read_to_string(&path).expect("read conf");
