@@ -717,6 +717,8 @@ const DEFAULT_FZ_LEVEL: f32 = 0.60;
 // 0 = Big Muff (the shipped default), 1 = Fuzz Face.
 const DEFAULT_FZ_TYPE: f32 = 0.0;
 const DEFAULT_FZ_GUITAR: f32 = 1.0;
+// 0 = Ram's Head (the shipped Muff voicing).
+const DEFAULT_FZ_MODEL: f32 = 0.0;
 
 const DEFAULT_TS_ENABLED: bool = false;
 const DEFAULT_TS_DRIVE: f32 = 0.45;
@@ -890,6 +892,8 @@ pub struct Params {
     pub fz_tone: Arc<AtomicF32>,
     pub fz_level: Arc<AtomicF32>,
     pub fz_type: Arc<AtomicF32>,
+    /// Big Muff revision: 0 = Ram's Head (shipped), 1 = Triangle, 2 = Sovtek, 3 = Cornish P-2.
+    pub fz_model: Arc<AtomicF32>,
     // Guitar volume as the fuzz sees it (1 = full) — drives the Fuzz Face cleanup.
     pub fz_guitar: Arc<AtomicF32>,
 
@@ -1092,6 +1096,7 @@ impl Params {
             fz_tone: p!(DEFAULT_FZ_TONE),
             fz_level: p!(DEFAULT_FZ_LEVEL),
             fz_type: p!(DEFAULT_FZ_TYPE),
+            fz_model: p!(DEFAULT_FZ_MODEL),
             fz_guitar: p!(DEFAULT_FZ_GUITAR),
 
             ts_enabled: b!(DEFAULT_TS_ENABLED),
@@ -1239,6 +1244,7 @@ impl Params {
         self.fz_tone.store(DEFAULT_FZ_TONE, Relaxed);
         self.fz_level.store(DEFAULT_FZ_LEVEL, Relaxed);
         self.fz_type.store(DEFAULT_FZ_TYPE, Relaxed);
+        self.fz_model.store(DEFAULT_FZ_MODEL, Relaxed);
         self.fz_guitar.store(DEFAULT_FZ_GUITAR, Relaxed);
 
         self.ts_enabled.store(DEFAULT_TS_ENABLED, Relaxed);
@@ -2040,7 +2046,8 @@ impl DspChain {
             ),
             ChainStage::Fuzz => {
                 mono_stage!(
-                    self, p, x, fz_enabled, fz, fz_fuzz, fz_tone, fz_level, fz_type, fz_guitar
+                    self, p, x, fz_enabled, fz, fz_fuzz, fz_tone, fz_level, fz_type, fz_guitar,
+                    fz_model
                 )
             }
             ChainStage::Ts => {

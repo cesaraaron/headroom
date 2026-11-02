@@ -148,6 +148,14 @@ pub struct FuzzSection {
     /// presets are unchanged.
     #[serde(default = "fuzz_guitar_default")]
     pub guitar: f32,
+    /// Big Muff revision: 0 = Ram's Head (shipped), 1 = Triangle, 2 = Sovtek,
+    /// 3 = Cornish P-2. Only affects the Big Muff voice.
+    #[serde(default = "fuzz_model_default")]
+    pub model: f32,
+}
+
+fn fuzz_model_default() -> f32 {
+    0.0
 }
 
 fn fuzz_type_default() -> f32 {
@@ -498,6 +506,7 @@ impl Preset {
                 level: params.fz_level.load(Relaxed),
                 r#type: params.fz_type.load(Relaxed),
                 guitar: params.fz_guitar.load(Relaxed),
+                model: params.fz_model.load(Relaxed),
             }),
             tube_screamer: TsSection {
                 enabled: Some(params.ts_enabled.load(Relaxed)),
@@ -703,6 +712,7 @@ impl Preset {
             params.fz_level.store(fz.level.clamp(0.0, 1.0), Relaxed);
             params.fz_type.store(fz.r#type.clamp(0.0, 1.0), Relaxed);
             params.fz_guitar.store(fz.guitar.clamp(0.0, 1.0), Relaxed);
+            params.fz_model.store(fz.model.clamp(0.0, 1.0), Relaxed);
         } else {
             params.fz_enabled.store(false, Relaxed);
         }
@@ -1176,7 +1186,7 @@ pub(crate) fn rig_values(p: &Params, v: &mut Vec<f32>) {
         wah_position
     );
     knobs!(cmp_enabled, cmp_sustain, cmp_attack, cmp_level, cmp_voice);
-    knobs!(fz_enabled, fz_fuzz, fz_tone, fz_level, fz_type, fz_guitar);
+    knobs!(fz_enabled, fz_fuzz, fz_tone, fz_level, fz_type, fz_guitar, fz_model);
     knobs!(ts_enabled, ts_drive, ts_tone, ts_level);
     knobs!(ds_enabled, ds_drive, ds_tone, ds_level);
     knobs!(ml_enabled, ml_dist, ml_low, ml_high, ml_level);
@@ -1401,6 +1411,8 @@ mod tests {
             fz_fuzz,
             fz_tone,
             fz_level,
+            fz_type,
+            fz_model,
             ts_drive,
             ts_tone,
             ts_level,

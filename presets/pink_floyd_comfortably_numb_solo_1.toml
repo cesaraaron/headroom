@@ -27,6 +27,7 @@ level   = 0.52
 [fuzz]
 enabled = true
 type    = 0.0   # 0 = Big Muff (the Ram's-Head voice)
+model   = 0.0   # Ram's Head
 fuzz  = 0.26
 tone  = 0.68
 level = 0.42

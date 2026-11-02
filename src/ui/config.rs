@@ -60,7 +60,7 @@ pub(super) const WAH_END: usize = WAH_START + 6;
 pub(super) const CMP_START: usize = WAH_END;
 pub(super) const CMP_END: usize = CMP_START + 4;
 pub(super) const FUZZ_START: usize = CMP_END;
-pub(super) const FUZZ_END: usize = FUZZ_START + 5;
+pub(super) const FUZZ_END: usize = FUZZ_START + 6;
 pub(super) const TS_START: usize = FUZZ_END;
 pub(super) const TS_END: usize = TS_START + 3;
 pub(super) const DS_START: usize = TS_END;
@@ -204,10 +204,14 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "VOICE",
         param: |p| &p.cmp_voice,
     },
-    // 21–24: Fuzz (TYPE: 0 = Big Muff, 0.5 = Fuzz Face, 1 = Tone Bender)
+    // 21–25: Fuzz (TYPE: 0 = Big Muff, 0.5 = Fuzz Face, 1 = Tone Bender)
     Knob {
         label: "TYPE",
         param: |p| &p.fz_type,
+    },
+    Knob {
+        label: "MUFF",
+        param: |p| &p.fz_model,
     },
     Knob {
         label: "FUZZ",
@@ -774,7 +778,7 @@ mod tests {
         // Deliberate tripwire: bump these when you add or remove a pedal/knob so
         // the change is a conscious, reviewed edit rather than an accident.
         assert_eq!(PEDALS.len(), 19, "pedal count changed");
-        assert_eq!(KNOBS.len(), 85, "knob count changed");
+        assert_eq!(KNOBS.len(), 86, "knob count changed");
     }
 
     #[test]
