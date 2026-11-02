@@ -148,7 +148,7 @@ pub(super) const KNOBS: &[Knob] = &[
         param: |p| &p.mic_room,
     },
     // ── Pre-amp pedals (before the amp), in signal order ──
-    // 9–10: Noise Gate
+    // Noise Gate
     Knob {
         label: "THRESH",
         param: |p| &p.ng_threshold,
@@ -157,7 +157,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "RELEASE",
         param: |p| &p.ng_release,
     },
-    // 11–13: Pitch shifter / Whammy
+    // Pitch shifter / Whammy
     Knob {
         label: "PITCH",
         param: |p| &p.pitch_pitch,
@@ -170,7 +170,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "TONE",
         param: |p| &p.pitch_tone,
     },
-    // 14–17: Auto-wah
+    // Auto-wah
     Knob {
         label: "FREQ",
         param: |p| &p.wah_freq,
@@ -212,7 +212,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "VOICE",
         param: |p| &p.cmp_voice,
     },
-    // 21–25: Fuzz (TYPE: 0 = Big Muff, 0.5 = Fuzz Face, 1 = Tone Bender)
+    // Fuzz (TYPE: 0 = Big Muff, 0.5 = Fuzz Face, 1 = Tone Bender)
     Knob {
         label: "TYPE",
         param: |p| &p.fz_type,
@@ -250,7 +250,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.ts_level,
     },
-    // 28–30: DS-1
+    // DS-1
     Knob {
         label: "DRIVE",
         param: |p| &p.ds_drive,
@@ -263,7 +263,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.ds_level,
     },
-    // 31–34: Boss ML-2 Metal Core
+    // Boss ML-2 Metal Core
     Knob {
         label: "DIST",
         param: |p| &p.ml_dist,
@@ -280,7 +280,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.ml_level,
     },
-    // 35–37: ProCo RAT
+    // ProCo RAT
     Knob {
         label: "DIST",
         param: |p| &p.rat_dist,
@@ -293,7 +293,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.rat_level,
     },
-    // 38–41: B.K. Butler Tube Driver
+    // B.K. Butler Tube Driver
     Knob {
         label: "DRIVE",
         param: |p| &p.td_drive,
@@ -310,7 +310,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.td_level,
     },
-    // 42–44: Pre-amp EQ
+    // Pre-amp EQ
     Knob {
         label: "LOW",
         param: |p| &p.peq_low,
@@ -323,7 +323,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "HIGH",
         param: |p| &p.peq_high,
     },
-    // 38–41: Uni-Vibe
+    // Uni-Vibe
     Knob {
         label: "RATE",
         param: |p| &p.uv_rate,
@@ -340,7 +340,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "MODE",
         param: |p| &p.uv_mode,
     },
-    // 42–44: Clean boost
+    // Clean boost
     Knob {
         label: "GAIN",
         param: |p| &p.boost_gain,
@@ -353,7 +353,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "BASS",
         param: |p| &p.boost_bass,
     },
-    // 45–49: Rotary speaker
+    // Rotary speaker
     Knob {
         label: "SPEED",
         param: |p| &p.rot_speed,
@@ -375,7 +375,7 @@ pub(super) const KNOBS: &[Knob] = &[
         param: |p| &p.rot_balance,
     },
     // ── Post-cab rack pedals (after the cab), in signal order ──
-    // 50–57: Graphic EQ (Boss GE-7 — seven band faders + output level)
+    // Graphic EQ (Boss GE-7 — seven band faders + output level)
     Knob {
         label: "100",
         param: |p| &p.geq_b1,
@@ -408,7 +408,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.geq_level,
     },
-    // 50–52: Parametric EQ
+    // Parametric EQ
     Knob {
         label: "LOW",
         param: |p| &p.eq_low,
@@ -421,7 +421,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "HIGH",
         param: |p| &p.eq_high,
     },
-    // 53–56: Flanger
+    // Flanger
     Knob {
         label: "RATE",
         param: |p| &p.fl_rate,
@@ -455,7 +455,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "MIX",
         param: |p| &p.ch_mix,
     },
-    // 60–63: Phaser
+    // Phaser
     Knob {
         label: "RATE",
         param: |p| &p.ph_rate,
@@ -493,7 +493,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "MODE",
         param: |p| &p.trem_mode,
     },
-    // 68–71: Delay (TYPE: 0 = digital ping-pong, 0.5 = Echorec, 1 = tape)
+    // Delay (TYPE: 0 = digital ping-pong, 0.5 = Echorec, 1 = tape)
     Knob {
         label: "TIME",
         param: |p| &p.delay_time,
@@ -510,7 +510,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "TYPE",
         param: |p| &p.delay_type,
     },
-    // 72–74: Reverb
+    // Reverb
     Knob {
         label: "ROOM",
         param: |p| &p.rev_room,

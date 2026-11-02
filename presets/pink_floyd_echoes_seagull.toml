@@ -115,7 +115,7 @@ balance = 0.50
 [delay]
 type     = 0.0
 enabled  = true
-time     = 0.58
+time     = 0.90
 feedback = 0.62
 mix      = 0.42
 

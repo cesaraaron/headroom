@@ -1379,7 +1379,7 @@ mod tests {
         ("metal_core", 2004),    // Boss ML-2
         ("rat", 1979),           // ProCo RAT
         ("tube_driver", 1993),   // B.K. Butler / Chandler Tube Driver
-        ("rotary", 1968),        // Leslie/Rotary family (RA-200 from 1977)
+        ("rotary", 1977),        // Yamaha RA-200 family (Doppola from 1994)
         ("boost", 1972),         // Colorsound Power Boost (approx.)
     ];
 
@@ -1514,6 +1514,9 @@ mod tests {
         p.ch_enabled.store(true, Relaxed);
         p.ph_enabled.store(true, Relaxed);
         p.trem_enabled.store(true, Relaxed);
+        p.rat_enabled.store(true, Relaxed);
+        p.td_enabled.store(true, Relaxed);
+        p.rot_enabled.store(true, Relaxed);
         // A reversed chain, so a preset without `[chain]` must reset it.
         let mut reversed = ChainStage::default_order();
         reversed.reverse();

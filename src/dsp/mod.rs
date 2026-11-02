@@ -453,7 +453,7 @@ impl ChainStage {
     }
 
     /// Index into the UI `PEDALS` table, or `None` for the amp and cab stages.
-    /// Pre pedals map 1:1; rack pedals sit right after the 12 pre entries.
+    /// Pre pedals map 1:1; rack pedals sit right after the 13 pre entries.
     pub fn pedal_index(self) -> Option<usize> {
         match self {
             Self::Gate => Some(0),
@@ -3291,6 +3291,39 @@ mod tests {
         );
     }
 
+    /// A rotary reorder must cut the rotor's ring like a physical re-patch. The
+    /// unit test covers `Rotary::clear_buffers` itself; this covers its wiring in
+    /// `snapshot_order`, which is the part a refactor can silently drop. The
+    /// assertion counts clears rather than reading the ring: the cab's own tail
+    /// refills the first few ring samples immediately after a legitimate clear.
+    #[test]
+    fn reordered_rotary_tail_does_not_survive() {
+        let sr = 48_000.0;
+        let params = Arc::new(Params::new());
+        params.rot_enabled.store(true, Relaxed);
+        params.rot_mix.store(0.9, Relaxed);
+        params.rot_depth.store(0.9, Relaxed);
+        params.rot_speed.store(1.0, Relaxed);
+        let mut chain = DspChain::new(sr, Arc::clone(&params));
+        for n in 0..(sr as usize / 2) {
+            let x = (2.0 * PI * 220.0 * n as f32 / sr).sin() * 0.5;
+            chain.process(x);
+        }
+        let before = chain.rotary.clear_count();
+
+        let order = swap_stages(params.chain_slots(), ChainStage::Rotary, ChainStage::Geq);
+        params.set_chain_order(&order);
+        // The clear happens on the next `process` call, when `snapshot_order`
+        // notices the new order. A few calls absorb a writer mid-publish retry.
+        for _ in 0..8 {
+            let _ = chain.process(0.0);
+        }
+        assert!(
+            chain.rotary.clear_count() > before,
+            "snapshot_order never reached the rotary's clear_buffers"
+        );
+    }
+
     /// Amp sag is explicitly protected across model switches — and across
     /// reorders too. A hot settled rig reordered must continue from its sag,
     /// not jump toward a fresh chain's output.
@@ -3377,9 +3410,10 @@ mod tests {
 
     /// `stereo_stages_follow_the_amp` is the boundary the UI refuses moves at.
     ///
-    /// What matters is *which* stages count as stereo-ahead-of-the-amp: the eight
-    /// rack pedals and the cab are not allowed there, the eleven mono pre pedals
-    /// are, and an unknown id must fail closed rather than slip through.
+    /// What matters is *which* stages count as stereo-ahead-of-the-amp: the nine
+    /// rack pedals (including the rotary) and the cab are not allowed there, the
+    /// thirteen mono pre pedals are, and an unknown id must fail closed rather
+    /// than slip through.
     #[test]
     fn stereo_stages_follow_the_amp_draws_the_boundary_it_claims() {
         /// Move `stage` into the slot immediately ahead of the amp.
@@ -3409,6 +3443,7 @@ mod tests {
         // Every rack pedal, and the cab, must be rejected ahead of the amp.
         for stage in [
             ChainStage::Cab,
+            ChainStage::Rotary,
             ChainStage::Geq,
             ChainStage::Eq,
             ChainStage::Flanger,

@@ -24,6 +24,7 @@ and the working conventions.
 
 | Area | Commits | Where |
 | --- | --- | --- |
+| Gilmour Tier 1 gear | `c80cd80`…`86a8f59` (branch `feat/gilmour-tier1`) | Compressor Dyna/CS-2 voices, Big Muff model knob, ProCo RAT, Tube Driver, RA-200 rotary, 6 new Floyd presets + 5 chain-order `_alt` variants; research `docs/research/2026-11-02-gilmour-*`, plan `docs/superpowers/plans/2026-11-02-gilmour-tier1-gear.md` |
 | DSP perf batch (Item 2) | `803d96e`…`932cec8` | `src/dsp/effects/*` caches, `src/dsp/cab/ir.rs` recurrence + sparse taps; `CabBank::new` 221→24 ms; spec/plan `docs/superpowers/{specs,plans}/2026-10-11-dsp-perf-batch*` |
 | F1 limiter remainder | `ab05e93`…`597b6de` | 4× true-peak detector + oversampled clamp (`src/dsp/limiter.rs`), GR readout on OUT row, true-peak hold; baseline re-blessed; `…/2026-10-11-f1-limiter*` |
 | Reorder safety (B2/B4/B5) | `3b2b005`…`292e449` | mono-after-cab toast (`src/ui/input.rs`), feedback-tail clear on reorder (`DspChain::snapshot_order`); B4 verified-and-closed; `…/2026-10-11-reorder*` |

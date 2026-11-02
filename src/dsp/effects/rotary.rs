@@ -39,6 +39,8 @@ pub struct Rotary {
     angle_d: f32,
     speed_h: f32,
     speed_d: f32,
+    #[cfg(test)]
+    pub(crate) clear_count: usize,
     last_horn_delay: f32,
     mix: SmoothedGain,
 }
@@ -57,6 +59,8 @@ impl Rotary {
             angle_d: std::f32::consts::FRAC_PI_2,
             speed_h: SLOW_HORN_HZ,
             speed_d: SLOW_DRUM_HZ,
+            #[cfg(test)]
+            clear_count: 0,
             last_horn_delay: 0.0,
             mix: SmoothedGain::with_ms(1.0, 8.0, sr),
         }
@@ -72,6 +76,10 @@ impl Rotary {
         self.cross_lo.clear();
         self.cross_hi.clear();
         self.write = 0;
+        #[cfg(test)]
+        {
+            self.clear_count += 1;
+        }
     }
 
     /// The left-mic horn delay, in samples. Test-only: proves the delay is
@@ -79,6 +87,14 @@ impl Rotary {
     #[cfg(test)]
     fn horn_delay_now(&self) -> f32 {
         self.last_horn_delay
+    }
+
+    /// How many times the rings have been cleared. Test-only: the chain-level
+    /// reorder test asserts this increments, which is unambiguous (the rotor
+    /// ring is immediately refilled by the cab's own tail after a clear).
+    #[cfg(test)]
+    pub(crate) fn clear_count(&self) -> usize {
+        self.clear_count
     }
 
     #[inline]
@@ -138,10 +154,10 @@ impl Rotary {
         let dl = read_cubic(&self.drum, self.write, drum_dl);
         let dr = read_cubic(&self.drum, self.write, drum_dr);
 
-        let horn_aml = 1.0 - am * (0.5 + 0.5 * ch);
-        let horn_amr = 1.0 - am * (0.5 - 0.5 * ch);
-        let drum_aml = 1.0 - am * (0.5 + 0.5 * cd);
-        let drum_amr = 1.0 - am * (0.5 - 0.5 * cd);
+        let horn_aml = 1.0 - am * (0.5 - 0.5 * ch);
+        let horn_amr = 1.0 - am * (0.5 + 0.5 * ch);
+        let drum_aml = 1.0 - am * (0.5 - 0.5 * cd);
+        let drum_amr = 1.0 - am * (0.5 + 0.5 * cd);
 
         // Equal-power band balance, renormalised so the centre is unity.
         let b = balance.clamp(0.0, 1.0);

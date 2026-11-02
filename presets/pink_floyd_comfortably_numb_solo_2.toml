@@ -156,6 +156,8 @@ order = [
     "fuzz",
     "ds",
     "metal",
+    "rat",
+    "tube_driver",
     "preeq",
     "vibe",
     "boost",

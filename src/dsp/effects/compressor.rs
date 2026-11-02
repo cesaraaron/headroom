@@ -4,9 +4,12 @@ use crate::dsp::biquad::Biquad;
 /// Voice 0 is the MXR Dyna Comp: the fast, bright, squashy circuit this effect
 /// shipped with. Voice 1 is the Boss CS-2: a softer knee, a slower release and a
 /// gently darkened top. The knob is a *voicing* switch, not a second circuit.
-const CS2_KNEE_DB: f32 = 6.0;
 const CS2_RELEASE_MS: f32 = 250.0;
 const DYNA_RELEASE_MS: f32 = 150.0;
+/// The CS-2 soft knee is ±3 dB around the threshold; these are the linear
+/// band edges `2^±(6/12)`, used so the hot path has no `powf` for them.
+const KNEE_R_LO: f32 = std::f32::consts::FRAC_1_SQRT_2;
+const KNEE_R_HI: f32 = std::f32::consts::SQRT_2;
 
 /// Front-of-chain feed-forward compressor — evens out picking dynamics and adds
 /// sustain, the single biggest "studio" upgrade for clean and edge-of-breakup
@@ -31,6 +34,8 @@ pub struct Compressor {
     /// computer is `(thresh_lin/env)^knee_k`, one `powf` and no `log10`.
     thresh_lin: f32,
     knee_k: f32,
+    /// Target gain at the top edge of the CS-2 knee, cached from `knee_k`.
+    knee_at_hi: f32,
     last_sustain: f32,
     last_attack: f32,
 
@@ -58,6 +63,7 @@ impl Compressor {
             auto_makeup: 1.0,
             thresh_lin: 1.0,
             knee_k: 0.0,
+            knee_at_hi: 1.0,
             last_sustain: -1.0,
             last_attack: -1.0,
             cs2: false,
@@ -93,6 +99,7 @@ impl Compressor {
         self.ratio = 2.0 + sustain * 8.0; // 2:1 … 10:1
         self.thresh_lin = db_to_lin(self.thresh_db);
         self.knee_k = 1.0 - 1.0 / self.ratio;
+        self.knee_at_hi = (1.0 / KNEE_R_HI).powf(self.knee_k);
         // Keep the established makeup law, but fade it out toward the transparent
         // end: with the threshold now inside the guitar's range, the makeup
         // accompanies real compression instead of boosting a signal the old
@@ -143,17 +150,14 @@ impl Compressor {
         let target = if self.env > self.thresh_lin {
             if self.cs2 {
                 let r = self.env / self.thresh_lin;
-                let r_lo = 2.0_f32.powf(-CS2_KNEE_DB * 0.5 / 6.0);
-                let r_hi = 2.0_f32.powf(CS2_KNEE_DB * 0.5 / 6.0);
-                if r <= r_lo {
+                if r <= KNEE_R_LO {
                     1.0
-                } else if r >= r_hi {
+                } else if r >= KNEE_R_HI {
                     (self.thresh_lin / self.env).powf(self.knee_k)
                 } else {
-                    let t = (r - r_lo) / (r_hi - r_lo);
+                    let t = (r - KNEE_R_LO) / (KNEE_R_HI - KNEE_R_LO);
                     let s = t * t * (3.0 - 2.0 * t);
-                    let at_hi = (1.0 / r_hi).powf(self.knee_k);
-                    1.0 + (at_hi - 1.0) * s
+                    1.0 + (self.knee_at_hi - 1.0) * s
                 }
             } else {
                 (self.thresh_lin / self.env).powf(self.knee_k)
