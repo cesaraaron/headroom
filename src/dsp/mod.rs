@@ -26,7 +26,8 @@ use amp::{AMP_MAX, AmpBank, AmpKnob};
 use cab::{CabBank, ExternalIrCab};
 use effects::{
     Chorus, CleanBoost, Compressor, Delay, Distortion, Flanger, Fuzz, GraphicEq, MetalCore,
-    NoiseGate, ParametricEq, Phaser, Pitch, PreampEq, Reverb, Tremolo, TubeScreamer, UniVibe, Wah,
+    NoiseGate, ParametricEq, Phaser, Pitch, PreampEq, Rat, Reverb, Tremolo, TubeScreamer, UniVibe,
+    Wah,
 };
 use limiter::Limiter;
 
@@ -315,10 +316,11 @@ pub enum ChainStage {
     Trem = 18,
     Delay = 19,
     Reverb = 20,
+    Rat = 21,
 }
 
-/// Number of slots in [`ChainStage`]: 11 pre + amp + cab + 8 rack.
-pub const CHAIN_LEN: usize = 21;
+/// Number of slots in [`ChainStage`]: 11 pre + amp + cab + 8 rack, plus the RAT.
+pub const CHAIN_LEN: usize = 22;
 
 /// Bounded number of attempts the audio-thread reader makes before giving up and
 /// reusing its last-good order (see [`Params::try_chain_slots`]).
@@ -348,6 +350,7 @@ impl ChainStage {
             18 => Some(Self::Trem),
             19 => Some(Self::Delay),
             20 => Some(Self::Reverb),
+            21 => Some(Self::Rat),
             _ => None,
         }
     }
@@ -378,6 +381,7 @@ impl ChainStage {
             Self::Trem => "trem",
             Self::Delay => "delay",
             Self::Reverb => "reverb",
+            Self::Rat => "rat",
         }
     }
 
@@ -404,6 +408,7 @@ impl ChainStage {
             "trem" => Some(Self::Trem),
             "delay" => Some(Self::Delay),
             "reverb" => Some(Self::Reverb),
+            "rat" => Some(Self::Rat),
             _ => None,
         }
     }
@@ -419,6 +424,7 @@ impl ChainStage {
             Self::Ts as u8,
             Self::Ds as u8,
             Self::Metal as u8,
+            Self::Rat as u8,
             Self::PreEq as u8,
             Self::Vibe as u8,
             Self::Boost as u8,
@@ -436,7 +442,7 @@ impl ChainStage {
     }
 
     /// Index into the UI `PEDALS` table, or `None` for the amp and cab stages.
-    /// Pre pedals map 1:1; rack pedals sit right after the 11 pre entries.
+    /// Pre pedals map 1:1; rack pedals sit right after the 12 pre entries.
     pub fn pedal_index(self) -> Option<usize> {
         match self {
             Self::Gate => Some(0),
@@ -447,18 +453,19 @@ impl ChainStage {
             Self::Ts => Some(5),
             Self::Ds => Some(6),
             Self::Metal => Some(7),
-            Self::PreEq => Some(8),
-            Self::Vibe => Some(9),
-            Self::Boost => Some(10),
+            Self::Rat => Some(8),
+            Self::PreEq => Some(9),
+            Self::Vibe => Some(10),
+            Self::Boost => Some(11),
             Self::Amp | Self::Cab => None,
-            Self::Geq => Some(11),
-            Self::Eq => Some(12),
-            Self::Flanger => Some(13),
-            Self::Chorus => Some(14),
-            Self::Phaser => Some(15),
-            Self::Trem => Some(16),
-            Self::Delay => Some(17),
-            Self::Reverb => Some(18),
+            Self::Geq => Some(12),
+            Self::Eq => Some(13),
+            Self::Flanger => Some(14),
+            Self::Chorus => Some(15),
+            Self::Phaser => Some(16),
+            Self::Trem => Some(17),
+            Self::Delay => Some(18),
+            Self::Reverb => Some(19),
         }
     }
 
@@ -472,17 +479,18 @@ impl ChainStage {
             5 => Some(Self::Ts),
             6 => Some(Self::Ds),
             7 => Some(Self::Metal),
-            8 => Some(Self::PreEq),
-            9 => Some(Self::Vibe),
-            10 => Some(Self::Boost),
-            11 => Some(Self::Geq),
-            12 => Some(Self::Eq),
-            13 => Some(Self::Flanger),
-            14 => Some(Self::Chorus),
-            15 => Some(Self::Phaser),
-            16 => Some(Self::Trem),
-            17 => Some(Self::Delay),
-            18 => Some(Self::Reverb),
+            8 => Some(Self::Rat),
+            9 => Some(Self::PreEq),
+            10 => Some(Self::Vibe),
+            11 => Some(Self::Boost),
+            12 => Some(Self::Geq),
+            13 => Some(Self::Eq),
+            14 => Some(Self::Flanger),
+            15 => Some(Self::Chorus),
+            16 => Some(Self::Phaser),
+            17 => Some(Self::Trem),
+            18 => Some(Self::Delay),
+            19 => Some(Self::Reverb),
             _ => None,
         }
     }
@@ -500,6 +508,7 @@ impl ChainStage {
                 | Self::Ts
                 | Self::Ds
                 | Self::Metal
+                | Self::Rat
                 | Self::PreEq
                 | Self::Vibe
                 | Self::Boost
@@ -736,6 +745,12 @@ const DEFAULT_ML_LOW: f32 = 0.50;
 const DEFAULT_ML_HIGH: f32 = 0.50;
 const DEFAULT_ML_LEVEL: f32 = 0.60;
 
+// ProCo RAT. Off by default; a moderate distortion and an open filter.
+const DEFAULT_RAT_ENABLED: bool = false;
+const DEFAULT_RAT_DIST: f32 = 0.45;
+const DEFAULT_RAT_FILTER: f32 = 0.30;
+const DEFAULT_RAT_LEVEL: f32 = 0.60;
+
 const DEFAULT_REV_ENABLED: bool = false;
 const DEFAULT_REV_ROOM: f32 = 0.55;
 const DEFAULT_REV_DAMP: f32 = 0.40;
@@ -915,6 +930,12 @@ pub struct Params {
     pub ml_low: Arc<AtomicF32>,
     pub ml_high: Arc<AtomicF32>,
     pub ml_level: Arc<AtomicF32>,
+
+    // ProCo RAT — a pre-amp distortion after the ML-2.
+    pub rat_enabled: Arc<AtomicBool>,
+    pub rat_dist: Arc<AtomicF32>,
+    pub rat_filter: Arc<AtomicF32>,
+    pub rat_level: Arc<AtomicF32>,
 
     // Reverb
     pub rev_enabled: Arc<AtomicBool>,
@@ -1115,6 +1136,11 @@ impl Params {
             ml_high: p!(DEFAULT_ML_HIGH),
             ml_level: p!(DEFAULT_ML_LEVEL),
 
+            rat_enabled: b!(DEFAULT_RAT_ENABLED),
+            rat_dist: p!(DEFAULT_RAT_DIST),
+            rat_filter: p!(DEFAULT_RAT_FILTER),
+            rat_level: p!(DEFAULT_RAT_LEVEL),
+
             rev_enabled: b!(DEFAULT_REV_ENABLED),
             rev_room: p!(DEFAULT_REV_ROOM),
             rev_damp: p!(DEFAULT_REV_DAMP),
@@ -1263,6 +1289,11 @@ impl Params {
         self.ml_high.store(DEFAULT_ML_HIGH, Relaxed);
         self.ml_level.store(DEFAULT_ML_LEVEL, Relaxed);
 
+        self.rat_enabled.store(DEFAULT_RAT_ENABLED, Relaxed);
+        self.rat_dist.store(DEFAULT_RAT_DIST, Relaxed);
+        self.rat_filter.store(DEFAULT_RAT_FILTER, Relaxed);
+        self.rat_level.store(DEFAULT_RAT_LEVEL, Relaxed);
+
         self.rev_enabled.store(DEFAULT_REV_ENABLED, Relaxed);
         self.rev_room.store(DEFAULT_REV_ROOM, Relaxed);
         self.rev_damp.store(DEFAULT_REV_DAMP, Relaxed);
@@ -1367,6 +1398,7 @@ impl Params {
             ChainStage::Ts => self.ts_enabled.load(Relaxed),
             ChainStage::Ds => self.ds_enabled.load(Relaxed),
             ChainStage::Metal => self.ml_enabled.load(Relaxed),
+            ChainStage::Rat => self.rat_enabled.load(Relaxed),
             ChainStage::PreEq => self.peq_enabled.load(Relaxed),
             ChainStage::Vibe => self.uv_enabled.load(Relaxed),
             ChainStage::Boost => self.boost_enabled.load(Relaxed),
@@ -1694,6 +1726,7 @@ pub struct DspChain {
     ts: TubeScreamer,
     ds: Distortion,
     ml: MetalCore,
+    rat: Rat,
     peq: PreampEq,
     uv: UniVibe,
     boost: CleanBoost,
@@ -1786,6 +1819,7 @@ impl DspChain {
             ts: TubeScreamer::new(sr),
             ds: Distortion::new(sr),
             ml: MetalCore::new(sr),
+            rat: Rat::new(sr),
             peq: PreampEq::new(sr),
             uv: UniVibe::new(sr),
             boost: CleanBoost::new(sr),
@@ -2060,6 +2094,9 @@ impl DspChain {
                 mono_stage!(
                     self, p, x, ml_enabled, ml, ml_dist, ml_low, ml_high, ml_level
                 )
+            }
+            ChainStage::Rat => {
+                mono_stage!(self, p, x, rat_enabled, rat, rat_dist, rat_filter, rat_level)
             }
             ChainStage::PreEq => {
                 mono_stage!(self, p, x, peq_enabled, peq, peq_low, peq_mid, peq_high)

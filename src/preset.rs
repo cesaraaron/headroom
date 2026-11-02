@@ -42,6 +42,7 @@ pub struct Preset {
     pub tube_screamer: TsSection,
     pub distortion: Option<DsSection>,
     pub metal_core: Option<MlSection>,
+    pub rat: Option<RatSection>,
     pub preamp_eq: Option<PeqSection>,
     pub uni_vibe: Option<UniVibeSection>,
     pub boost: Option<BoostSection>,
@@ -188,6 +189,14 @@ pub struct MlSection {
     pub dist: f32,
     pub low: f32,
     pub high: f32,
+    pub level: f32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RatSection {
+    pub enabled: Option<bool>,
+    pub dist: f32,
+    pub filter: f32,
     pub level: f32,
 }
 
@@ -527,6 +536,12 @@ impl Preset {
                 high: params.ml_high.load(Relaxed),
                 level: params.ml_level.load(Relaxed),
             }),
+            rat: Some(RatSection {
+                enabled: Some(params.rat_enabled.load(Relaxed)),
+                dist: params.rat_dist.load(Relaxed),
+                filter: params.rat_filter.load(Relaxed),
+                level: params.rat_level.load(Relaxed),
+            }),
             preamp_eq: Some(PeqSection {
                 enabled: Some(params.peq_enabled.load(Relaxed)),
                 low: params.peq_low.load(Relaxed),
@@ -740,6 +755,19 @@ impl Preset {
             params.ml_level.store(ml.level.clamp(0.0, 1.0), Relaxed);
         } else {
             params.ml_enabled.store(false, Relaxed);
+        }
+
+        if let Some(rat) = &self.rat {
+            params
+                .rat_enabled
+                .store(rat.enabled.unwrap_or(true), Relaxed);
+            params.rat_dist.store(rat.dist.clamp(0.0, 1.0), Relaxed);
+            params
+                .rat_filter
+                .store(rat.filter.clamp(0.0, 1.0), Relaxed);
+            params.rat_level.store(rat.level.clamp(0.0, 1.0), Relaxed);
+        } else {
+            params.rat_enabled.store(false, Relaxed);
         }
 
         if let Some(peq) = &self.preamp_eq {
@@ -1142,6 +1170,7 @@ pub(crate) fn rig_values(p: &Params, v: &mut Vec<f32>) {
         &p.ts_enabled,
         &p.ds_enabled,
         &p.ml_enabled,
+        &p.rat_enabled,
         &p.peq_enabled,
         &p.uv_enabled,
         &p.boost_enabled,
@@ -1190,6 +1219,7 @@ pub(crate) fn rig_values(p: &Params, v: &mut Vec<f32>) {
     knobs!(ts_enabled, ts_drive, ts_tone, ts_level);
     knobs!(ds_enabled, ds_drive, ds_tone, ds_level);
     knobs!(ml_enabled, ml_dist, ml_low, ml_high, ml_level);
+    knobs!(rat_enabled, rat_dist, rat_filter, rat_level);
     knobs!(peq_enabled, peq_low, peq_mid, peq_high);
     knobs!(uv_enabled, uv_rate, uv_depth, uv_mix, uv_mode);
     knobs!(boost_enabled, boost_gain, boost_treble, boost_bass);
@@ -1275,6 +1305,7 @@ mod tests {
         ("tube_screamer", 1979), // Ibanez TS-808
         ("distortion", 1978),    // Boss DS-1
         ("metal_core", 2004),    // Boss ML-2
+        ("rat", 1979),           // ProCo RAT
         ("boost", 1972),         // Colorsound Power Boost (approx.)
     ];
 
@@ -1423,6 +1454,9 @@ mod tests {
             ml_low,
             ml_high,
             ml_level,
+            rat_dist,
+            rat_filter,
+            rat_level,
             peq_low,
             peq_mid,
             peq_high,
@@ -1674,17 +1708,17 @@ mod tests {
         let params = Params::new();
         let mut moved: Vec<u8> = ChainStage::default_order().into_iter().collect();
         moved.retain(|&v| v != ChainStage::Comp as u8);
-        moved.insert(12, ChainStage::Comp as u8); // comp after the cab stage
+        moved.insert(13, ChainStage::Comp as u8); // comp after the cab stage
         let moved: [u8; crate::dsp::CHAIN_LEN] = moved.try_into().unwrap();
         params.set_chain_order(&moved);
 
         let preset = Preset::from_params("Moved".to_string(), None, &params);
         let names = &preset.chain.as_ref().expect("chain saved").order;
-        assert_eq!(names[8], "vibe");
-        assert_eq!(names[9], "boost");
-        assert_eq!(names[10], "amp");
-        assert_eq!(names[11], "cab");
-        assert_eq!(names[12], "comp");
+        assert_eq!(names[9], "vibe");
+        assert_eq!(names[10], "boost");
+        assert_eq!(names[11], "amp");
+        assert_eq!(names[12], "cab");
+        assert_eq!(names[13], "comp");
 
         // Apply onto fresh params and confirm the slots land.
         let fresh = Params::new();

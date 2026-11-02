@@ -5,9 +5,9 @@ use atomic_float::AtomicF32;
 use ratatui::style::Color;
 
 use super::styles::{
-    PEDAL_BLUE, PEDAL_CYAN, PEDAL_GOLD, PEDAL_GREEN, PEDAL_INDIGO, PEDAL_LIME, PEDAL_MINT,
-    PEDAL_ORANGE, PEDAL_ORCHID, PEDAL_PINK, PEDAL_PURPLE, PEDAL_RED, PEDAL_ROSE, PEDAL_SAND,
-    PEDAL_SILVER, PEDAL_STEEL, PEDAL_TEAL, PEDAL_VIBE, PEDAL_YELLOW,
+    PEDAL_BLUE, PEDAL_CHARCOAL, PEDAL_CYAN, PEDAL_GOLD, PEDAL_GREEN, PEDAL_INDIGO, PEDAL_LIME,
+    PEDAL_MINT, PEDAL_ORANGE, PEDAL_ORCHID, PEDAL_PINK, PEDAL_PURPLE, PEDAL_RED, PEDAL_ROSE,
+    PEDAL_SAND, PEDAL_SILVER, PEDAL_STEEL, PEDAL_TEAL, PEDAL_VIBE, PEDAL_YELLOW,
 };
 use crate::dsp::Params;
 pub(super) struct Knob {
@@ -67,7 +67,9 @@ pub(super) const DS_START: usize = TS_END;
 pub(super) const DS_END: usize = DS_START + 3;
 pub(super) const ML_START: usize = DS_END;
 pub(super) const ML_END: usize = ML_START + 4;
-pub(super) const PEQ_START: usize = ML_END;
+pub(super) const RAT_START: usize = ML_END;
+pub(super) const RAT_END: usize = RAT_START + 3;
+pub(super) const PEQ_START: usize = RAT_END;
 pub(super) const PEQ_END: usize = PEQ_START + 3;
 // Uni-Vibe — the last pedal before the amp (guitar → fuzz → vibe → amp).
 pub(super) const UV_START: usize = PEQ_END;
@@ -272,7 +274,20 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.ml_level,
     },
-    // 35–37: Pre-amp EQ
+    // 35–37: ProCo RAT
+    Knob {
+        label: "DIST",
+        param: |p| &p.rat_dist,
+    },
+    Knob {
+        label: "FILTER",
+        param: |p| &p.rat_filter,
+    },
+    Knob {
+        label: "LEVEL",
+        param: |p| &p.rat_level,
+    },
+    // 38–40: Pre-amp EQ
     Knob {
         label: "LOW",
         param: |p| &p.peq_low,
@@ -535,6 +550,14 @@ pub(super) const PEDALS: &[Pedal] = &[
         ui: PedalUi::Knobs,
     },
     Pedal {
+        name: "RAT",
+        color: PEDAL_CHARCOAL,
+        start: RAT_START,
+        end: RAT_END,
+        enabled: |p| &p.rat_enabled,
+        ui: PedalUi::Knobs,
+    },
+    Pedal {
         name: "PRE-AMP EQ",
         color: PEDAL_LIME,
         start: PEQ_START,
@@ -777,8 +800,8 @@ mod tests {
     fn table_sizes_are_stable() {
         // Deliberate tripwire: bump these when you add or remove a pedal/knob so
         // the change is a conscious, reviewed edit rather than an accident.
-        assert_eq!(PEDALS.len(), 19, "pedal count changed");
-        assert_eq!(KNOBS.len(), 86, "knob count changed");
+        assert_eq!(PEDALS.len(), 20, "pedal count changed");
+        assert_eq!(KNOBS.len(), 89, "knob count changed");
     }
 
     #[test]
