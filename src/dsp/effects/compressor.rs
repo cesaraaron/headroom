@@ -1,4 +1,12 @@
 use super::{SmoothedGain, db_to_lin, param_changed};
+use crate::dsp::biquad::Biquad;
+
+/// Voice 0 is the MXR Dyna Comp: the fast, bright, squashy circuit this effect
+/// shipped with. Voice 1 is the Boss CS-2: a softer knee, a slower release and a
+/// gently darkened top. The knob is a *voicing* switch, not a second circuit.
+const CS2_KNEE_DB: f32 = 6.0;
+const CS2_RELEASE_MS: f32 = 250.0;
+const DYNA_RELEASE_MS: f32 = 150.0;
 
 /// Front-of-chain feed-forward compressor — evens out picking dynamics and adds
 /// sustain, the single biggest "studio" upgrade for clean and edge-of-breakup
@@ -26,6 +34,13 @@ pub struct Compressor {
     last_sustain: f32,
     last_attack: f32,
 
+    /// `true` for the CS-2 voice. Voice 0 keeps the shipped Dyna path exactly.
+    cs2: bool,
+    last_voice: f32,
+    /// CS-2's fixed high-shelf roll-off. Only processed for the CS-2 voice, so
+    /// the Dyna path never touches its state.
+    cs2_tone: Biquad,
+
     /// Output makeup, smoothed. `level` spans 0–2×.
     level: SmoothedGain,
 }
@@ -45,12 +60,23 @@ impl Compressor {
             knee_k: 0.0,
             last_sustain: -1.0,
             last_attack: -1.0,
+            cs2: false,
+            last_voice: -1.0,
+            cs2_tone: Biquad::high_shelf(sr, 3000.0, -1.5),
             // `level` 0.5 = unity, matching the default knob position.
             level: SmoothedGain::new(1.0, sr),
         };
         c.set_sustain(0.0);
+        c.set_voice(0.0);
         c.set_attack(0.0);
         c
+    }
+
+    /// Select the compressor voice. Voice 0 is the shipped Dyna Comp path; any
+    /// value ≥ 0.5 selects the darker, softer CS-2.
+    fn set_voice(&mut self, voice: f32) {
+        self.cs2 = voice >= 0.5;
+        self.last_voice = voice;
     }
 
     /// Recompute the gain computer for a new SUSTAIN.
@@ -79,18 +105,28 @@ impl Compressor {
     /// Detector attack/release coefficients for a new ATTACK.
     fn set_attack(&mut self, attack: f32) {
         let atk_ms = 0.5 + attack * 49.5;
-        let rel_ms = 150.0; // musical fixed auto-release
+        let rel_ms = if self.cs2 {
+            CS2_RELEASE_MS
+        } else {
+            DYNA_RELEASE_MS
+        };
         self.atk = (-1.0 / (atk_ms * 0.001 * self.sr)).exp();
         self.rel = (-1.0 / (rel_ms * 0.001 * self.sr)).exp();
         self.last_attack = attack;
     }
 
     /// `sustain` 0–1 = compression amount (lower threshold + higher ratio),
-    /// `attack` 0–1 = 0.5–50 ms attack, `level` 0–1 = output makeup (≈0–2×).
+    /// `attack` 0–1 = 0.5–50 ms attack, `level` 0–1 = output makeup (≈0–2×),
+    /// `voice` 0–1 = Dyna Comp (< 0.5) / Boss CS-2 (≥ 0.5).
     #[inline]
-    pub fn process(&mut self, x: f32, sustain: f32, attack: f32, level: f32) -> f32 {
+    pub fn process(&mut self, x: f32, sustain: f32, attack: f32, level: f32, voice: f32) -> f32 {
         if param_changed(sustain, self.last_sustain) {
             self.set_sustain(sustain);
+        }
+        if param_changed(voice, self.last_voice) {
+            self.set_voice(voice);
+            // The voice changes the release time, so rebuild the detector too.
+            self.set_attack(self.last_attack);
         }
         if param_changed(attack, self.last_attack) {
             self.set_attack(attack);
@@ -101,13 +137,27 @@ impl Compressor {
         let det_coeff = if a > self.env { self.atk } else { self.rel };
         self.env = det_coeff * self.env + (1.0 - det_coeff) * a;
 
-        // Gain computer (linear domain, hard knee): `over = lin_to_db(env) -
-        // thresh_db`, `target = db_to_lin(-over * (1 - 1/ratio))` expands to
-        // `(thresh_lin/env)^knee_k` — one `powf`, no `log10`. The linear
-        // comparison is the same branch (monotonic `lin_to_db`), and both
-        // sides are 1.0 at the knee, so it cannot step.
+        // Gain computer. The Dyna path is the shipped hard-knee formula. The
+        // CS-2 widens the knee to ±3 dB and blends across it with a smoothstep,
+        // so the onset of compression is gradual instead of a corner.
         let target = if self.env > self.thresh_lin {
-            (self.thresh_lin / self.env).powf(self.knee_k)
+            if self.cs2 {
+                let r = self.env / self.thresh_lin;
+                let r_lo = 2.0_f32.powf(-CS2_KNEE_DB * 0.5 / 6.0);
+                let r_hi = 2.0_f32.powf(CS2_KNEE_DB * 0.5 / 6.0);
+                if r <= r_lo {
+                    1.0
+                } else if r >= r_hi {
+                    (self.thresh_lin / self.env).powf(self.knee_k)
+                } else {
+                    let t = (r - r_lo) / (r_hi - r_lo);
+                    let s = t * t * (3.0 - 2.0 * t);
+                    let at_hi = (1.0 / r_hi).powf(self.knee_k);
+                    1.0 + (at_hi - 1.0) * s
+                }
+            } else {
+                (self.thresh_lin / self.env).powf(self.knee_k)
+            }
         } else {
             1.0
         };
@@ -121,7 +171,12 @@ impl Compressor {
         self.gain = g_coeff * self.gain + (1.0 - g_coeff) * target;
 
         self.level.set(level.clamp(0.0, 1.0) * 2.0);
-        x * self.gain * self.auto_makeup * self.level.step()
+        let y = x * self.gain * self.auto_makeup * self.level.step();
+        if self.cs2 {
+            self.cs2_tone.process(y)
+        } else {
+            y
+        }
     }
 }
 
@@ -142,7 +197,7 @@ mod tests {
             let t = i as f32 / 48_000.0;
             let env = (-t * 4.0).exp();
             let x = 0.1 * env * (2.0 * PI * 110.0 * t).sin();
-            c.process(x, 0.4, 0.4, 0.6);
+            c.process(x, 0.4, 0.4, 0.6, 0.0);
             min_gain = min_gain.min(c.gain);
         }
         assert!(
@@ -176,7 +231,7 @@ mod tests {
             let warmup = sr as usize / 4;
             for n in 0..(sr as usize) {
                 let x = (2.0 * PI * f * n as f32 / sr).sin() * amp;
-                let y = c.process(x, sustain, attack, level);
+                let y = c.process(x, sustain, attack, level, 0.0);
                 assert!(y.is_finite(), "non-finite output");
                 if n >= warmup {
                     sum += (y * y) as f64;
@@ -216,7 +271,7 @@ mod tests {
         let mut count = 0u32;
         for n in 0..(sr as usize) {
             let x = (2.0 * PI * f * n as f32 / sr).sin() * 0.05; // ≈ −26 dBFS
-            let y = c.process(x, 0.0, 0.5, 0.5); // sustain 0, level 0.5 = unity
+            let y = c.process(x, 0.0, 0.5, 0.5, 0.0); // sustain 0, level 0.5 = unity
             assert!(y.is_finite());
             if n > sr as usize / 2 {
                 sum_in += (x * x) as f64;
@@ -250,7 +305,7 @@ mod tests {
             let mut count = 0u32;
             for n in 0..(sr as usize) {
                 let x = (2.0 * PI * f * n as f32 / sr).sin() * amp;
-                let y = c.process(x, sustain, 0.2, 0.5);
+                let y = c.process(x, sustain, 0.2, 0.5, 0.0);
                 if n > sr as usize / 2 {
                     sum += (y * y) as f64;
                     count += 1;
@@ -275,12 +330,12 @@ mod tests {
         let mut c = Compressor::new(sr);
         // A DC probe: the output is then exactly `gain * level`, so the
         // sample-to-sample step is entirely the level smoother's doing.
-        let mut prev = c.process(0.1, 0.3, 0.3, 0.5);
+        let mut prev = c.process(0.1, 0.3, 0.3, 0.5, 0.0);
         let mut worst = 0.0f32;
         for n in 0..2400 {
             // A hard 0.5 -> 1.0 jump at sample 1200: 0.5*2=1.0 up to 1.0*2=2.0.
             let level = if n == 1200 { 1.0 } else { 0.5 };
-            let y = c.process(0.1, 0.3, 0.3, level);
+            let y = c.process(0.1, 0.3, 0.3, level, 0.0);
             worst = worst.max((y - prev).abs());
             prev = y;
         }
@@ -301,7 +356,7 @@ mod tests {
         let mut c = Compressor::new(sr);
         for n in 0..100 {
             let x = (2.0 * PI * 220.0 * n as f32 / sr).sin() * 0.5;
-            c.process(x, 0.9, 0.2, 0.5);
+            c.process(x, 0.9, 0.2, 0.5, 0.0);
         }
         // Sweep the envelope across and around the threshold.
         for i in 0..200 {
@@ -333,7 +388,7 @@ mod tests {
         let mut c = Compressor::new(sr);
         for n in 0..100 {
             let x = (2.0 * PI * 220.0 * n as f32 / sr).sin() * 0.5;
-            c.process(x, 0.9, 0.2, 0.5);
+            c.process(x, 0.9, 0.2, 0.5, 0.0);
         }
         let below = c.thresh_lin * (1.0 - 1e-6);
         let above = c.thresh_lin * (1.0 + 1e-6);
@@ -351,5 +406,25 @@ mod tests {
             (t_below - 1.0).abs() < 1e-4 && (t_above - 1.0).abs() < 1e-4,
             "knee discontinuity: {t_below} vs {t_above}"
         );
+    }
+
+    /// Voice 0 is the Dyna Comp (today's circuit); voice 1 is the darker,
+    /// smoother Boss CS-2. Same knobs, same input, audibly different output.
+    #[test]
+    fn dyna_and_cs2_voices_are_distinct() {
+        const SR: f32 = 48_000.0;
+        let run = |voice: f32| {
+            let mut c = Compressor::new(SR);
+            let mut out = Vec::new();
+            for n in 0..SR as usize {
+                let x = if n % 4800 == 0 { 0.8 } else { 0.05 };
+                out.push(c.process(x, 0.6, 0.3, 0.5, voice));
+            }
+            out
+        };
+        let dyna = run(0.0);
+        let cs2 = run(1.0);
+        let diff: f32 = dyna.iter().zip(&cs2).map(|(a, b)| (a - b).abs()).sum();
+        assert!(diff > 1.0, "voices are not audibly distinct");
     }
 }

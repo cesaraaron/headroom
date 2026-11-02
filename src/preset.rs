@@ -76,6 +76,13 @@ pub struct CmpSection {
     pub sustain: f32,
     pub attack: f32,
     pub level: f32,
+    /// 0 = Dyna Comp, 1 = Boss CS-2. Defaults to the shipped Dyna voice.
+    #[serde(default = "cmp_voice_default")]
+    pub voice: f32,
+}
+
+fn cmp_voice_default() -> f32 {
+    0.0
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -467,6 +474,7 @@ impl Preset {
                 sustain: params.cmp_sustain.load(Relaxed),
                 attack: params.cmp_attack.load(Relaxed),
                 level: params.cmp_level.load(Relaxed),
+                voice: params.cmp_voice.load(Relaxed),
             }),
             pitch: Some(PitchSection {
                 enabled: Some(params.pitch_enabled.load(Relaxed)),
@@ -654,6 +662,7 @@ impl Preset {
                 .store(cmp.sustain.clamp(0.0, 1.0), Relaxed);
             params.cmp_attack.store(cmp.attack.clamp(0.0, 1.0), Relaxed);
             params.cmp_level.store(cmp.level.clamp(0.0, 1.0), Relaxed);
+            params.cmp_voice.store(cmp.voice.clamp(0.0, 1.0), Relaxed);
         } else {
             params.cmp_enabled.store(false, Relaxed);
         }
@@ -1166,7 +1175,7 @@ pub(crate) fn rig_values(p: &Params, v: &mut Vec<f32>) {
         wah_mode,
         wah_position
     );
-    knobs!(cmp_enabled, cmp_sustain, cmp_attack, cmp_level);
+    knobs!(cmp_enabled, cmp_sustain, cmp_attack, cmp_level, cmp_voice);
     knobs!(fz_enabled, fz_fuzz, fz_tone, fz_level, fz_type, fz_guitar);
     knobs!(ts_enabled, ts_drive, ts_tone, ts_level);
     knobs!(ds_enabled, ds_drive, ds_tone, ds_level);
@@ -1388,6 +1397,7 @@ mod tests {
             cmp_sustain,
             cmp_attack,
             cmp_level,
+            cmp_voice,
             fz_fuzz,
             fz_tone,
             fz_level,

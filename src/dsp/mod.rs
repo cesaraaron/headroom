@@ -674,6 +674,8 @@ const DEFAULT_CMP_ENABLED: bool = false;
 const DEFAULT_CMP_SUSTAIN: f32 = 0.40;
 const DEFAULT_CMP_ATTACK: f32 = 0.30;
 const DEFAULT_CMP_LEVEL: f32 = 0.50;
+// 0 = Dyna Comp (the shipped circuit), 1 = Boss CS-2.
+const DEFAULT_CMP_VOICE: f32 = 0.0;
 
 const DEFAULT_PITCH_ENABLED: bool = false;
 const DEFAULT_PITCH_PITCH: f32 = 0.50; // unison
@@ -843,6 +845,8 @@ pub struct Params {
     pub cmp_sustain: Arc<AtomicF32>,
     pub cmp_attack: Arc<AtomicF32>,
     pub cmp_level: Arc<AtomicF32>,
+    /// 0 = Dyna Comp (shipped), 1 = Boss CS-2.
+    pub cmp_voice: Arc<AtomicF32>,
 
     // Pitch shifter / Whammy (early mono chain, after the gate)
     pub pitch_enabled: Arc<AtomicBool>,
@@ -1052,6 +1056,7 @@ impl Params {
             cmp_sustain: p!(DEFAULT_CMP_SUSTAIN),
             cmp_attack: p!(DEFAULT_CMP_ATTACK),
             cmp_level: p!(DEFAULT_CMP_LEVEL),
+            cmp_voice: p!(DEFAULT_CMP_VOICE),
 
             pitch_enabled: b!(DEFAULT_PITCH_ENABLED),
             pitch_pitch: p!(DEFAULT_PITCH_PITCH),
@@ -1198,6 +1203,7 @@ impl Params {
         self.cmp_sustain.store(DEFAULT_CMP_SUSTAIN, Relaxed);
         self.cmp_attack.store(DEFAULT_CMP_ATTACK, Relaxed);
         self.cmp_level.store(DEFAULT_CMP_LEVEL, Relaxed);
+        self.cmp_voice.store(DEFAULT_CMP_VOICE, Relaxed);
 
         self.pitch_enabled.store(DEFAULT_PITCH_ENABLED, Relaxed);
         self.pitch_pitch.store(DEFAULT_PITCH_PITCH, Relaxed);
@@ -2029,7 +2035,8 @@ impl DspChain {
                 cmp,
                 cmp_sustain,
                 cmp_attack,
-                cmp_level
+                cmp_level,
+                cmp_voice
             ),
             ChainStage::Fuzz => {
                 mono_stage!(
