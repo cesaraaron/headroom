@@ -5,9 +5,9 @@ use atomic_float::AtomicF32;
 use ratatui::style::Color;
 
 use super::styles::{
-    PEDAL_BLUE, PEDAL_CHARCOAL, PEDAL_CYAN, PEDAL_GOLD, PEDAL_GREEN, PEDAL_INDIGO, PEDAL_LIME,
-    PEDAL_MINT, PEDAL_ORANGE, PEDAL_ORCHID, PEDAL_PINK, PEDAL_PURPLE, PEDAL_RED, PEDAL_ROSE,
-    PEDAL_SAND, PEDAL_SILVER, PEDAL_STEEL, PEDAL_TEAL, PEDAL_VIBE, PEDAL_YELLOW,
+    PEDAL_AMBER, PEDAL_BLUE, PEDAL_CHARCOAL, PEDAL_CYAN, PEDAL_GOLD, PEDAL_GREEN, PEDAL_INDIGO,
+    PEDAL_LIME, PEDAL_MINT, PEDAL_ORANGE, PEDAL_ORCHID, PEDAL_PINK, PEDAL_PURPLE, PEDAL_RED,
+    PEDAL_ROSE, PEDAL_SAND, PEDAL_SILVER, PEDAL_STEEL, PEDAL_TEAL, PEDAL_VIBE, PEDAL_YELLOW,
 };
 use crate::dsp::Params;
 pub(super) struct Knob {
@@ -69,7 +69,9 @@ pub(super) const ML_START: usize = DS_END;
 pub(super) const ML_END: usize = ML_START + 4;
 pub(super) const RAT_START: usize = ML_END;
 pub(super) const RAT_END: usize = RAT_START + 3;
-pub(super) const PEQ_START: usize = RAT_END;
+pub(super) const TD_START: usize = RAT_END;
+pub(super) const TD_END: usize = TD_START + 4;
+pub(super) const PEQ_START: usize = TD_END;
 pub(super) const PEQ_END: usize = PEQ_START + 3;
 // Uni-Vibe — the last pedal before the amp (guitar → fuzz → vibe → amp).
 pub(super) const UV_START: usize = PEQ_END;
@@ -287,7 +289,24 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.rat_level,
     },
-    // 38–40: Pre-amp EQ
+    // 38–41: B.K. Butler Tube Driver
+    Knob {
+        label: "DRIVE",
+        param: |p| &p.td_drive,
+    },
+    Knob {
+        label: "HIGH",
+        param: |p| &p.td_high,
+    },
+    Knob {
+        label: "LOW",
+        param: |p| &p.td_low,
+    },
+    Knob {
+        label: "LEVEL",
+        param: |p| &p.td_level,
+    },
+    // 42–44: Pre-amp EQ
     Knob {
         label: "LOW",
         param: |p| &p.peq_low,
@@ -558,6 +577,14 @@ pub(super) const PEDALS: &[Pedal] = &[
         ui: PedalUi::Knobs,
     },
     Pedal {
+        name: "TUBE DRIVER",
+        color: PEDAL_AMBER,
+        start: TD_START,
+        end: TD_END,
+        enabled: |p| &p.td_enabled,
+        ui: PedalUi::Knobs,
+    },
+    Pedal {
         name: "PRE-AMP EQ",
         color: PEDAL_LIME,
         start: PEQ_START,
@@ -800,8 +827,8 @@ mod tests {
     fn table_sizes_are_stable() {
         // Deliberate tripwire: bump these when you add or remove a pedal/knob so
         // the change is a conscious, reviewed edit rather than an accident.
-        assert_eq!(PEDALS.len(), 20, "pedal count changed");
-        assert_eq!(KNOBS.len(), 89, "knob count changed");
+        assert_eq!(PEDALS.len(), 21, "pedal count changed");
+        assert_eq!(KNOBS.len(), 93, "knob count changed");
     }
 
     #[test]

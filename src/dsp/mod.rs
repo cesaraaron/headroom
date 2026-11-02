@@ -26,8 +26,8 @@ use amp::{AMP_MAX, AmpBank, AmpKnob};
 use cab::{CabBank, ExternalIrCab};
 use effects::{
     Chorus, CleanBoost, Compressor, Delay, Distortion, Flanger, Fuzz, GraphicEq, MetalCore,
-    NoiseGate, ParametricEq, Phaser, Pitch, PreampEq, Rat, Reverb, Tremolo, TubeScreamer, UniVibe,
-    Wah,
+    NoiseGate, ParametricEq, Phaser, Pitch, PreampEq, Rat, Reverb, Tremolo, TubeDriver,
+    TubeScreamer, UniVibe, Wah,
 };
 use limiter::Limiter;
 
@@ -317,10 +317,12 @@ pub enum ChainStage {
     Delay = 19,
     Reverb = 20,
     Rat = 21,
+    TubeDriver = 22,
 }
 
-/// Number of slots in [`ChainStage`]: 11 pre + amp + cab + 8 rack, plus the RAT.
-pub const CHAIN_LEN: usize = 22;
+/// Number of slots in [`ChainStage`]: 11 pre + amp + cab + 8 rack, plus the RAT
+/// and the Tube Driver.
+pub const CHAIN_LEN: usize = 23;
 
 /// Bounded number of attempts the audio-thread reader makes before giving up and
 /// reusing its last-good order (see [`Params::try_chain_slots`]).
@@ -351,6 +353,7 @@ impl ChainStage {
             19 => Some(Self::Delay),
             20 => Some(Self::Reverb),
             21 => Some(Self::Rat),
+            22 => Some(Self::TubeDriver),
             _ => None,
         }
     }
@@ -382,6 +385,7 @@ impl ChainStage {
             Self::Delay => "delay",
             Self::Reverb => "reverb",
             Self::Rat => "rat",
+            Self::TubeDriver => "tube_driver",
         }
     }
 
@@ -409,6 +413,7 @@ impl ChainStage {
             "delay" => Some(Self::Delay),
             "reverb" => Some(Self::Reverb),
             "rat" => Some(Self::Rat),
+            "tube_driver" => Some(Self::TubeDriver),
             _ => None,
         }
     }
@@ -425,6 +430,7 @@ impl ChainStage {
             Self::Ds as u8,
             Self::Metal as u8,
             Self::Rat as u8,
+            Self::TubeDriver as u8,
             Self::PreEq as u8,
             Self::Vibe as u8,
             Self::Boost as u8,
@@ -454,18 +460,19 @@ impl ChainStage {
             Self::Ds => Some(6),
             Self::Metal => Some(7),
             Self::Rat => Some(8),
-            Self::PreEq => Some(9),
-            Self::Vibe => Some(10),
-            Self::Boost => Some(11),
+            Self::TubeDriver => Some(9),
+            Self::PreEq => Some(10),
+            Self::Vibe => Some(11),
+            Self::Boost => Some(12),
             Self::Amp | Self::Cab => None,
-            Self::Geq => Some(12),
-            Self::Eq => Some(13),
-            Self::Flanger => Some(14),
-            Self::Chorus => Some(15),
-            Self::Phaser => Some(16),
-            Self::Trem => Some(17),
-            Self::Delay => Some(18),
-            Self::Reverb => Some(19),
+            Self::Geq => Some(13),
+            Self::Eq => Some(14),
+            Self::Flanger => Some(15),
+            Self::Chorus => Some(16),
+            Self::Phaser => Some(17),
+            Self::Trem => Some(18),
+            Self::Delay => Some(19),
+            Self::Reverb => Some(20),
         }
     }
 
@@ -480,17 +487,18 @@ impl ChainStage {
             6 => Some(Self::Ds),
             7 => Some(Self::Metal),
             8 => Some(Self::Rat),
-            9 => Some(Self::PreEq),
-            10 => Some(Self::Vibe),
-            11 => Some(Self::Boost),
-            12 => Some(Self::Geq),
-            13 => Some(Self::Eq),
-            14 => Some(Self::Flanger),
-            15 => Some(Self::Chorus),
-            16 => Some(Self::Phaser),
-            17 => Some(Self::Trem),
-            18 => Some(Self::Delay),
-            19 => Some(Self::Reverb),
+            9 => Some(Self::TubeDriver),
+            10 => Some(Self::PreEq),
+            11 => Some(Self::Vibe),
+            12 => Some(Self::Boost),
+            13 => Some(Self::Geq),
+            14 => Some(Self::Eq),
+            15 => Some(Self::Flanger),
+            16 => Some(Self::Chorus),
+            17 => Some(Self::Phaser),
+            18 => Some(Self::Trem),
+            19 => Some(Self::Delay),
+            20 => Some(Self::Reverb),
             _ => None,
         }
     }
@@ -509,6 +517,7 @@ impl ChainStage {
                 | Self::Ds
                 | Self::Metal
                 | Self::Rat
+                | Self::TubeDriver
                 | Self::PreEq
                 | Self::Vibe
                 | Self::Boost
@@ -751,6 +760,13 @@ const DEFAULT_RAT_DIST: f32 = 0.45;
 const DEFAULT_RAT_FILTER: f32 = 0.30;
 const DEFAULT_RAT_LEVEL: f32 = 0.60;
 
+// B.K. Butler Tube Driver. Off by default; a mild drive and flat tone.
+const DEFAULT_TD_ENABLED: bool = false;
+const DEFAULT_TD_DRIVE: f32 = 0.40;
+const DEFAULT_TD_HIGH: f32 = 0.50;
+const DEFAULT_TD_LOW: f32 = 0.50;
+const DEFAULT_TD_LEVEL: f32 = 0.60;
+
 const DEFAULT_REV_ENABLED: bool = false;
 const DEFAULT_REV_ROOM: f32 = 0.55;
 const DEFAULT_REV_DAMP: f32 = 0.40;
@@ -936,6 +952,13 @@ pub struct Params {
     pub rat_dist: Arc<AtomicF32>,
     pub rat_filter: Arc<AtomicF32>,
     pub rat_level: Arc<AtomicF32>,
+
+    // B.K. Butler Tube Driver — the 1990s lead overdrive, after the RAT.
+    pub td_enabled: Arc<AtomicBool>,
+    pub td_drive: Arc<AtomicF32>,
+    pub td_high: Arc<AtomicF32>,
+    pub td_low: Arc<AtomicF32>,
+    pub td_level: Arc<AtomicF32>,
 
     // Reverb
     pub rev_enabled: Arc<AtomicBool>,
@@ -1141,6 +1164,12 @@ impl Params {
             rat_filter: p!(DEFAULT_RAT_FILTER),
             rat_level: p!(DEFAULT_RAT_LEVEL),
 
+            td_enabled: b!(DEFAULT_TD_ENABLED),
+            td_drive: p!(DEFAULT_TD_DRIVE),
+            td_high: p!(DEFAULT_TD_HIGH),
+            td_low: p!(DEFAULT_TD_LOW),
+            td_level: p!(DEFAULT_TD_LEVEL),
+
             rev_enabled: b!(DEFAULT_REV_ENABLED),
             rev_room: p!(DEFAULT_REV_ROOM),
             rev_damp: p!(DEFAULT_REV_DAMP),
@@ -1294,6 +1323,12 @@ impl Params {
         self.rat_filter.store(DEFAULT_RAT_FILTER, Relaxed);
         self.rat_level.store(DEFAULT_RAT_LEVEL, Relaxed);
 
+        self.td_enabled.store(DEFAULT_TD_ENABLED, Relaxed);
+        self.td_drive.store(DEFAULT_TD_DRIVE, Relaxed);
+        self.td_high.store(DEFAULT_TD_HIGH, Relaxed);
+        self.td_low.store(DEFAULT_TD_LOW, Relaxed);
+        self.td_level.store(DEFAULT_TD_LEVEL, Relaxed);
+
         self.rev_enabled.store(DEFAULT_REV_ENABLED, Relaxed);
         self.rev_room.store(DEFAULT_REV_ROOM, Relaxed);
         self.rev_damp.store(DEFAULT_REV_DAMP, Relaxed);
@@ -1399,6 +1434,7 @@ impl Params {
             ChainStage::Ds => self.ds_enabled.load(Relaxed),
             ChainStage::Metal => self.ml_enabled.load(Relaxed),
             ChainStage::Rat => self.rat_enabled.load(Relaxed),
+            ChainStage::TubeDriver => self.td_enabled.load(Relaxed),
             ChainStage::PreEq => self.peq_enabled.load(Relaxed),
             ChainStage::Vibe => self.uv_enabled.load(Relaxed),
             ChainStage::Boost => self.boost_enabled.load(Relaxed),
@@ -1727,6 +1763,7 @@ pub struct DspChain {
     ds: Distortion,
     ml: MetalCore,
     rat: Rat,
+    td: TubeDriver,
     peq: PreampEq,
     uv: UniVibe,
     boost: CleanBoost,
@@ -1820,6 +1857,7 @@ impl DspChain {
             ds: Distortion::new(sr),
             ml: MetalCore::new(sr),
             rat: Rat::new(sr),
+            td: TubeDriver::new(sr),
             peq: PreampEq::new(sr),
             uv: UniVibe::new(sr),
             boost: CleanBoost::new(sr),
@@ -2098,6 +2136,9 @@ impl DspChain {
             ChainStage::Rat => {
                 mono_stage!(self, p, x, rat_enabled, rat, rat_dist, rat_filter, rat_level)
             }
+            ChainStage::TubeDriver => mono_stage!(
+                self, p, x, td_enabled, td, td_drive, td_high, td_low, td_level
+            ),
             ChainStage::PreEq => {
                 mono_stage!(self, p, x, peq_enabled, peq, peq_low, peq_mid, peq_high)
             }

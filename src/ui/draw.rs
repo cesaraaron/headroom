@@ -390,6 +390,7 @@ fn pedal_stage_state(params: &Params, stage: ChainStage) -> Option<(&'static str
         ChainStage::Ds => Some(("DS-1", on(&params.ds_enabled))),
         ChainStage::Metal => Some(("ML-2", on(&params.ml_enabled))),
         ChainStage::Rat => Some(("RAT", on(&params.rat_enabled))),
+        ChainStage::TubeDriver => Some(("TUBE DRV", on(&params.td_enabled))),
         ChainStage::PreEq => Some(("PRE-EQ", on(&params.peq_enabled))),
         ChainStage::Vibe => Some(("VIBE", on(&params.uv_enabled))),
         ChainStage::Boost => Some(("BOOST", on(&params.boost_enabled))),
@@ -2760,7 +2761,7 @@ mod tests {
                 None,
                 None,
                 Panels::all_visible(),
-                ChainStage::Amp,
+                ChainStage::Gate,
                 master_selected,
                 None,
                 None,
@@ -3006,7 +3007,7 @@ mod tests {
         let board = board_all(true); // every pedal on: the row overflows the pane
 
         // Selected at the front: the start shows and the right end is clipped.
-        let head = render_header_line(&params, &board, ChainStage::Amp, true, false);
+        let head = render_header_line(&params, &board, ChainStage::Gate, true, false);
         assert!(
             head.contains("GATE"),
             "the start must be visible: {head}"
