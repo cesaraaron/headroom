@@ -1,4 +1,4 @@
-use super::{SmoothedGain, OnePoleLp, param_changed};
+use super::{OnePoleLp, SmoothedGain, param_changed};
 use crate::dsp::biquad::Biquad;
 use crate::dsp::oversample::Oversampler4;
 
@@ -99,8 +99,7 @@ mod tests {
                 let t = n as f32 / SR;
                 // A 4 kHz probe on top of the fundamental, so the Filter knob has
                 // high-frequency content to remove.
-                let x = (2.0 * PI * 220.0 * t).sin() * 0.4
-                    + (2.0 * PI * 4000.0 * t).sin() * 0.2;
+                let x = (2.0 * PI * 220.0 * t).sin() * 0.4 + (2.0 * PI * 4000.0 * t).sin() * 0.2;
                 r.process(x, dist, filter, 0.6)
             })
             .collect()

@@ -3009,10 +3009,7 @@ mod tests {
 
         // Selected at the front: the start shows and the right end is clipped.
         let head = render_header_line(&params, &board, ChainStage::Gate, true, false);
-        assert!(
-            head.contains("GATE"),
-            "the start must be visible: {head}"
-        );
+        assert!(head.contains("GATE"), "the start must be visible: {head}");
         assert!(
             head.contains('…'),
             "a clipped right end must be marked: {head}"

@@ -798,18 +798,14 @@ impl Preset {
                 .rat_enabled
                 .store(rat.enabled.unwrap_or(true), Relaxed);
             params.rat_dist.store(rat.dist.clamp(0.0, 1.0), Relaxed);
-            params
-                .rat_filter
-                .store(rat.filter.clamp(0.0, 1.0), Relaxed);
+            params.rat_filter.store(rat.filter.clamp(0.0, 1.0), Relaxed);
             params.rat_level.store(rat.level.clamp(0.0, 1.0), Relaxed);
         } else {
             params.rat_enabled.store(false, Relaxed);
         }
 
         if let Some(td) = &self.tube_driver {
-            params
-                .td_enabled
-                .store(td.enabled.unwrap_or(true), Relaxed);
+            params.td_enabled.store(td.enabled.unwrap_or(true), Relaxed);
             params.td_drive.store(td.drive.clamp(0.0, 1.0), Relaxed);
             params.td_high.store(td.high.clamp(0.0, 1.0), Relaxed);
             params.td_low.store(td.low.clamp(0.0, 1.0), Relaxed);
@@ -1280,7 +1276,9 @@ pub(crate) fn rig_values(p: &Params, v: &mut Vec<f32>) {
         wah_position
     );
     knobs!(cmp_enabled, cmp_sustain, cmp_attack, cmp_level, cmp_voice);
-    knobs!(fz_enabled, fz_fuzz, fz_tone, fz_level, fz_type, fz_guitar, fz_model);
+    knobs!(
+        fz_enabled, fz_fuzz, fz_tone, fz_level, fz_type, fz_guitar, fz_model
+    );
     knobs!(ts_enabled, ts_drive, ts_tone, ts_level);
     knobs!(ds_enabled, ds_drive, ds_tone, ds_level);
     knobs!(ml_enabled, ml_dist, ml_low, ml_high, ml_level);
@@ -1398,6 +1396,13 @@ mod tests {
         ("led_zeppelin_stairway_solo", "tube_screamer"),
         ("eagles_hotel_california_solo", "tube_screamer"),
         ("eagles_hotel_california_clean", "tube_screamer"),
+        // Deliberate chain-order experiment, not a session claim: the 1979 Numb
+        // preset with a Tube Driver after the Muff, mirroring the documented
+        // 2006 Gdansk chain. The preset description says "experiment".
+        (
+            "pink_floyd_comfortably_numb_solo_1_alt_muff_td",
+            "tube_driver",
+        ),
     ];
 
     /// A bundled preset must not enable a device that did not exist when the tone
@@ -1446,6 +1451,25 @@ mod tests {
                 .unwrap_or(false)
             {
                 enabled.push("boost");
+            }
+            if preset.rat.as_ref().and_then(|s| s.enabled).unwrap_or(false) {
+                enabled.push("rat");
+            }
+            if preset
+                .tube_driver
+                .as_ref()
+                .and_then(|s| s.enabled)
+                .unwrap_or(false)
+            {
+                enabled.push("tube_driver");
+            }
+            if preset
+                .rotary
+                .as_ref()
+                .and_then(|s| s.enabled)
+                .unwrap_or(false)
+            {
+                enabled.push("rotary");
             }
             for dev in enabled {
                 let Some((_, debut)) = DEVICE_YEARS.iter().find(|(n, _)| *n == dev) else {

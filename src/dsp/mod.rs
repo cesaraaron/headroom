@@ -2174,7 +2174,16 @@ impl DspChain {
                 )
             }
             ChainStage::Rat => {
-                mono_stage!(self, p, x, rat_enabled, rat, rat_dist, rat_filter, rat_level)
+                mono_stage!(
+                    self,
+                    p,
+                    x,
+                    rat_enabled,
+                    rat,
+                    rat_dist,
+                    rat_filter,
+                    rat_level
+                )
             }
             ChainStage::TubeDriver => mono_stage!(
                 self, p, x, td_enabled, td, td_drive, td_high, td_low, td_level
