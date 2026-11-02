@@ -188,6 +188,7 @@ pub(super) const PEDAL_VIBE: Color = Color::Rgb(225, 70, 150); // Uni-Vibe (deep
 pub(super) const PEDAL_MINT: Color = Color::Rgb(120, 225, 170); // Clean boost (mint)
 pub(super) const PEDAL_CHARCOAL: Color = Color::Rgb(105, 100, 95); // ProCo RAT (charcoal)
 pub(super) const PEDAL_AMBER: Color = Color::Rgb(215, 150, 75); // Tube Driver (warm amber)
+pub(super) const PEDAL_WALNUT: Color = Color::Rgb(150, 115, 80); // Rotary (walnut cabinet)
 
 #[cfg(test)]
 mod tests {

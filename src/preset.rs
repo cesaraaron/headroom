@@ -44,6 +44,7 @@ pub struct Preset {
     pub metal_core: Option<MlSection>,
     pub rat: Option<RatSection>,
     pub tube_driver: Option<TubeDriverSection>,
+    pub rotary: Option<RotarySection>,
     pub preamp_eq: Option<PeqSection>,
     pub uni_vibe: Option<UniVibeSection>,
     pub boost: Option<BoostSection>,
@@ -208,6 +209,16 @@ pub struct TubeDriverSection {
     pub high: f32,
     pub low: f32,
     pub level: f32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RotarySection {
+    pub enabled: Option<bool>,
+    pub speed: f32,
+    pub ramp: f32,
+    pub depth: f32,
+    pub mix: f32,
+    pub balance: f32,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -559,6 +570,14 @@ impl Preset {
                 low: params.td_low.load(Relaxed),
                 level: params.td_level.load(Relaxed),
             }),
+            rotary: Some(RotarySection {
+                enabled: Some(params.rot_enabled.load(Relaxed)),
+                speed: params.rot_speed.load(Relaxed),
+                ramp: params.rot_ramp.load(Relaxed),
+                depth: params.rot_depth.load(Relaxed),
+                mix: params.rot_mix.load(Relaxed),
+                balance: params.rot_balance.load(Relaxed),
+            }),
             preamp_eq: Some(PeqSection {
                 enabled: Some(params.peq_enabled.load(Relaxed)),
                 low: params.peq_low.load(Relaxed),
@@ -797,6 +816,21 @@ impl Preset {
             params.td_level.store(td.level.clamp(0.0, 1.0), Relaxed);
         } else {
             params.td_enabled.store(false, Relaxed);
+        }
+
+        if let Some(rot) = &self.rotary {
+            params
+                .rot_enabled
+                .store(rot.enabled.unwrap_or(true), Relaxed);
+            params.rot_speed.store(rot.speed.clamp(0.0, 1.0), Relaxed);
+            params.rot_ramp.store(rot.ramp.clamp(0.0, 1.0), Relaxed);
+            params.rot_depth.store(rot.depth.clamp(0.0, 1.0), Relaxed);
+            params.rot_mix.store(rot.mix.clamp(0.0, 1.0), Relaxed);
+            params
+                .rot_balance
+                .store(rot.balance.clamp(0.0, 1.0), Relaxed);
+        } else {
+            params.rot_enabled.store(false, Relaxed);
         }
 
         if let Some(peq) = &self.preamp_eq {
@@ -1201,6 +1235,7 @@ pub(crate) fn rig_values(p: &Params, v: &mut Vec<f32>) {
         &p.ml_enabled,
         &p.rat_enabled,
         &p.td_enabled,
+        &p.rot_enabled,
         &p.peq_enabled,
         &p.uv_enabled,
         &p.boost_enabled,
@@ -1251,6 +1286,14 @@ pub(crate) fn rig_values(p: &Params, v: &mut Vec<f32>) {
     knobs!(ml_enabled, ml_dist, ml_low, ml_high, ml_level);
     knobs!(rat_enabled, rat_dist, rat_filter, rat_level);
     knobs!(td_enabled, td_drive, td_high, td_low, td_level);
+    knobs!(
+        rot_enabled,
+        rot_speed,
+        rot_ramp,
+        rot_depth,
+        rot_mix,
+        rot_balance
+    );
     knobs!(peq_enabled, peq_low, peq_mid, peq_high);
     knobs!(uv_enabled, uv_rate, uv_depth, uv_mix, uv_mode);
     knobs!(boost_enabled, boost_gain, boost_treble, boost_bass);
@@ -1338,6 +1381,7 @@ mod tests {
         ("metal_core", 2004),    // Boss ML-2
         ("rat", 1979),           // ProCo RAT
         ("tube_driver", 1993),   // B.K. Butler / Chandler Tube Driver
+        ("rotary", 1968),        // Leslie/Rotary family (RA-200 from 1977)
         ("boost", 1972),         // Colorsound Power Boost (approx.)
     ];
 
@@ -1493,6 +1537,11 @@ mod tests {
             td_high,
             td_low,
             td_level,
+            rot_speed,
+            rot_ramp,
+            rot_depth,
+            rot_mix,
+            rot_balance,
             peq_low,
             peq_mid,
             peq_high,

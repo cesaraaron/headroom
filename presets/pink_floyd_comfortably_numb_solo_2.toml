@@ -161,6 +161,7 @@ order = [
     "boost",
     "amp",
     "cab",
+    "rotary",
     "geq",
     "eq",
     "flanger",

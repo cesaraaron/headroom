@@ -26,7 +26,7 @@ use amp::{AMP_MAX, AmpBank, AmpKnob};
 use cab::{CabBank, ExternalIrCab};
 use effects::{
     Chorus, CleanBoost, Compressor, Delay, Distortion, Flanger, Fuzz, GraphicEq, MetalCore,
-    NoiseGate, ParametricEq, Phaser, Pitch, PreampEq, Rat, Reverb, Tremolo, TubeDriver,
+    NoiseGate, ParametricEq, Phaser, Pitch, PreampEq, Rat, Reverb, Rotary, Tremolo, TubeDriver,
     TubeScreamer, UniVibe, Wah,
 };
 use limiter::Limiter;
@@ -318,11 +318,12 @@ pub enum ChainStage {
     Reverb = 20,
     Rat = 21,
     TubeDriver = 22,
+    Rotary = 23,
 }
 
-/// Number of slots in [`ChainStage`]: 11 pre + amp + cab + 8 rack, plus the RAT
-/// and the Tube Driver.
-pub const CHAIN_LEN: usize = 23;
+/// Number of slots in [`ChainStage`]: 11 pre + amp + cab + 8 rack, plus the RAT,
+/// the Tube Driver and the rotary.
+pub const CHAIN_LEN: usize = 24;
 
 /// Bounded number of attempts the audio-thread reader makes before giving up and
 /// reusing its last-good order (see [`Params::try_chain_slots`]).
@@ -354,6 +355,7 @@ impl ChainStage {
             20 => Some(Self::Reverb),
             21 => Some(Self::Rat),
             22 => Some(Self::TubeDriver),
+            23 => Some(Self::Rotary),
             _ => None,
         }
     }
@@ -386,6 +388,7 @@ impl ChainStage {
             Self::Reverb => "reverb",
             Self::Rat => "rat",
             Self::TubeDriver => "tube_driver",
+            Self::Rotary => "rotary",
         }
     }
 
@@ -414,6 +417,7 @@ impl ChainStage {
             "reverb" => Some(Self::Reverb),
             "rat" => Some(Self::Rat),
             "tube_driver" => Some(Self::TubeDriver),
+            "rotary" => Some(Self::Rotary),
             _ => None,
         }
     }
@@ -436,6 +440,7 @@ impl ChainStage {
             Self::Boost as u8,
             Self::Amp as u8,
             Self::Cab as u8,
+            Self::Rotary as u8,
             Self::Geq as u8,
             Self::Eq as u8,
             Self::Flanger as u8,
@@ -464,15 +469,16 @@ impl ChainStage {
             Self::PreEq => Some(10),
             Self::Vibe => Some(11),
             Self::Boost => Some(12),
+            Self::Rotary => Some(13),
             Self::Amp | Self::Cab => None,
-            Self::Geq => Some(13),
-            Self::Eq => Some(14),
-            Self::Flanger => Some(15),
-            Self::Chorus => Some(16),
-            Self::Phaser => Some(17),
-            Self::Trem => Some(18),
-            Self::Delay => Some(19),
-            Self::Reverb => Some(20),
+            Self::Geq => Some(14),
+            Self::Eq => Some(15),
+            Self::Flanger => Some(16),
+            Self::Chorus => Some(17),
+            Self::Phaser => Some(18),
+            Self::Trem => Some(19),
+            Self::Delay => Some(20),
+            Self::Reverb => Some(21),
         }
     }
 
@@ -491,14 +497,15 @@ impl ChainStage {
             10 => Some(Self::PreEq),
             11 => Some(Self::Vibe),
             12 => Some(Self::Boost),
-            13 => Some(Self::Geq),
-            14 => Some(Self::Eq),
-            15 => Some(Self::Flanger),
-            16 => Some(Self::Chorus),
-            17 => Some(Self::Phaser),
-            18 => Some(Self::Trem),
-            19 => Some(Self::Delay),
-            20 => Some(Self::Reverb),
+            13 => Some(Self::Rotary),
+            14 => Some(Self::Geq),
+            15 => Some(Self::Eq),
+            16 => Some(Self::Flanger),
+            17 => Some(Self::Chorus),
+            18 => Some(Self::Phaser),
+            19 => Some(Self::Trem),
+            20 => Some(Self::Delay),
+            21 => Some(Self::Reverb),
             _ => None,
         }
     }
@@ -767,6 +774,14 @@ const DEFAULT_TD_HIGH: f32 = 0.50;
 const DEFAULT_TD_LOW: f32 = 0.50;
 const DEFAULT_TD_LEVEL: f32 = 0.60;
 
+// Rotary (RA-200 family). Off by default; slow, moderate depth, 50/50 blend.
+const DEFAULT_ROT_ENABLED: bool = false;
+const DEFAULT_ROT_SPEED: f32 = 0.0; // slow
+const DEFAULT_ROT_RAMP: f32 = 0.35;
+const DEFAULT_ROT_DEPTH: f32 = 0.55;
+const DEFAULT_ROT_MIX: f32 = 0.30;
+const DEFAULT_ROT_BALANCE: f32 = 0.50;
+
 const DEFAULT_REV_ENABLED: bool = false;
 const DEFAULT_REV_ROOM: f32 = 0.55;
 const DEFAULT_REV_DAMP: f32 = 0.40;
@@ -959,6 +974,14 @@ pub struct Params {
     pub td_high: Arc<AtomicF32>,
     pub td_low: Arc<AtomicF32>,
     pub td_level: Arc<AtomicF32>,
+
+    // Rotary speaker (Yamaha RA-200 family) — a post-cab rack stage.
+    pub rot_enabled: Arc<AtomicBool>,
+    pub rot_speed: Arc<AtomicF32>,
+    pub rot_ramp: Arc<AtomicF32>,
+    pub rot_depth: Arc<AtomicF32>,
+    pub rot_mix: Arc<AtomicF32>,
+    pub rot_balance: Arc<AtomicF32>,
 
     // Reverb
     pub rev_enabled: Arc<AtomicBool>,
@@ -1170,6 +1193,13 @@ impl Params {
             td_low: p!(DEFAULT_TD_LOW),
             td_level: p!(DEFAULT_TD_LEVEL),
 
+            rot_enabled: b!(DEFAULT_ROT_ENABLED),
+            rot_speed: p!(DEFAULT_ROT_SPEED),
+            rot_ramp: p!(DEFAULT_ROT_RAMP),
+            rot_depth: p!(DEFAULT_ROT_DEPTH),
+            rot_mix: p!(DEFAULT_ROT_MIX),
+            rot_balance: p!(DEFAULT_ROT_BALANCE),
+
             rev_enabled: b!(DEFAULT_REV_ENABLED),
             rev_room: p!(DEFAULT_REV_ROOM),
             rev_damp: p!(DEFAULT_REV_DAMP),
@@ -1329,6 +1359,13 @@ impl Params {
         self.td_low.store(DEFAULT_TD_LOW, Relaxed);
         self.td_level.store(DEFAULT_TD_LEVEL, Relaxed);
 
+        self.rot_enabled.store(DEFAULT_ROT_ENABLED, Relaxed);
+        self.rot_speed.store(DEFAULT_ROT_SPEED, Relaxed);
+        self.rot_ramp.store(DEFAULT_ROT_RAMP, Relaxed);
+        self.rot_depth.store(DEFAULT_ROT_DEPTH, Relaxed);
+        self.rot_mix.store(DEFAULT_ROT_MIX, Relaxed);
+        self.rot_balance.store(DEFAULT_ROT_BALANCE, Relaxed);
+
         self.rev_enabled.store(DEFAULT_REV_ENABLED, Relaxed);
         self.rev_room.store(DEFAULT_REV_ROOM, Relaxed);
         self.rev_damp.store(DEFAULT_REV_DAMP, Relaxed);
@@ -1435,6 +1472,7 @@ impl Params {
             ChainStage::Metal => self.ml_enabled.load(Relaxed),
             ChainStage::Rat => self.rat_enabled.load(Relaxed),
             ChainStage::TubeDriver => self.td_enabled.load(Relaxed),
+            ChainStage::Rotary => self.rot_enabled.load(Relaxed),
             ChainStage::PreEq => self.peq_enabled.load(Relaxed),
             ChainStage::Vibe => self.uv_enabled.load(Relaxed),
             ChainStage::Boost => self.boost_enabled.load(Relaxed),
@@ -1764,6 +1802,7 @@ pub struct DspChain {
     ml: MetalCore,
     rat: Rat,
     td: TubeDriver,
+    rotary: Rotary,
     peq: PreampEq,
     uv: UniVibe,
     boost: CleanBoost,
@@ -1858,6 +1897,7 @@ impl DspChain {
             ml: MetalCore::new(sr),
             rat: Rat::new(sr),
             td: TubeDriver::new(sr),
+            rotary: Rotary::new(sr),
             peq: PreampEq::new(sr),
             uv: UniVibe::new(sr),
             boost: CleanBoost::new(sr),
@@ -2168,6 +2208,19 @@ impl DspChain {
     fn run_stereo_stage(&mut self, stage: ChainStage, l: f32, r: f32) -> (f32, f32) {
         let p = &self.params;
         match stage {
+            ChainStage::Rotary => stereo_stage!(
+                self,
+                p,
+                l,
+                r,
+                rot_enabled,
+                rotary,
+                rot_speed,
+                rot_ramp,
+                rot_depth,
+                rot_mix,
+                rot_balance
+            ),
             ChainStage::Geq => stereo_stage!(
                 self,
                 p,
@@ -2409,6 +2462,7 @@ impl DspChain {
             self.phaser.clear_buffers();
             self.pitch.clear_buffers();
             self.chorus.clear_buffers();
+            self.rotary.clear_buffers();
             self.tremolo.clear_buffers();
             // The Fender spring tank and every model's oversampler histories.
             self.amp.clear_tails();

@@ -7,7 +7,8 @@ use ratatui::style::Color;
 use super::styles::{
     PEDAL_AMBER, PEDAL_BLUE, PEDAL_CHARCOAL, PEDAL_CYAN, PEDAL_GOLD, PEDAL_GREEN, PEDAL_INDIGO,
     PEDAL_LIME, PEDAL_MINT, PEDAL_ORANGE, PEDAL_ORCHID, PEDAL_PINK, PEDAL_PURPLE, PEDAL_RED,
-    PEDAL_ROSE, PEDAL_SAND, PEDAL_SILVER, PEDAL_STEEL, PEDAL_TEAL, PEDAL_VIBE, PEDAL_YELLOW,
+    PEDAL_ROSE, PEDAL_SAND, PEDAL_SILVER, PEDAL_STEEL, PEDAL_TEAL, PEDAL_VIBE, PEDAL_WALNUT,
+    PEDAL_YELLOW,
 };
 use crate::dsp::Params;
 pub(super) struct Knob {
@@ -79,8 +80,11 @@ pub(super) const UV_END: usize = UV_START + 4;
 // Clean boost — linear front-end gain, the last pedal before the amp.
 pub(super) const BOOST_START: usize = UV_END;
 pub(super) const BOOST_END: usize = BOOST_START + 3;
+// Rotary speaker — a rack stage right after the cab.
+pub(super) const ROT_START: usize = BOOST_END;
+pub(super) const ROT_END: usize = ROT_START + 5;
 // Post-cab rack pedals (after the cab), in signal order.
-pub(super) const GEQ_START: usize = BOOST_END;
+pub(super) const GEQ_START: usize = ROT_END;
 pub(super) const GEQ_END: usize = GEQ_START + 8;
 pub(super) const EQ_START: usize = GEQ_END;
 pub(super) const EQ_END: usize = EQ_START + 3;
@@ -349,8 +353,29 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "BASS",
         param: |p| &p.boost_bass,
     },
+    // 45–49: Rotary speaker
+    Knob {
+        label: "SPEED",
+        param: |p| &p.rot_speed,
+    },
+    Knob {
+        label: "RAMP",
+        param: |p| &p.rot_ramp,
+    },
+    Knob {
+        label: "DEPTH",
+        param: |p| &p.rot_depth,
+    },
+    Knob {
+        label: "MIX",
+        param: |p| &p.rot_mix,
+    },
+    Knob {
+        label: "BALANCE",
+        param: |p| &p.rot_balance,
+    },
     // ── Post-cab rack pedals (after the cab), in signal order ──
-    // 45–52: Graphic EQ (Boss GE-7 — seven band faders + output level)
+    // 50–57: Graphic EQ (Boss GE-7 — seven band faders + output level)
     Knob {
         label: "100",
         param: |p| &p.geq_b1,
@@ -608,6 +633,14 @@ pub(super) const PEDALS: &[Pedal] = &[
         enabled: |p| &p.boost_enabled,
         ui: PedalUi::Knobs,
     },
+    Pedal {
+        name: "ROTARY",
+        color: PEDAL_WALNUT,
+        start: ROT_START,
+        end: ROT_END,
+        enabled: |p| &p.rot_enabled,
+        ui: PedalUi::Knobs,
+    },
     // Post-cab rack (after the cab), in signal order.
     Pedal {
         name: "GE-7",
@@ -827,8 +860,8 @@ mod tests {
     fn table_sizes_are_stable() {
         // Deliberate tripwire: bump these when you add or remove a pedal/knob so
         // the change is a conscious, reviewed edit rather than an accident.
-        assert_eq!(PEDALS.len(), 21, "pedal count changed");
-        assert_eq!(KNOBS.len(), 93, "knob count changed");
+        assert_eq!(PEDALS.len(), 22, "pedal count changed");
+        assert_eq!(KNOBS.len(), 98, "knob count changed");
     }
 
     #[test]
