@@ -1,4 +1,5 @@
 /target
+.superpowers/
 .DS_Store
 *.snap.new
 *.wav
