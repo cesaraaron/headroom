@@ -42,6 +42,9 @@ pub struct Preset {
     pub tube_screamer: TsSection,
     pub distortion: Option<DsSection>,
     pub metal_core: Option<MlSection>,
+    pub rat: Option<RatSection>,
+    pub tube_driver: Option<TubeDriverSection>,
+    pub rotary: Option<RotarySection>,
     pub preamp_eq: Option<PeqSection>,
     pub uni_vibe: Option<UniVibeSection>,
     pub boost: Option<BoostSection>,
@@ -76,6 +79,13 @@ pub struct CmpSection {
     pub sustain: f32,
     pub attack: f32,
     pub level: f32,
+    /// 0 = Dyna Comp, 1 = Boss CS-2. Defaults to the shipped Dyna voice.
+    #[serde(default = "cmp_voice_default")]
+    pub voice: f32,
+}
+
+fn cmp_voice_default() -> f32 {
+    0.0
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -141,6 +151,14 @@ pub struct FuzzSection {
     /// presets are unchanged.
     #[serde(default = "fuzz_guitar_default")]
     pub guitar: f32,
+    /// Big Muff revision: 0 = Ram's Head (shipped), 1 = Triangle, 2 = Sovtek,
+    /// 3 = Cornish P-2. Only affects the Big Muff voice.
+    #[serde(default = "fuzz_model_default")]
+    pub model: f32,
+}
+
+fn fuzz_model_default() -> f32 {
+    0.0
 }
 
 fn fuzz_type_default() -> f32 {
@@ -174,6 +192,33 @@ pub struct MlSection {
     pub low: f32,
     pub high: f32,
     pub level: f32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RatSection {
+    pub enabled: Option<bool>,
+    pub dist: f32,
+    pub filter: f32,
+    pub level: f32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TubeDriverSection {
+    pub enabled: Option<bool>,
+    pub drive: f32,
+    pub high: f32,
+    pub low: f32,
+    pub level: f32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RotarySection {
+    pub enabled: Option<bool>,
+    pub speed: f32,
+    pub ramp: f32,
+    pub depth: f32,
+    pub mix: f32,
+    pub balance: f32,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -467,6 +512,7 @@ impl Preset {
                 sustain: params.cmp_sustain.load(Relaxed),
                 attack: params.cmp_attack.load(Relaxed),
                 level: params.cmp_level.load(Relaxed),
+                voice: params.cmp_voice.load(Relaxed),
             }),
             pitch: Some(PitchSection {
                 enabled: Some(params.pitch_enabled.load(Relaxed)),
@@ -490,6 +536,7 @@ impl Preset {
                 level: params.fz_level.load(Relaxed),
                 r#type: params.fz_type.load(Relaxed),
                 guitar: params.fz_guitar.load(Relaxed),
+                model: params.fz_model.load(Relaxed),
             }),
             tube_screamer: TsSection {
                 enabled: Some(params.ts_enabled.load(Relaxed)),
@@ -509,6 +556,27 @@ impl Preset {
                 low: params.ml_low.load(Relaxed),
                 high: params.ml_high.load(Relaxed),
                 level: params.ml_level.load(Relaxed),
+            }),
+            rat: Some(RatSection {
+                enabled: Some(params.rat_enabled.load(Relaxed)),
+                dist: params.rat_dist.load(Relaxed),
+                filter: params.rat_filter.load(Relaxed),
+                level: params.rat_level.load(Relaxed),
+            }),
+            tube_driver: Some(TubeDriverSection {
+                enabled: Some(params.td_enabled.load(Relaxed)),
+                drive: params.td_drive.load(Relaxed),
+                high: params.td_high.load(Relaxed),
+                low: params.td_low.load(Relaxed),
+                level: params.td_level.load(Relaxed),
+            }),
+            rotary: Some(RotarySection {
+                enabled: Some(params.rot_enabled.load(Relaxed)),
+                speed: params.rot_speed.load(Relaxed),
+                ramp: params.rot_ramp.load(Relaxed),
+                depth: params.rot_depth.load(Relaxed),
+                mix: params.rot_mix.load(Relaxed),
+                balance: params.rot_balance.load(Relaxed),
             }),
             preamp_eq: Some(PeqSection {
                 enabled: Some(params.peq_enabled.load(Relaxed)),
@@ -654,6 +722,7 @@ impl Preset {
                 .store(cmp.sustain.clamp(0.0, 1.0), Relaxed);
             params.cmp_attack.store(cmp.attack.clamp(0.0, 1.0), Relaxed);
             params.cmp_level.store(cmp.level.clamp(0.0, 1.0), Relaxed);
+            params.cmp_voice.store(cmp.voice.clamp(0.0, 1.0), Relaxed);
         } else {
             params.cmp_enabled.store(false, Relaxed);
         }
@@ -694,6 +763,7 @@ impl Preset {
             params.fz_level.store(fz.level.clamp(0.0, 1.0), Relaxed);
             params.fz_type.store(fz.r#type.clamp(0.0, 1.0), Relaxed);
             params.fz_guitar.store(fz.guitar.clamp(0.0, 1.0), Relaxed);
+            params.fz_model.store(fz.model.clamp(0.0, 1.0), Relaxed);
         } else {
             params.fz_enabled.store(false, Relaxed);
         }
@@ -721,6 +791,42 @@ impl Preset {
             params.ml_level.store(ml.level.clamp(0.0, 1.0), Relaxed);
         } else {
             params.ml_enabled.store(false, Relaxed);
+        }
+
+        if let Some(rat) = &self.rat {
+            params
+                .rat_enabled
+                .store(rat.enabled.unwrap_or(true), Relaxed);
+            params.rat_dist.store(rat.dist.clamp(0.0, 1.0), Relaxed);
+            params.rat_filter.store(rat.filter.clamp(0.0, 1.0), Relaxed);
+            params.rat_level.store(rat.level.clamp(0.0, 1.0), Relaxed);
+        } else {
+            params.rat_enabled.store(false, Relaxed);
+        }
+
+        if let Some(td) = &self.tube_driver {
+            params.td_enabled.store(td.enabled.unwrap_or(true), Relaxed);
+            params.td_drive.store(td.drive.clamp(0.0, 1.0), Relaxed);
+            params.td_high.store(td.high.clamp(0.0, 1.0), Relaxed);
+            params.td_low.store(td.low.clamp(0.0, 1.0), Relaxed);
+            params.td_level.store(td.level.clamp(0.0, 1.0), Relaxed);
+        } else {
+            params.td_enabled.store(false, Relaxed);
+        }
+
+        if let Some(rot) = &self.rotary {
+            params
+                .rot_enabled
+                .store(rot.enabled.unwrap_or(true), Relaxed);
+            params.rot_speed.store(rot.speed.clamp(0.0, 1.0), Relaxed);
+            params.rot_ramp.store(rot.ramp.clamp(0.0, 1.0), Relaxed);
+            params.rot_depth.store(rot.depth.clamp(0.0, 1.0), Relaxed);
+            params.rot_mix.store(rot.mix.clamp(0.0, 1.0), Relaxed);
+            params
+                .rot_balance
+                .store(rot.balance.clamp(0.0, 1.0), Relaxed);
+        } else {
+            params.rot_enabled.store(false, Relaxed);
         }
 
         if let Some(peq) = &self.preamp_eq {
@@ -1123,6 +1229,9 @@ pub(crate) fn rig_values(p: &Params, v: &mut Vec<f32>) {
         &p.ts_enabled,
         &p.ds_enabled,
         &p.ml_enabled,
+        &p.rat_enabled,
+        &p.td_enabled,
+        &p.rot_enabled,
         &p.peq_enabled,
         &p.uv_enabled,
         &p.boost_enabled,
@@ -1166,11 +1275,23 @@ pub(crate) fn rig_values(p: &Params, v: &mut Vec<f32>) {
         wah_mode,
         wah_position
     );
-    knobs!(cmp_enabled, cmp_sustain, cmp_attack, cmp_level);
-    knobs!(fz_enabled, fz_fuzz, fz_tone, fz_level, fz_type, fz_guitar);
+    knobs!(cmp_enabled, cmp_sustain, cmp_attack, cmp_level, cmp_voice);
+    knobs!(
+        fz_enabled, fz_fuzz, fz_tone, fz_level, fz_type, fz_guitar, fz_model
+    );
     knobs!(ts_enabled, ts_drive, ts_tone, ts_level);
     knobs!(ds_enabled, ds_drive, ds_tone, ds_level);
     knobs!(ml_enabled, ml_dist, ml_low, ml_high, ml_level);
+    knobs!(rat_enabled, rat_dist, rat_filter, rat_level);
+    knobs!(td_enabled, td_drive, td_high, td_low, td_level);
+    knobs!(
+        rot_enabled,
+        rot_speed,
+        rot_ramp,
+        rot_depth,
+        rot_mix,
+        rot_balance
+    );
     knobs!(peq_enabled, peq_low, peq_mid, peq_high);
     knobs!(uv_enabled, uv_rate, uv_depth, uv_mix, uv_mode);
     knobs!(boost_enabled, boost_gain, boost_treble, boost_bass);
@@ -1256,6 +1377,9 @@ mod tests {
         ("tube_screamer", 1979), // Ibanez TS-808
         ("distortion", 1978),    // Boss DS-1
         ("metal_core", 2004),    // Boss ML-2
+        ("rat", 1979),           // ProCo RAT
+        ("tube_driver", 1993),   // B.K. Butler / Chandler Tube Driver
+        ("rotary", 1977),        // Yamaha RA-200 family (Doppola from 1994)
         ("boost", 1972),         // Colorsound Power Boost (approx.)
     ];
 
@@ -1272,6 +1396,13 @@ mod tests {
         ("led_zeppelin_stairway_solo", "tube_screamer"),
         ("eagles_hotel_california_solo", "tube_screamer"),
         ("eagles_hotel_california_clean", "tube_screamer"),
+        // Deliberate chain-order experiment, not a session claim: the 1979 Numb
+        // preset with a Tube Driver after the Muff, mirroring the documented
+        // 2006 Gdansk chain. The preset description says "experiment".
+        (
+            "pink_floyd_comfortably_numb_solo_1_alt_muff_td",
+            "tube_driver",
+        ),
     ];
 
     /// A bundled preset must not enable a device that did not exist when the tone
@@ -1321,6 +1452,25 @@ mod tests {
             {
                 enabled.push("boost");
             }
+            if preset.rat.as_ref().and_then(|s| s.enabled).unwrap_or(false) {
+                enabled.push("rat");
+            }
+            if preset
+                .tube_driver
+                .as_ref()
+                .and_then(|s| s.enabled)
+                .unwrap_or(false)
+            {
+                enabled.push("tube_driver");
+            }
+            if preset
+                .rotary
+                .as_ref()
+                .and_then(|s| s.enabled)
+                .unwrap_or(false)
+            {
+                enabled.push("rotary");
+            }
             for dev in enabled {
                 let Some((_, debut)) = DEVICE_YEARS.iter().find(|(n, _)| *n == dev) else {
                     continue;
@@ -1364,6 +1514,9 @@ mod tests {
         p.ch_enabled.store(true, Relaxed);
         p.ph_enabled.store(true, Relaxed);
         p.trem_enabled.store(true, Relaxed);
+        p.rat_enabled.store(true, Relaxed);
+        p.td_enabled.store(true, Relaxed);
+        p.rot_enabled.store(true, Relaxed);
         // A reversed chain, so a preset without `[chain]` must reset it.
         let mut reversed = ChainStage::default_order();
         reversed.reverse();
@@ -1388,9 +1541,12 @@ mod tests {
             cmp_sustain,
             cmp_attack,
             cmp_level,
+            cmp_voice,
             fz_fuzz,
             fz_tone,
             fz_level,
+            fz_type,
+            fz_model,
             ts_drive,
             ts_tone,
             ts_level,
@@ -1401,6 +1557,18 @@ mod tests {
             ml_low,
             ml_high,
             ml_level,
+            rat_dist,
+            rat_filter,
+            rat_level,
+            td_drive,
+            td_high,
+            td_low,
+            td_level,
+            rot_speed,
+            rot_ramp,
+            rot_depth,
+            rot_mix,
+            rot_balance,
             peq_low,
             peq_mid,
             peq_high,
@@ -1652,17 +1820,17 @@ mod tests {
         let params = Params::new();
         let mut moved: Vec<u8> = ChainStage::default_order().into_iter().collect();
         moved.retain(|&v| v != ChainStage::Comp as u8);
-        moved.insert(12, ChainStage::Comp as u8); // comp after the cab stage
+        moved.insert(14, ChainStage::Comp as u8); // comp after the cab stage
         let moved: [u8; crate::dsp::CHAIN_LEN] = moved.try_into().unwrap();
         params.set_chain_order(&moved);
 
         let preset = Preset::from_params("Moved".to_string(), None, &params);
         let names = &preset.chain.as_ref().expect("chain saved").order;
-        assert_eq!(names[8], "vibe");
-        assert_eq!(names[9], "boost");
-        assert_eq!(names[10], "amp");
-        assert_eq!(names[11], "cab");
-        assert_eq!(names[12], "comp");
+        assert_eq!(names[10], "vibe");
+        assert_eq!(names[11], "boost");
+        assert_eq!(names[12], "amp");
+        assert_eq!(names[13], "cab");
+        assert_eq!(names[14], "comp");
 
         // Apply onto fresh params and confirm the slots land.
         let fresh = Params::new();

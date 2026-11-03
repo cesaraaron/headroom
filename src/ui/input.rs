@@ -1521,12 +1521,12 @@ mod tests {
     fn move_selected_stage_moves_amp_and_cab_separately() {
         let p = Params::new();
         let b = board(true);
-        // AMP sits at slot 11 with BOOST before it. Move it earlier — legal, since
-        // its cab (slot 12) still follows it.
+        // AMP sits at slot 13 with BOOST before it. Move it earlier — legal, since
+        // its cab (slot 14) still follows it.
         assert!(move_selected_stage(&p, &b, ChainStage::Amp, -1));
         let order = p.chain_slots();
-        assert_eq!(order[10], ChainStage::Amp as u8);
-        assert_eq!(order[11], ChainStage::Boost as u8);
+        assert_eq!(order[12], ChainStage::Amp as u8);
+        assert_eq!(order[13], ChainStage::Boost as u8);
         assert!(move_selected_stage(&p, &b, ChainStage::Amp, 1));
         assert_eq!(p.chain_slots(), ChainStage::default_order());
 
@@ -1534,11 +1534,11 @@ mod tests {
         assert!(!move_selected_stage(&p, &b, ChainStage::Cab, -1));
         assert_eq!(p.chain_slots(), ChainStage::default_order());
 
-        // Moving the CAB later (past GEQ) is legal.
+        // Moving the CAB later (past the rotary) is legal.
         assert!(move_selected_stage(&p, &b, ChainStage::Cab, 1));
         let order = p.chain_slots();
-        assert_eq!(order[12], ChainStage::Geq as u8);
-        assert_eq!(order[13], ChainStage::Cab as u8);
+        assert_eq!(order[14], ChainStage::Rotary as u8);
+        assert_eq!(order[15], ChainStage::Cab as u8);
         assert!(amp_precedes_cab(&order));
     }
 

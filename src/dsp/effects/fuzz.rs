@@ -44,6 +44,84 @@ pub struct Fuzz {
     // Variable 1-pole low-pass for the tone control.
     tone: OnePoleLp,
     last_tone: f32,
+    /// Big Muff revision selected by the MUFF knob (only affects the Muff voice).
+    muff_model: MuffModel,
+    last_model: f32,
+}
+
+/// The four Big Muff voicings. They share one topology; only the scoop, input
+/// high-pass, gain and output trim move. Row 0 (`Ram's Head`) is exactly the
+/// shipped Muff, so existing presets and the fidelity baseline are unchanged.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum MuffModel {
+    RamsHead,
+    Triangle,
+    Sovtek,
+    Cornish,
+}
+
+struct MuffVoicing {
+    scoop_hz: f32,
+    scoop_q: f32,
+    scoop_db: f32,
+    hp_hz: f32,
+    gain: f32,
+    level: f32,
+}
+
+impl MuffModel {
+    fn from_norm(model: f32) -> Self {
+        if model < 0.25 {
+            Self::RamsHead
+        } else if model < 0.5 {
+            Self::Triangle
+        } else if model < 0.75 {
+            Self::Sovtek
+        } else {
+            Self::Cornish
+        }
+    }
+
+    fn voicing(self) -> MuffVoicing {
+        match self {
+            // The shipped Muff: -9 dB @ 700 Hz, 70 Hz input HP, 120× gain.
+            Self::RamsHead => MuffVoicing {
+                scoop_hz: 700.0,
+                scoop_q: 0.7,
+                scoop_db: -9.0,
+                hp_hz: 70.0,
+                gain: 120.0,
+                level: 0.5,
+            },
+            // Brighter, slightly less scooped, a touch more top.
+            Self::Triangle => MuffVoicing {
+                scoop_hz: 620.0,
+                scoop_q: 0.65,
+                scoop_db: -8.0,
+                hp_hz: 80.0,
+                gain: 110.0,
+                level: 0.5,
+            },
+            // Smoother and bassier, with brighter mids and less gain.
+            Self::Sovtek => MuffVoicing {
+                scoop_hz: 820.0,
+                scoop_q: 0.6,
+                scoop_db: -6.5,
+                hp_hz: 60.0,
+                gain: 95.0,
+                level: 0.55,
+            },
+            // Cornish P-2: Civil-War-adjacent, tighter lows, deeper body.
+            Self::Cornish => MuffVoicing {
+                scoop_hz: 750.0,
+                scoop_q: 0.75,
+                scoop_db: -7.5,
+                hp_hz: 85.0,
+                gain: 105.0,
+                level: 0.52,
+            },
+        }
+    }
 }
 
 impl Fuzz {
@@ -62,9 +140,21 @@ impl Fuzz {
             last_guitar: 1.0,
             tone: OnePoleLp::new(),
             last_tone: -1.0, // force first update
+            muff_model: MuffModel::RamsHead,
+            last_model: -1.0, // force first update
         };
         fz.set_tone(0.5);
         fz
+    }
+
+    /// Retune the Muff-only filters to the selected revision. Retunes in place
+    /// (state preserved) so a model change does not click.
+    fn set_model(&mut self, model: MuffModel) {
+        let v = model.voicing();
+        self.scoop
+            .set_peak_eq(self.sr, v.scoop_hz, v.scoop_q, v.scoop_db);
+        self.input_hp.set_highpass(self.sr, v.hp_hz, 0.707);
+        self.muff_model = model;
     }
 
     fn set_tone(&mut self, tone: f32) {
@@ -100,12 +190,17 @@ impl Fuzz {
         level: f32,
         kind: f32,
         guitar: f32,
+        model: f32,
     ) -> f32 {
         if param_changed(tone, self.last_tone) {
             self.set_tone(tone);
         }
         if param_changed(guitar, self.last_guitar) {
             self.set_guitar(guitar);
+        }
+        if param_changed(model, self.last_model) {
+            self.set_model(MuffModel::from_norm(model));
+            self.last_model = model;
         }
         let gv = guitar.clamp(0.03, 1.0);
 
@@ -137,13 +232,15 @@ impl Fuzz {
         let (x, level_scalar) = match voice {
             Voice::Muff => {
                 // Enormous gain into the cascaded clippers — this is what makes it a
-                // fuzz rather than an overdrive.
-                let gain = 1.0 + fuzz * 120.0;
+                // fuzz rather than an overdrive. The model only moves the gain,
+                // scoop and output trim (see `MuffModel::voicing`).
+                let v = self.muff_model.voicing();
+                let gain = 1.0 + fuzz * v.gain;
                 let x = self.os.process(x, |u| {
                     let s1 = fuzz_clip(u * gain);
                     fuzz_clip(s1 * 2.5)
                 });
-                (x, 0.5)
+                (x, v.level)
             }
             Voice::FuzzFace => {
                 // The Fuzz Face's input transistor is biased through the guitar's
@@ -261,7 +358,7 @@ mod tests {
     #[test]
     fn guitar_zero_is_not_rebuilt_every_sample() {
         let mut fz = Fuzz::new(48_000.0);
-        fz.process(0.0, 0.5, 0.5, 0.5, 0.5, 0.0);
+        fz.process(0.0, 0.5, 0.5, 0.5, 0.5, 0.0, 0.0);
         assert_eq!(fz.last_guitar, 0.0);
     }
 
@@ -279,7 +376,7 @@ mod tests {
         let mut count = 0u32;
         for n in 0..total {
             let x = (2.0 * PI * 82.41 * n as f32 / sr).sin() * 0.8;
-            let y = fz.process(x, 1.0, 0.5, 0.7, 0.0, 1.0);
+            let y = fz.process(x, 1.0, 0.5, 0.7, 0.0, 1.0, 0.0);
             assert!(y.is_finite(), "fuzz produced non-finite output at {n}");
             if n >= warmup {
                 max_abs = max_abs.max(y.abs());
@@ -312,9 +409,9 @@ mod tests {
         let mut diff_bender = 0.0f32;
         for n in 0..(sr as usize) {
             let x = (2.0 * PI * 110.0 * n as f32 / sr).sin() * 0.7;
-            let a = muff.process(x, 0.8, 0.5, 0.7, 0.0, 1.0);
-            let b = face.process(x, 0.8, 0.5, 0.7, 0.5, 1.0);
-            let c = bender.process(x, 0.8, 0.5, 0.7, 1.0, 1.0);
+            let a = muff.process(x, 0.8, 0.5, 0.7, 0.0, 1.0, 0.0);
+            let b = face.process(x, 0.8, 0.5, 0.7, 0.5, 1.0, 0.0);
+            let c = bender.process(x, 0.8, 0.5, 0.7, 1.0, 1.0, 0.0);
             assert!(b.is_finite() && c.is_finite(), "fuzz non-finite at {n}");
             max_face = max_face.max(b.abs());
             max_bender = max_bender.max(c.abs());
@@ -370,7 +467,7 @@ mod tests {
             let mut out = Vec::with_capacity(n - warmup);
             for i in 0..n {
                 let x = (2.0 * PI * 100.0 * i as f32 / sr).sin() * 0.8;
-                let y = fz.process(x, 0.9, 0.5, 0.7, 0.5, guitar);
+                let y = fz.process(x, 0.9, 0.5, 0.7, 0.5, guitar, 0.0);
                 assert!(y.is_finite(), "fuzz non-finite at {i}");
                 if i >= warmup {
                     out.push(y);
@@ -386,5 +483,31 @@ mod tests {
             rolled < full * 0.7,
             "fuzz face did not clean up with guitar volume: full THD {full:.3} vs rolled-back {rolled:.3}"
         );
+    }
+}
+
+#[cfg(test)]
+mod muff_model_tests {
+    use super::*;
+
+    /// Big Muff models share one topology but move the scoop, gain and level.
+    /// Ram's Head (0) and Triangle (1) must not produce the same signal.
+    #[test]
+    fn muff_models_are_distinct_and_bounded() {
+        const SR: f32 = 48_000.0;
+        let run = |model: f32| {
+            let mut f = Fuzz::new(SR);
+            let mut out = Vec::new();
+            for n in 0..4800 {
+                let x = (2.0 * std::f32::consts::PI * 110.0 * n as f32 / SR).sin() * 0.3;
+                out.push(f.process(x, 0.7, 0.5, 0.6, 0.0, 1.0, model));
+            }
+            out
+        };
+        let a = run(0.0);
+        let b = run(1.0);
+        assert!(a.iter().all(|x| x.is_finite() && x.abs() < 8.0));
+        let diff: f32 = a.iter().zip(&b).map(|(x, y)| (x - y).abs()).sum();
+        assert!(diff > 0.5, "Triangle and Ram's Head are identical");
     }
 }

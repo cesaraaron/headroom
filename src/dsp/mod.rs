@@ -26,7 +26,8 @@ use amp::{AMP_MAX, AmpBank, AmpKnob};
 use cab::{CabBank, ExternalIrCab};
 use effects::{
     Chorus, CleanBoost, Compressor, Delay, Distortion, Flanger, Fuzz, GraphicEq, MetalCore,
-    NoiseGate, ParametricEq, Phaser, Pitch, PreampEq, Reverb, Tremolo, TubeScreamer, UniVibe, Wah,
+    NoiseGate, ParametricEq, Phaser, Pitch, PreampEq, Rat, Reverb, Rotary, Tremolo, TubeDriver,
+    TubeScreamer, UniVibe, Wah,
 };
 use limiter::Limiter;
 
@@ -315,10 +316,14 @@ pub enum ChainStage {
     Trem = 18,
     Delay = 19,
     Reverb = 20,
+    Rat = 21,
+    TubeDriver = 22,
+    Rotary = 23,
 }
 
-/// Number of slots in [`ChainStage`]: 11 pre + amp + cab + 8 rack.
-pub const CHAIN_LEN: usize = 21;
+/// Number of slots in [`ChainStage`]: 11 pre + amp + cab + 8 rack, plus the RAT,
+/// the Tube Driver and the rotary.
+pub const CHAIN_LEN: usize = 24;
 
 /// Bounded number of attempts the audio-thread reader makes before giving up and
 /// reusing its last-good order (see [`Params::try_chain_slots`]).
@@ -348,6 +353,9 @@ impl ChainStage {
             18 => Some(Self::Trem),
             19 => Some(Self::Delay),
             20 => Some(Self::Reverb),
+            21 => Some(Self::Rat),
+            22 => Some(Self::TubeDriver),
+            23 => Some(Self::Rotary),
             _ => None,
         }
     }
@@ -378,6 +386,9 @@ impl ChainStage {
             Self::Trem => "trem",
             Self::Delay => "delay",
             Self::Reverb => "reverb",
+            Self::Rat => "rat",
+            Self::TubeDriver => "tube_driver",
+            Self::Rotary => "rotary",
         }
     }
 
@@ -404,6 +415,9 @@ impl ChainStage {
             "trem" => Some(Self::Trem),
             "delay" => Some(Self::Delay),
             "reverb" => Some(Self::Reverb),
+            "rat" => Some(Self::Rat),
+            "tube_driver" => Some(Self::TubeDriver),
+            "rotary" => Some(Self::Rotary),
             _ => None,
         }
     }
@@ -419,11 +433,14 @@ impl ChainStage {
             Self::Ts as u8,
             Self::Ds as u8,
             Self::Metal as u8,
+            Self::Rat as u8,
+            Self::TubeDriver as u8,
             Self::PreEq as u8,
             Self::Vibe as u8,
             Self::Boost as u8,
             Self::Amp as u8,
             Self::Cab as u8,
+            Self::Rotary as u8,
             Self::Geq as u8,
             Self::Eq as u8,
             Self::Flanger as u8,
@@ -436,7 +453,7 @@ impl ChainStage {
     }
 
     /// Index into the UI `PEDALS` table, or `None` for the amp and cab stages.
-    /// Pre pedals map 1:1; rack pedals sit right after the 11 pre entries.
+    /// Pre pedals map 1:1; rack pedals sit right after the 13 pre entries.
     pub fn pedal_index(self) -> Option<usize> {
         match self {
             Self::Gate => Some(0),
@@ -447,18 +464,21 @@ impl ChainStage {
             Self::Ts => Some(5),
             Self::Ds => Some(6),
             Self::Metal => Some(7),
-            Self::PreEq => Some(8),
-            Self::Vibe => Some(9),
-            Self::Boost => Some(10),
+            Self::Rat => Some(8),
+            Self::TubeDriver => Some(9),
+            Self::PreEq => Some(10),
+            Self::Vibe => Some(11),
+            Self::Boost => Some(12),
+            Self::Rotary => Some(13),
             Self::Amp | Self::Cab => None,
-            Self::Geq => Some(11),
-            Self::Eq => Some(12),
-            Self::Flanger => Some(13),
-            Self::Chorus => Some(14),
-            Self::Phaser => Some(15),
-            Self::Trem => Some(16),
-            Self::Delay => Some(17),
-            Self::Reverb => Some(18),
+            Self::Geq => Some(14),
+            Self::Eq => Some(15),
+            Self::Flanger => Some(16),
+            Self::Chorus => Some(17),
+            Self::Phaser => Some(18),
+            Self::Trem => Some(19),
+            Self::Delay => Some(20),
+            Self::Reverb => Some(21),
         }
     }
 
@@ -472,17 +492,20 @@ impl ChainStage {
             5 => Some(Self::Ts),
             6 => Some(Self::Ds),
             7 => Some(Self::Metal),
-            8 => Some(Self::PreEq),
-            9 => Some(Self::Vibe),
-            10 => Some(Self::Boost),
-            11 => Some(Self::Geq),
-            12 => Some(Self::Eq),
-            13 => Some(Self::Flanger),
-            14 => Some(Self::Chorus),
-            15 => Some(Self::Phaser),
-            16 => Some(Self::Trem),
-            17 => Some(Self::Delay),
-            18 => Some(Self::Reverb),
+            8 => Some(Self::Rat),
+            9 => Some(Self::TubeDriver),
+            10 => Some(Self::PreEq),
+            11 => Some(Self::Vibe),
+            12 => Some(Self::Boost),
+            13 => Some(Self::Rotary),
+            14 => Some(Self::Geq),
+            15 => Some(Self::Eq),
+            16 => Some(Self::Flanger),
+            17 => Some(Self::Chorus),
+            18 => Some(Self::Phaser),
+            19 => Some(Self::Trem),
+            20 => Some(Self::Delay),
+            21 => Some(Self::Reverb),
             _ => None,
         }
     }
@@ -500,6 +523,8 @@ impl ChainStage {
                 | Self::Ts
                 | Self::Ds
                 | Self::Metal
+                | Self::Rat
+                | Self::TubeDriver
                 | Self::PreEq
                 | Self::Vibe
                 | Self::Boost
@@ -674,6 +699,8 @@ const DEFAULT_CMP_ENABLED: bool = false;
 const DEFAULT_CMP_SUSTAIN: f32 = 0.40;
 const DEFAULT_CMP_ATTACK: f32 = 0.30;
 const DEFAULT_CMP_LEVEL: f32 = 0.50;
+// 0 = Dyna Comp (the shipped circuit), 1 = Boss CS-2.
+const DEFAULT_CMP_VOICE: f32 = 0.0;
 
 const DEFAULT_PITCH_ENABLED: bool = false;
 const DEFAULT_PITCH_PITCH: f32 = 0.50; // unison
@@ -715,6 +742,8 @@ const DEFAULT_FZ_LEVEL: f32 = 0.60;
 // 0 = Big Muff (the shipped default), 1 = Fuzz Face.
 const DEFAULT_FZ_TYPE: f32 = 0.0;
 const DEFAULT_FZ_GUITAR: f32 = 1.0;
+// 0 = Ram's Head (the shipped Muff voicing).
+const DEFAULT_FZ_MODEL: f32 = 0.0;
 
 const DEFAULT_TS_ENABLED: bool = false;
 const DEFAULT_TS_DRIVE: f32 = 0.45;
@@ -731,6 +760,27 @@ const DEFAULT_ML_DIST: f32 = 0.65;
 const DEFAULT_ML_LOW: f32 = 0.50;
 const DEFAULT_ML_HIGH: f32 = 0.50;
 const DEFAULT_ML_LEVEL: f32 = 0.60;
+
+// ProCo RAT. Off by default; a moderate distortion and an open filter.
+const DEFAULT_RAT_ENABLED: bool = false;
+const DEFAULT_RAT_DIST: f32 = 0.45;
+const DEFAULT_RAT_FILTER: f32 = 0.30;
+const DEFAULT_RAT_LEVEL: f32 = 0.60;
+
+// B.K. Butler Tube Driver. Off by default; a mild drive and flat tone.
+const DEFAULT_TD_ENABLED: bool = false;
+const DEFAULT_TD_DRIVE: f32 = 0.40;
+const DEFAULT_TD_HIGH: f32 = 0.50;
+const DEFAULT_TD_LOW: f32 = 0.50;
+const DEFAULT_TD_LEVEL: f32 = 0.60;
+
+// Rotary (RA-200 family). Off by default; slow, moderate depth, 50/50 blend.
+const DEFAULT_ROT_ENABLED: bool = false;
+const DEFAULT_ROT_SPEED: f32 = 0.0; // slow
+const DEFAULT_ROT_RAMP: f32 = 0.35;
+const DEFAULT_ROT_DEPTH: f32 = 0.55;
+const DEFAULT_ROT_MIX: f32 = 0.30;
+const DEFAULT_ROT_BALANCE: f32 = 0.50;
 
 const DEFAULT_REV_ENABLED: bool = false;
 const DEFAULT_REV_ROOM: f32 = 0.55;
@@ -843,6 +893,8 @@ pub struct Params {
     pub cmp_sustain: Arc<AtomicF32>,
     pub cmp_attack: Arc<AtomicF32>,
     pub cmp_level: Arc<AtomicF32>,
+    /// 0 = Dyna Comp (shipped), 1 = Boss CS-2.
+    pub cmp_voice: Arc<AtomicF32>,
 
     // Pitch shifter / Whammy (early mono chain, after the gate)
     pub pitch_enabled: Arc<AtomicBool>,
@@ -886,6 +938,8 @@ pub struct Params {
     pub fz_tone: Arc<AtomicF32>,
     pub fz_level: Arc<AtomicF32>,
     pub fz_type: Arc<AtomicF32>,
+    /// Big Muff revision: 0 = Ram's Head (shipped), 1 = Triangle, 2 = Sovtek, 3 = Cornish P-2.
+    pub fz_model: Arc<AtomicF32>,
     // Guitar volume as the fuzz sees it (1 = full) — drives the Fuzz Face cleanup.
     pub fz_guitar: Arc<AtomicF32>,
 
@@ -907,6 +961,27 @@ pub struct Params {
     pub ml_low: Arc<AtomicF32>,
     pub ml_high: Arc<AtomicF32>,
     pub ml_level: Arc<AtomicF32>,
+
+    // ProCo RAT — a pre-amp distortion after the ML-2.
+    pub rat_enabled: Arc<AtomicBool>,
+    pub rat_dist: Arc<AtomicF32>,
+    pub rat_filter: Arc<AtomicF32>,
+    pub rat_level: Arc<AtomicF32>,
+
+    // B.K. Butler Tube Driver — the 1990s lead overdrive, after the RAT.
+    pub td_enabled: Arc<AtomicBool>,
+    pub td_drive: Arc<AtomicF32>,
+    pub td_high: Arc<AtomicF32>,
+    pub td_low: Arc<AtomicF32>,
+    pub td_level: Arc<AtomicF32>,
+
+    // Rotary speaker (Yamaha RA-200 family) — a post-cab rack stage.
+    pub rot_enabled: Arc<AtomicBool>,
+    pub rot_speed: Arc<AtomicF32>,
+    pub rot_ramp: Arc<AtomicF32>,
+    pub rot_depth: Arc<AtomicF32>,
+    pub rot_mix: Arc<AtomicF32>,
+    pub rot_balance: Arc<AtomicF32>,
 
     // Reverb
     pub rev_enabled: Arc<AtomicBool>,
@@ -1052,6 +1127,7 @@ impl Params {
             cmp_sustain: p!(DEFAULT_CMP_SUSTAIN),
             cmp_attack: p!(DEFAULT_CMP_ATTACK),
             cmp_level: p!(DEFAULT_CMP_LEVEL),
+            cmp_voice: p!(DEFAULT_CMP_VOICE),
 
             pitch_enabled: b!(DEFAULT_PITCH_ENABLED),
             pitch_pitch: p!(DEFAULT_PITCH_PITCH),
@@ -1087,6 +1163,7 @@ impl Params {
             fz_tone: p!(DEFAULT_FZ_TONE),
             fz_level: p!(DEFAULT_FZ_LEVEL),
             fz_type: p!(DEFAULT_FZ_TYPE),
+            fz_model: p!(DEFAULT_FZ_MODEL),
             fz_guitar: p!(DEFAULT_FZ_GUITAR),
 
             ts_enabled: b!(DEFAULT_TS_ENABLED),
@@ -1104,6 +1181,24 @@ impl Params {
             ml_low: p!(DEFAULT_ML_LOW),
             ml_high: p!(DEFAULT_ML_HIGH),
             ml_level: p!(DEFAULT_ML_LEVEL),
+
+            rat_enabled: b!(DEFAULT_RAT_ENABLED),
+            rat_dist: p!(DEFAULT_RAT_DIST),
+            rat_filter: p!(DEFAULT_RAT_FILTER),
+            rat_level: p!(DEFAULT_RAT_LEVEL),
+
+            td_enabled: b!(DEFAULT_TD_ENABLED),
+            td_drive: p!(DEFAULT_TD_DRIVE),
+            td_high: p!(DEFAULT_TD_HIGH),
+            td_low: p!(DEFAULT_TD_LOW),
+            td_level: p!(DEFAULT_TD_LEVEL),
+
+            rot_enabled: b!(DEFAULT_ROT_ENABLED),
+            rot_speed: p!(DEFAULT_ROT_SPEED),
+            rot_ramp: p!(DEFAULT_ROT_RAMP),
+            rot_depth: p!(DEFAULT_ROT_DEPTH),
+            rot_mix: p!(DEFAULT_ROT_MIX),
+            rot_balance: p!(DEFAULT_ROT_BALANCE),
 
             rev_enabled: b!(DEFAULT_REV_ENABLED),
             rev_room: p!(DEFAULT_REV_ROOM),
@@ -1198,6 +1293,7 @@ impl Params {
         self.cmp_sustain.store(DEFAULT_CMP_SUSTAIN, Relaxed);
         self.cmp_attack.store(DEFAULT_CMP_ATTACK, Relaxed);
         self.cmp_level.store(DEFAULT_CMP_LEVEL, Relaxed);
+        self.cmp_voice.store(DEFAULT_CMP_VOICE, Relaxed);
 
         self.pitch_enabled.store(DEFAULT_PITCH_ENABLED, Relaxed);
         self.pitch_pitch.store(DEFAULT_PITCH_PITCH, Relaxed);
@@ -1233,6 +1329,7 @@ impl Params {
         self.fz_tone.store(DEFAULT_FZ_TONE, Relaxed);
         self.fz_level.store(DEFAULT_FZ_LEVEL, Relaxed);
         self.fz_type.store(DEFAULT_FZ_TYPE, Relaxed);
+        self.fz_model.store(DEFAULT_FZ_MODEL, Relaxed);
         self.fz_guitar.store(DEFAULT_FZ_GUITAR, Relaxed);
 
         self.ts_enabled.store(DEFAULT_TS_ENABLED, Relaxed);
@@ -1250,6 +1347,24 @@ impl Params {
         self.ml_low.store(DEFAULT_ML_LOW, Relaxed);
         self.ml_high.store(DEFAULT_ML_HIGH, Relaxed);
         self.ml_level.store(DEFAULT_ML_LEVEL, Relaxed);
+
+        self.rat_enabled.store(DEFAULT_RAT_ENABLED, Relaxed);
+        self.rat_dist.store(DEFAULT_RAT_DIST, Relaxed);
+        self.rat_filter.store(DEFAULT_RAT_FILTER, Relaxed);
+        self.rat_level.store(DEFAULT_RAT_LEVEL, Relaxed);
+
+        self.td_enabled.store(DEFAULT_TD_ENABLED, Relaxed);
+        self.td_drive.store(DEFAULT_TD_DRIVE, Relaxed);
+        self.td_high.store(DEFAULT_TD_HIGH, Relaxed);
+        self.td_low.store(DEFAULT_TD_LOW, Relaxed);
+        self.td_level.store(DEFAULT_TD_LEVEL, Relaxed);
+
+        self.rot_enabled.store(DEFAULT_ROT_ENABLED, Relaxed);
+        self.rot_speed.store(DEFAULT_ROT_SPEED, Relaxed);
+        self.rot_ramp.store(DEFAULT_ROT_RAMP, Relaxed);
+        self.rot_depth.store(DEFAULT_ROT_DEPTH, Relaxed);
+        self.rot_mix.store(DEFAULT_ROT_MIX, Relaxed);
+        self.rot_balance.store(DEFAULT_ROT_BALANCE, Relaxed);
 
         self.rev_enabled.store(DEFAULT_REV_ENABLED, Relaxed);
         self.rev_room.store(DEFAULT_REV_ROOM, Relaxed);
@@ -1355,6 +1470,9 @@ impl Params {
             ChainStage::Ts => self.ts_enabled.load(Relaxed),
             ChainStage::Ds => self.ds_enabled.load(Relaxed),
             ChainStage::Metal => self.ml_enabled.load(Relaxed),
+            ChainStage::Rat => self.rat_enabled.load(Relaxed),
+            ChainStage::TubeDriver => self.td_enabled.load(Relaxed),
+            ChainStage::Rotary => self.rot_enabled.load(Relaxed),
             ChainStage::PreEq => self.peq_enabled.load(Relaxed),
             ChainStage::Vibe => self.uv_enabled.load(Relaxed),
             ChainStage::Boost => self.boost_enabled.load(Relaxed),
@@ -1682,6 +1800,9 @@ pub struct DspChain {
     ts: TubeScreamer,
     ds: Distortion,
     ml: MetalCore,
+    rat: Rat,
+    td: TubeDriver,
+    rotary: Rotary,
     peq: PreampEq,
     uv: UniVibe,
     boost: CleanBoost,
@@ -1774,6 +1895,9 @@ impl DspChain {
             ts: TubeScreamer::new(sr),
             ds: Distortion::new(sr),
             ml: MetalCore::new(sr),
+            rat: Rat::new(sr),
+            td: TubeDriver::new(sr),
+            rotary: Rotary::new(sr),
             peq: PreampEq::new(sr),
             uv: UniVibe::new(sr),
             boost: CleanBoost::new(sr),
@@ -2029,11 +2153,13 @@ impl DspChain {
                 cmp,
                 cmp_sustain,
                 cmp_attack,
-                cmp_level
+                cmp_level,
+                cmp_voice
             ),
             ChainStage::Fuzz => {
                 mono_stage!(
-                    self, p, x, fz_enabled, fz, fz_fuzz, fz_tone, fz_level, fz_type, fz_guitar
+                    self, p, x, fz_enabled, fz, fz_fuzz, fz_tone, fz_level, fz_type, fz_guitar,
+                    fz_model
                 )
             }
             ChainStage::Ts => {
@@ -2047,6 +2173,21 @@ impl DspChain {
                     self, p, x, ml_enabled, ml, ml_dist, ml_low, ml_high, ml_level
                 )
             }
+            ChainStage::Rat => {
+                mono_stage!(
+                    self,
+                    p,
+                    x,
+                    rat_enabled,
+                    rat,
+                    rat_dist,
+                    rat_filter,
+                    rat_level
+                )
+            }
+            ChainStage::TubeDriver => mono_stage!(
+                self, p, x, td_enabled, td, td_drive, td_high, td_low, td_level
+            ),
             ChainStage::PreEq => {
                 mono_stage!(self, p, x, peq_enabled, peq, peq_low, peq_mid, peq_high)
             }
@@ -2076,6 +2217,19 @@ impl DspChain {
     fn run_stereo_stage(&mut self, stage: ChainStage, l: f32, r: f32) -> (f32, f32) {
         let p = &self.params;
         match stage {
+            ChainStage::Rotary => stereo_stage!(
+                self,
+                p,
+                l,
+                r,
+                rot_enabled,
+                rotary,
+                rot_speed,
+                rot_ramp,
+                rot_depth,
+                rot_mix,
+                rot_balance
+            ),
             ChainStage::Geq => stereo_stage!(
                 self,
                 p,
@@ -2317,6 +2471,7 @@ impl DspChain {
             self.phaser.clear_buffers();
             self.pitch.clear_buffers();
             self.chorus.clear_buffers();
+            self.rotary.clear_buffers();
             self.tremolo.clear_buffers();
             // The Fender spring tank and every model's oversampler histories.
             self.amp.clear_tails();
@@ -3136,6 +3291,39 @@ mod tests {
         );
     }
 
+    /// A rotary reorder must cut the rotor's ring like a physical re-patch. The
+    /// unit test covers `Rotary::clear_buffers` itself; this covers its wiring in
+    /// `snapshot_order`, which is the part a refactor can silently drop. The
+    /// assertion counts clears rather than reading the ring: the cab's own tail
+    /// refills the first few ring samples immediately after a legitimate clear.
+    #[test]
+    fn reordered_rotary_tail_does_not_survive() {
+        let sr = 48_000.0;
+        let params = Arc::new(Params::new());
+        params.rot_enabled.store(true, Relaxed);
+        params.rot_mix.store(0.9, Relaxed);
+        params.rot_depth.store(0.9, Relaxed);
+        params.rot_speed.store(1.0, Relaxed);
+        let mut chain = DspChain::new(sr, Arc::clone(&params));
+        for n in 0..(sr as usize / 2) {
+            let x = (2.0 * PI * 220.0 * n as f32 / sr).sin() * 0.5;
+            chain.process(x);
+        }
+        let before = chain.rotary.clear_count();
+
+        let order = swap_stages(params.chain_slots(), ChainStage::Rotary, ChainStage::Geq);
+        params.set_chain_order(&order);
+        // The clear happens on the next `process` call, when `snapshot_order`
+        // notices the new order. A few calls absorb a writer mid-publish retry.
+        for _ in 0..8 {
+            let _ = chain.process(0.0);
+        }
+        assert!(
+            chain.rotary.clear_count() > before,
+            "snapshot_order never reached the rotary's clear_buffers"
+        );
+    }
+
     /// Amp sag is explicitly protected across model switches — and across
     /// reorders too. A hot settled rig reordered must continue from its sag,
     /// not jump toward a fresh chain's output.
@@ -3222,9 +3410,10 @@ mod tests {
 
     /// `stereo_stages_follow_the_amp` is the boundary the UI refuses moves at.
     ///
-    /// What matters is *which* stages count as stereo-ahead-of-the-amp: the eight
-    /// rack pedals and the cab are not allowed there, the eleven mono pre pedals
-    /// are, and an unknown id must fail closed rather than slip through.
+    /// What matters is *which* stages count as stereo-ahead-of-the-amp: the nine
+    /// rack pedals (including the rotary) and the cab are not allowed there, the
+    /// thirteen mono pre pedals are, and an unknown id must fail closed rather
+    /// than slip through.
     #[test]
     fn stereo_stages_follow_the_amp_draws_the_boundary_it_claims() {
         /// Move `stage` into the slot immediately ahead of the amp.
@@ -3254,6 +3443,7 @@ mod tests {
         // Every rack pedal, and the cab, must be rejected ahead of the amp.
         for stage in [
             ChainStage::Cab,
+            ChainStage::Rotary,
             ChainStage::Geq,
             ChainStage::Eq,
             ChainStage::Flanger,

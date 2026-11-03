@@ -45,6 +45,29 @@ before any tone, amp, cabinet, or preset changes. It has two jobs:
 | mid (~`0.5`) | Fuzz Face (rounder germanium) |
 | high (~`1.0`) | Tone Bender MkII (hotter, sharper knee) |
 
+## Big Muff model mapping (from `src/dsp/effects/fuzz.rs`)
+
+`[fuzz] model` only affects the Big Muff voice. One topology gives four
+**voicings**, not four circuits — the presets and this table say "voiced like",
+not "models the circuit".
+
+| `model` | Voicing | Scoop | Input HP | Gain |
+| ------- | ------- | ----- | -------- | ---- |
+| `0.0` (default) | Ram's Head | −9 dB @ 700 Hz | 70 Hz | 120× |
+| `0.25` | Triangle | −8 dB @ 620 Hz | 80 Hz | 110× |
+| `0.50` | Sovtek "Civil War" | −6.5 dB @ 820 Hz | 60 Hz | 95× |
+| `0.75` | Cornish P-2 | −7.5 dB @ 750 Hz | 85 Hz | 105× |
+
+Model `0` is the pre-2026-11 Muff, bit-for-bit, so existing presets and the
+fidelity baseline are unchanged.
+
+## Compressor voice mapping (from `src/dsp/effects/compressor.rs`)
+
+`[compressor] voice`: `0.0` = MXR Dyna Comp (the shipped hard-knee, fast,
+bright circuit); `0.5`+ = Boss CS-2 (6 dB soft knee, 250 ms release, a −1.5 dB
+high shelf at 3 kHz, so it is darker and smoother). Voice `0` is bit-identical
+to the pre-2026-11 compressor.
+
 ## Echo mapping (from `src/dsp/effects/delay.rs`)
 
 `[delay] type`: `0.0` = digital stereo ping-pong, `0.5` = **Binson Echorec**
@@ -63,12 +86,12 @@ the drum period (the furthest head).
 
 ## 1. Code-derived inventory
 
-The 8 bundled presets use the **shipped default chain order** (none set
-`[chain]`): gate → whammy → wah → comp → fuzz → ts → ds → metal → preeq → vibe →
-**amp** → **cab** → geq → eq → flanger → chorus → phaser → trem → delay →
-reverb. Only the enabled devices are listed below. Noise gate and cabinet are
-always explicit (deterministic loading); every bundled preset sets `master`
-`width = 1.0`.
+The shipped default chain order is gate → whammy → wah → comp → fuzz → ts → ds →
+metal → rat → tube_driver → preeq → vibe → boost → **amp** → **cab** → rotary →
+geq → eq → flanger → chorus → phaser → trem → delay → reverb. Presets that set
+`[chain]` say so below. Only the enabled devices are listed in the table. Noise
+gate and cabinet are always explicit (deterministic loading); every bundled
+preset sets `master` `width = 1.0`.
 
 > Twelve presets were retired on 2026-09-29 because the tone models changed
 > under them. Their rows are gone from this table; the full inventory and the
@@ -79,11 +102,22 @@ always explicit (deterministic loading); every bundled preset sets `master`
 | `eagles_hotel_california_clean` | fender | fender | gate, comp, eq, chorus, delay, reverb | digital, 0.42 | off |
 | `eagles_hotel_california_solo` | tweed | tweed | gate, delay, reverb | digital, 0.40 | off |
 | `led_zeppelin_stairway_solo` | supro | supro | gate, comp, ts, preeq, eq, delay, reverb | digital (default), 0.26 | off |
-| `pink_floyd_comfortably_numb_solo_1` | hiwatt | wem | gate, comp, ts, fuzz, preeq, chorus, delay, reverb | digital, 0.88 | Big Muff |
-| `pink_floyd_comfortably_numb_solo_2` | hiwatt | wem | gate, comp, ts, fuzz, preeq, chorus, delay, reverb | digital, 0.90 | Big Muff |
+| `pink_floyd_comfortably_numb_solo_1` | hiwatt | wem | gate, comp, ts, fuzz, preeq, chorus, delay, reverb (`[chain]`: ts → fuzz) | digital, 0.88 | Big Muff |
+| `pink_floyd_comfortably_numb_solo_2` | hiwatt | wem | gate, comp, ts, fuzz, preeq, chorus, delay, reverb (`[chain]`: ts → fuzz) | digital, 0.90 | Big Muff |
 | `pink_floyd_mother_solo` | hiwatt | wem | gate, comp, delay, reverb | tape, 0.55 | off |
 | `pink_floyd_time_chorus` | hiwatt | wem | gate, vibe, delay, reverb | Echorec, 0.75 | off |
 | `pink_floyd_time_solo` | hiwatt | wem | gate, comp, fuzz, vibe, delay, reverb | Echorec, 0.62 | Fuzz Face |
+| `pink_floyd_shine_on_pulse` | hiwatt | wem | gate, comp, tube_driver, preeq, chorus, rotary, delay, reverb | digital, 0.74 | off |
+| `pink_floyd_sorrow_1994` | hiwatt | wem | gate, comp, fuzz, tube_driver, preeq, chorus, delay, reverb | digital, 0.98 | Sovtek |
+| `pink_floyd_run_like_hell_1994` | hiwatt | wem | gate, comp, chorus, rotary, delay, reverb | digital, 0.76 | off |
+| `pink_floyd_dogs_animals` | hiwatt | wem | gate, comp, fuzz, boost, preeq, rotary, delay, reverb (`[chain]`: fuzz → boost) | digital, 0.88 | Ram's Head |
+| `pink_floyd_echoes_seagull` | hiwatt | wem | gate, wah, delay, reverb | digital, 0.90 | off |
+| `pink_floyd_marooned` | hiwatt | wem | gate, comp, pitch, tube_driver, preeq, chorus, delay, reverb | digital, 0.72 | off |
+| `…numb_solo_1_alt_muff_td` | hiwatt | wem | gate, comp, ts, fuzz, tube_driver, preeq, chorus, delay, reverb (`[chain]`: ts → fuzz → tube_driver) | digital, 0.88 | Ram's Head |
+| `…numb_solo_1_alt_comp_after_fuzz` | hiwatt | wem | gate, comp, ts, fuzz, preeq, chorus, delay, reverb (`[chain]`: ts → fuzz → comp) | digital, 0.88 | Ram's Head |
+| `…numb_solo_1_alt_rotary` | hiwatt | wem | gate, comp, ts, fuzz, preeq, rotary, delay, reverb (`[chain]`: ts → fuzz) | digital, 0.88 | Ram's Head |
+| `…time_solo_alt_boost_first` | hiwatt | wem | gate, comp, boost, fuzz, vibe, delay, reverb (`[chain]`: boost → fuzz) | Echorec, 0.62 | Fuzz Face |
+| `…time_solo_alt_vibe_after_delay` | hiwatt | wem | gate, comp, fuzz, delay, vibe, reverb (`[chain]`: delay → vibe) | Echorec, 0.62 | Fuzz Face |
 
 ### Description-vs-path flags
 

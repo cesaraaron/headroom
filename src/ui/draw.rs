@@ -389,6 +389,9 @@ fn pedal_stage_state(params: &Params, stage: ChainStage) -> Option<(&'static str
         ChainStage::Ts => Some(("TS-808", on(&params.ts_enabled))),
         ChainStage::Ds => Some(("DS-1", on(&params.ds_enabled))),
         ChainStage::Metal => Some(("ML-2", on(&params.ml_enabled))),
+        ChainStage::Rat => Some(("RAT", on(&params.rat_enabled))),
+        ChainStage::TubeDriver => Some(("TUBE DRV", on(&params.td_enabled))),
+        ChainStage::Rotary => Some(("ROTARY", on(&params.rot_enabled))),
         ChainStage::PreEq => Some(("PRE-EQ", on(&params.peq_enabled))),
         ChainStage::Vibe => Some(("VIBE", on(&params.uv_enabled))),
         ChainStage::Boost => Some(("BOOST", on(&params.boost_enabled))),
@@ -423,15 +426,20 @@ fn render_vu_row(f: &mut Frame, area: Rect, label: &str, level: f32) {
     render_vu_row_detail(f, area, label, level, None, None, None);
 }
 
-/// As [`render_vu_row`], plus two output-only overlays: a **true peak** tick
-/// (so a transient stays visible after it has gone) and a `LIM` badge that lights
-/// when the output ceiling is engaging.
+/// As [`render_vu_row`], plus output-only overlays: a **true peak** tick (so a
+/// transient stays visible after it has gone) and a `LIM` badge that lights when
+/// the output ceiling is engaging.
 ///
 /// Both exist because of a specific blind spot: `level` is a *follower*, so it
 /// tracks the loudness but does not hold a peak, and it structurally cannot tell
 /// you that the output just touched the ceiling. A rig can sit at full scale
 /// with the meter never reaching the top — which reads as "the interface isn't
 /// clipping" when it very much is.
+///
+/// The true-peak tick is currently switched off (see the `SHOW_TRUE_PEAK_TICK`
+/// flag below): its hold-and-drain read as a stray cursor parked on the bar. The
+/// detector and the `output_peak` level stay live, so flipping the flag brings
+/// it back.
 fn render_vu_row_detail(
     f: &mut Frame,
     area: Rect,
@@ -443,6 +451,10 @@ fn render_vu_row_detail(
 ) {
     /// Dim factor for meter chrome: hush the bars without losing the hues.
     const METER_DIM: f32 = 0.45;
+    // The held true-peak tick is off: it reads as a delayed cursor sitting on
+    // the bar (it holds, drains red → amber, then vanishes). The peak level is
+    // still captured and published; only the drawn tick is gated here.
+    const SHOW_TRUE_PEAK_TICK: bool = false;
     let db = amp_to_db(level);
     let fill = ((db + 60.0) / 60.0).clamp(0.0, 1.0) as f64;
 
@@ -457,9 +469,10 @@ fn render_vu_row_detail(
     let green_end = (bar_width as f64 * 0.72) as usize;
     let yellow_end = (bar_width as f64 * 0.88) as usize;
 
-    // Where the held true peak sits, as a column in the bar.
+    // Where the held true peak sits, as a column in the bar. Switched off at the
+    // moment (`SHOW_TRUE_PEAK_TICK`); the plumbing stays for when it returns.
     let peak_col = peak
-        .filter(|p| *p > 1e-4)
+        .filter(|p| SHOW_TRUE_PEAK_TICK && *p > 1e-4)
         .map(|p| (((amp_to_db(p) + 60.0) / 60.0).clamp(0.0, 1.0) * bar_width as f32) as usize);
 
     let mut spans = vec![
@@ -2749,7 +2762,7 @@ mod tests {
                 None,
                 None,
                 Panels::all_visible(),
-                ChainStage::Amp,
+                ChainStage::Gate,
                 master_selected,
                 None,
                 None,
@@ -2995,8 +3008,8 @@ mod tests {
         let board = board_all(true); // every pedal on: the row overflows the pane
 
         // Selected at the front: the start shows and the right end is clipped.
-        let head = render_header_line(&params, &board, ChainStage::Amp, true, false);
-        assert!(head.contains("AMP"), "the start must be visible: {head}");
+        let head = render_header_line(&params, &board, ChainStage::Gate, true, false);
+        assert!(head.contains("GATE"), "the start must be visible: {head}");
         assert!(
             head.contains('…'),
             "a clipped right end must be marked: {head}"

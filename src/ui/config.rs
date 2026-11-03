@@ -5,9 +5,10 @@ use atomic_float::AtomicF32;
 use ratatui::style::Color;
 
 use super::styles::{
-    PEDAL_BLUE, PEDAL_CYAN, PEDAL_GOLD, PEDAL_GREEN, PEDAL_INDIGO, PEDAL_LIME, PEDAL_MINT,
-    PEDAL_ORANGE, PEDAL_ORCHID, PEDAL_PINK, PEDAL_PURPLE, PEDAL_RED, PEDAL_ROSE, PEDAL_SAND,
-    PEDAL_SILVER, PEDAL_STEEL, PEDAL_TEAL, PEDAL_VIBE, PEDAL_YELLOW,
+    PEDAL_AMBER, PEDAL_BLUE, PEDAL_CHARCOAL, PEDAL_CYAN, PEDAL_GOLD, PEDAL_GREEN, PEDAL_INDIGO,
+    PEDAL_LIME, PEDAL_MINT, PEDAL_ORANGE, PEDAL_ORCHID, PEDAL_PINK, PEDAL_PURPLE, PEDAL_RED,
+    PEDAL_ROSE, PEDAL_SAND, PEDAL_SILVER, PEDAL_STEEL, PEDAL_TEAL, PEDAL_VIBE, PEDAL_WALNUT,
+    PEDAL_YELLOW,
 };
 use crate::dsp::Params;
 pub(super) struct Knob {
@@ -58,16 +59,20 @@ pub(super) const PITCH_END: usize = PITCH_START + 3;
 pub(super) const WAH_START: usize = PITCH_END;
 pub(super) const WAH_END: usize = WAH_START + 6;
 pub(super) const CMP_START: usize = WAH_END;
-pub(super) const CMP_END: usize = CMP_START + 3;
+pub(super) const CMP_END: usize = CMP_START + 4;
 pub(super) const FUZZ_START: usize = CMP_END;
-pub(super) const FUZZ_END: usize = FUZZ_START + 5;
+pub(super) const FUZZ_END: usize = FUZZ_START + 6;
 pub(super) const TS_START: usize = FUZZ_END;
 pub(super) const TS_END: usize = TS_START + 3;
 pub(super) const DS_START: usize = TS_END;
 pub(super) const DS_END: usize = DS_START + 3;
 pub(super) const ML_START: usize = DS_END;
 pub(super) const ML_END: usize = ML_START + 4;
-pub(super) const PEQ_START: usize = ML_END;
+pub(super) const RAT_START: usize = ML_END;
+pub(super) const RAT_END: usize = RAT_START + 3;
+pub(super) const TD_START: usize = RAT_END;
+pub(super) const TD_END: usize = TD_START + 4;
+pub(super) const PEQ_START: usize = TD_END;
 pub(super) const PEQ_END: usize = PEQ_START + 3;
 // Uni-Vibe — the last pedal before the amp (guitar → fuzz → vibe → amp).
 pub(super) const UV_START: usize = PEQ_END;
@@ -75,8 +80,11 @@ pub(super) const UV_END: usize = UV_START + 4;
 // Clean boost — linear front-end gain, the last pedal before the amp.
 pub(super) const BOOST_START: usize = UV_END;
 pub(super) const BOOST_END: usize = BOOST_START + 3;
+// Rotary speaker — a rack stage right after the cab.
+pub(super) const ROT_START: usize = BOOST_END;
+pub(super) const ROT_END: usize = ROT_START + 5;
 // Post-cab rack pedals (after the cab), in signal order.
-pub(super) const GEQ_START: usize = BOOST_END;
+pub(super) const GEQ_START: usize = ROT_END;
 pub(super) const GEQ_END: usize = GEQ_START + 8;
 pub(super) const EQ_START: usize = GEQ_END;
 pub(super) const EQ_END: usize = EQ_START + 3;
@@ -140,7 +148,7 @@ pub(super) const KNOBS: &[Knob] = &[
         param: |p| &p.mic_room,
     },
     // ── Pre-amp pedals (before the amp), in signal order ──
-    // 9–10: Noise Gate
+    // Noise Gate
     Knob {
         label: "THRESH",
         param: |p| &p.ng_threshold,
@@ -149,7 +157,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "RELEASE",
         param: |p| &p.ng_release,
     },
-    // 11–13: Pitch shifter / Whammy
+    // Pitch shifter / Whammy
     Knob {
         label: "PITCH",
         param: |p| &p.pitch_pitch,
@@ -162,7 +170,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "TONE",
         param: |p| &p.pitch_tone,
     },
-    // 14–17: Auto-wah
+    // Auto-wah
     Knob {
         label: "FREQ",
         param: |p| &p.wah_freq,
@@ -200,10 +208,18 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.cmp_level,
     },
-    // 21–24: Fuzz (TYPE: 0 = Big Muff, 0.5 = Fuzz Face, 1 = Tone Bender)
+    Knob {
+        label: "VOICE",
+        param: |p| &p.cmp_voice,
+    },
+    // Fuzz (TYPE: 0 = Big Muff, 0.5 = Fuzz Face, 1 = Tone Bender)
     Knob {
         label: "TYPE",
         param: |p| &p.fz_type,
+    },
+    Knob {
+        label: "MUFF",
+        param: |p| &p.fz_model,
     },
     Knob {
         label: "FUZZ",
@@ -234,7 +250,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.ts_level,
     },
-    // 28–30: DS-1
+    // DS-1
     Knob {
         label: "DRIVE",
         param: |p| &p.ds_drive,
@@ -247,7 +263,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.ds_level,
     },
-    // 31–34: Boss ML-2 Metal Core
+    // Boss ML-2 Metal Core
     Knob {
         label: "DIST",
         param: |p| &p.ml_dist,
@@ -264,7 +280,37 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.ml_level,
     },
-    // 35–37: Pre-amp EQ
+    // ProCo RAT
+    Knob {
+        label: "DIST",
+        param: |p| &p.rat_dist,
+    },
+    Knob {
+        label: "FILTER",
+        param: |p| &p.rat_filter,
+    },
+    Knob {
+        label: "LEVEL",
+        param: |p| &p.rat_level,
+    },
+    // B.K. Butler Tube Driver
+    Knob {
+        label: "DRIVE",
+        param: |p| &p.td_drive,
+    },
+    Knob {
+        label: "HIGH",
+        param: |p| &p.td_high,
+    },
+    Knob {
+        label: "LOW",
+        param: |p| &p.td_low,
+    },
+    Knob {
+        label: "LEVEL",
+        param: |p| &p.td_level,
+    },
+    // Pre-amp EQ
     Knob {
         label: "LOW",
         param: |p| &p.peq_low,
@@ -277,7 +323,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "HIGH",
         param: |p| &p.peq_high,
     },
-    // 38–41: Uni-Vibe
+    // Uni-Vibe
     Knob {
         label: "RATE",
         param: |p| &p.uv_rate,
@@ -294,7 +340,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "MODE",
         param: |p| &p.uv_mode,
     },
-    // 42–44: Clean boost
+    // Clean boost
     Knob {
         label: "GAIN",
         param: |p| &p.boost_gain,
@@ -307,8 +353,29 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "BASS",
         param: |p| &p.boost_bass,
     },
+    // Rotary speaker
+    Knob {
+        label: "SPEED",
+        param: |p| &p.rot_speed,
+    },
+    Knob {
+        label: "RAMP",
+        param: |p| &p.rot_ramp,
+    },
+    Knob {
+        label: "DEPTH",
+        param: |p| &p.rot_depth,
+    },
+    Knob {
+        label: "MIX",
+        param: |p| &p.rot_mix,
+    },
+    Knob {
+        label: "BALANCE",
+        param: |p| &p.rot_balance,
+    },
     // ── Post-cab rack pedals (after the cab), in signal order ──
-    // 45–52: Graphic EQ (Boss GE-7 — seven band faders + output level)
+    // Graphic EQ (Boss GE-7 — seven band faders + output level)
     Knob {
         label: "100",
         param: |p| &p.geq_b1,
@@ -341,7 +408,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "LEVEL",
         param: |p| &p.geq_level,
     },
-    // 50–52: Parametric EQ
+    // Parametric EQ
     Knob {
         label: "LOW",
         param: |p| &p.eq_low,
@@ -354,7 +421,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "HIGH",
         param: |p| &p.eq_high,
     },
-    // 53–56: Flanger
+    // Flanger
     Knob {
         label: "RATE",
         param: |p| &p.fl_rate,
@@ -388,7 +455,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "MIX",
         param: |p| &p.ch_mix,
     },
-    // 60–63: Phaser
+    // Phaser
     Knob {
         label: "RATE",
         param: |p| &p.ph_rate,
@@ -426,7 +493,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "MODE",
         param: |p| &p.trem_mode,
     },
-    // 68–71: Delay (TYPE: 0 = digital ping-pong, 0.5 = Echorec, 1 = tape)
+    // Delay (TYPE: 0 = digital ping-pong, 0.5 = Echorec, 1 = tape)
     Knob {
         label: "TIME",
         param: |p| &p.delay_time,
@@ -443,7 +510,7 @@ pub(super) const KNOBS: &[Knob] = &[
         label: "TYPE",
         param: |p| &p.delay_type,
     },
-    // 72–74: Reverb
+    // Reverb
     Knob {
         label: "ROOM",
         param: |p| &p.rev_room,
@@ -527,6 +594,22 @@ pub(super) const PEDALS: &[Pedal] = &[
         ui: PedalUi::Knobs,
     },
     Pedal {
+        name: "RAT",
+        color: PEDAL_CHARCOAL,
+        start: RAT_START,
+        end: RAT_END,
+        enabled: |p| &p.rat_enabled,
+        ui: PedalUi::Knobs,
+    },
+    Pedal {
+        name: "TUBE DRIVER",
+        color: PEDAL_AMBER,
+        start: TD_START,
+        end: TD_END,
+        enabled: |p| &p.td_enabled,
+        ui: PedalUi::Knobs,
+    },
+    Pedal {
         name: "PRE-AMP EQ",
         color: PEDAL_LIME,
         start: PEQ_START,
@@ -548,6 +631,14 @@ pub(super) const PEDALS: &[Pedal] = &[
         start: BOOST_START,
         end: BOOST_END,
         enabled: |p| &p.boost_enabled,
+        ui: PedalUi::Knobs,
+    },
+    Pedal {
+        name: "ROTARY",
+        color: PEDAL_WALNUT,
+        start: ROT_START,
+        end: ROT_END,
+        enabled: |p| &p.rot_enabled,
         ui: PedalUi::Knobs,
     },
     // Post-cab rack (after the cab), in signal order.
@@ -769,8 +860,8 @@ mod tests {
     fn table_sizes_are_stable() {
         // Deliberate tripwire: bump these when you add or remove a pedal/knob so
         // the change is a conscious, reviewed edit rather than an accident.
-        assert_eq!(PEDALS.len(), 19, "pedal count changed");
-        assert_eq!(KNOBS.len(), 84, "knob count changed");
+        assert_eq!(PEDALS.len(), 22, "pedal count changed");
+        assert_eq!(KNOBS.len(), 98, "knob count changed");
     }
 
     #[test]

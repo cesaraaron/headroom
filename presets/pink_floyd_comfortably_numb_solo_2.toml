@@ -27,6 +27,7 @@ level   = 0.52
 [fuzz]
 enabled = true
 type    = 0.0   # 0 = Big Muff (the Ram's-Head voice)
+model   = 0.0   # Ram's Head
 fuzz  = 0.30
 tone  = 0.60
 level = 0.45
@@ -155,11 +156,14 @@ order = [
     "fuzz",
     "ds",
     "metal",
+    "rat",
+    "tube_driver",
     "preeq",
     "vibe",
     "boost",
     "amp",
     "cab",
+    "rotary",
     "geq",
     "eq",
     "flanger",
