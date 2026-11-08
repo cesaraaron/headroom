@@ -1,4 +1,5 @@
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::symbols::border;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 // ── Theme registry ──────────────────────────────────────────────────────────
@@ -97,6 +98,137 @@ pub(super) fn theme_index() -> u8 {
 /// written conf is always a canonical index.
 pub(super) fn cycle_theme() {
     set_theme(theme_index().wrapping_add(1));
+}
+
+// ── Panel frame look ──────────────────────────────────────────────────────────
+// A small ladder of cumulative panel-border looks, cycled live with `F5` so a
+// change can be compared against earlier rungs without a rebuild. `rounded` is
+// the default: soft corners read as a card rather than a box.
+//
+//   0  classic         plain/thick frames exactly as shipped
+//   1  rounded         rounded corner glyphs on the panels and knobs (default)
+//
+// A heavy rung was tried and dropped: box-drawing arcs exist only in the light
+// weight, so a heavy frame can never round its corners, and pairing `━` with
+// `╭` left the corners visibly finer than the straights. Rounded wins; keep the
+// frame one uniform weight. Floating active panes (a light edge / a lifted fill)
+// were also tried and dropped — the app is happy with focus shown in the border
+// colour alone.
+//
+// Runtime-only, like the mains-hum A/B: never written to `ui.conf`.
+static FRAME_LEVEL: AtomicU8 = AtomicU8::new(DEFAULT_FRAME_LEVEL);
+
+/// Fresh-install panel look: rounded corners.
+const DEFAULT_FRAME_LEVEL: u8 = 1;
+
+/// Highest rung on the frame ladder. Kept next to [`frame_set`] so adding a
+/// look means bumping this and handling the new level in one place.
+const FRAME_MAX: u8 = 1;
+
+pub(super) fn frame_level() -> u8 {
+    FRAME_LEVEL.load(Ordering::Relaxed).min(FRAME_MAX)
+}
+
+pub(super) fn set_frame_level(level: u8) {
+    FRAME_LEVEL.store(level.min(FRAME_MAX), Ordering::Relaxed);
+}
+
+/// Step to the next rung, wrapping (`F5`). Returns the new level.
+pub(super) fn cycle_frame() -> u8 {
+    let next = next_frame_level(frame_level());
+    set_frame_level(next);
+    next
+}
+
+/// Pure rung stepping, so the ladder can be tested without mutating the process
+/// global (which snapshot tests share).
+fn next_frame_level(current: u8) -> u8 {
+    (current.min(FRAME_MAX) + 1) % (FRAME_MAX + 1)
+}
+
+/// Human label for the current rung, for the switch toast and the help screen.
+pub(super) fn frame_name() -> &'static str {
+    frame_name_at(frame_level())
+}
+
+fn frame_name_at(level: u8) -> &'static str {
+    match level.min(FRAME_MAX) {
+        0 => "classic",
+        _ => "rounded",
+    }
+}
+
+/// Border glyphs for a structural panel. `classic` is whatever that panel
+/// shipped with (plain, thick, ...), so level 0 is a byte-for-byte no-op.
+pub(super) fn frame_set(classic: border::Set<'static>) -> border::Set<'static> {
+    frame_set_at(frame_level(), classic)
+}
+
+fn frame_set_at(level: u8, classic: border::Set<'static>) -> border::Set<'static> {
+    match level.min(FRAME_MAX) {
+        0 => classic,
+        _ => border::ROUNDED,
+    }
+}
+
+/// A horizontal rule in the panel's own stroke weight: (`├`, `─`, `┤`), matching
+/// the light rounded frame. Used where a panel draws its own rule or title cap,
+/// so an inner divider never looks heavier than the frame around it.
+#[derive(Clone, Copy)]
+pub(super) struct Rule {
+    pub left: &'static str,
+    pub mid: &'static str,
+    pub right: &'static str,
+}
+
+pub(super) fn frame_rule() -> Rule {
+    Rule {
+        left: "├",
+        mid: "─",
+        right: "┤",
+    }
+}
+
+// ── Panel frame styling ───────────────────────────────────────────────────────
+// A terminal has no alpha channel, so an inactive border recedes with a dark
+// shade plus the `DIM` attribute, and the focused region keeps the full chrome
+// colour — that contrast is the whole focus affordance.
+
+/// Scale an RGB color, leaving named/indexed colors alone.
+pub(super) fn shade(c: Color, factor: f32) -> Color {
+    match c {
+        Color::Rgb(r, g, b) => Color::Rgb(
+            (f32::from(r) * factor) as u8,
+            (f32::from(g) * factor) as u8,
+            (f32::from(b) * factor) as u8,
+        ),
+        other => other,
+    }
+}
+
+/// Border style for a structural panel: the full [`Theme::border`] when the
+/// region is active/focused, otherwise a heavily faded border with the
+/// terminal's `DIM` attribute, so the focused region stands out.
+pub(super) fn panel_border_style(active: bool) -> Style {
+    if active {
+        Style::default()
+            .fg(theme().border)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(shade(theme().border, 0.35))
+            .add_modifier(Modifier::DIM)
+    }
+}
+
+/// Color for a region's on-border glyphs (titles), matching
+/// [`panel_border_style`].
+pub(super) fn panel_edge_color(active: bool) -> Color {
+    if active {
+        theme().border
+    } else {
+        shade(theme().border, 0.35)
+    }
 }
 
 /// `~/.config/headroom/ui.conf` (mirrors the `midi.conf` shape).
@@ -303,6 +435,40 @@ mod tests {
 
         set_theme(DEFAULT_THEME);
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// The frame ladder is cumulative and clamps: level 0 is the shipped look
+    /// exactly, the default rung is rounded, and stepping wraps. Tested through
+    /// the pure helpers so the process-global level is never mutated while
+    /// snapshot tests are rendering.
+    #[test]
+    fn frame_ladder_steps_clamps_and_wraps() {
+        assert_eq!(DEFAULT_FRAME_LEVEL, 1, "rounded is the fresh-install look");
+        assert_eq!(next_frame_level(0), 1);
+        assert_eq!(next_frame_level(1), 0, "the ladder wraps");
+        assert_eq!(next_frame_level(255), 0, "out-of-range clamps first");
+
+        assert_eq!(frame_set_at(0, border::PLAIN), border::PLAIN);
+        assert_eq!(frame_set_at(0, border::THICK), border::THICK);
+        assert_eq!(frame_set_at(1, border::PLAIN), border::ROUNDED);
+        assert_eq!(frame_set_at(1, border::THICK), border::ROUNDED);
+        assert_eq!(
+            frame_set_at(1, border::PLAIN).top_left,
+            "╭",
+            "the frame must stay rounded"
+        );
+        assert_eq!(
+            frame_set_at(1, border::PLAIN).horizontal_top,
+            "─",
+            "the frame must stay one light weight"
+        );
+
+        assert_eq!(frame_name_at(0), "classic");
+        assert_eq!(frame_name_at(1), "rounded");
+        assert_eq!(frame_name_at(255), "rounded");
+
+        let rule = frame_rule();
+        assert_eq!((rule.left, rule.mid, rule.right), ("├", "─", "┤"));
     }
 
     /// Cycling visits every palette and wraps, writing the canonical index each

@@ -2,23 +2,23 @@
 source: src/ui/draw.rs
 expression: text
 ---
-┌─────────────────────────────────────╔ K E Y B I N D I N G S ════════════════════════════════════════════════════════════════════╗──────────────────────────────[ ] move┐
+╭─────────────────────────────────────╔ K E Y B I N D I N G S ════════════════════════════════════════════════════════════════════╗──────────────────────────────[ ] move╮
 │  AMP ──▶ CAB ──▶ MASTER +0.0 ──▶ OUT║Panels & chain                                                                             ║░░▌          OUT     ▐░░░░░▌LIM  0.0  │
-└─────────────────────────────────────║  1 / 2 / 3 / 4  focus chain, amp, timeline, pedals (again: hide → timeline)               ║──────────────────────────────────────┘
-┏┤ MARSHALL PLEXI  5.7 ms ├━━━━━━━━━━━║  Shift+1..4  solo a panel: close the others, keep just that one                           ║━━━━━━━━━━━━━━━━━━━━━━━━┤ 🎙 MARSH GB ├┓
-┃                                     ║  Tab / Shift-Tab  cycle focus through the visible panels                                  ║                                      ┃
-┃         ···                ···      ║  ←/→  move within the panel · Shift+←/→ jumps amp↔cab / pedal-to-pedal                    ║            ···              ···      ┃
-┃        · ● ◇              · ● ·     ║  [ / ]  move the ribbon's stage earlier / later                                           ║           · ● ·            · ● ·     ┃
-┃         · ·                ◇ ·      ║  note  between AMP and CAB = line-level; a full-rig AU is post-mic                        ║            ◇ ·              ◇ ·      ┃
-┃     VOL II 7.5          VOL I 0.0   ║  Space  bypass stage, pedal, or transport under focus                                     ║0        BLEND 0.0        ROOM 0.0    ┃
-┃                                     ║Mouse                                                                                      ║                                      ┃
-┃                                     ║  click  focus a panel / knob / tile / row · waveform seeks · Shift+drag selects           ║                                      ┃
-┃▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚║Play & edit                                                                                ║▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━║  ↑/↓  +/−  knob / adjust value                                                            ║━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-┌ GUITAR RIG ─────────────────────────║  D  remove pedal from the board                                                           ║──────────────────────────────────────┐
-│┌ + ADD ─────────────────────────────║  A  amp model browser (on the pedalboard: add a pedal)                                    ║─────────────────────────────────────┐│
+╰─────────────────────────────────────║  1 / 2 / 3 / 4  focus chain, amp, timeline, pedals (again: hide → timeline)               ║──────────────────────────────────────╯
+╭┤ MARSHALL PLEXI  5.7 ms ├───────────║  Shift+1..4  solo a panel: close the others, keep just that one                           ║────────────────────────┤ 🎙 MARSH GB ├╮
+│                                     ║  Tab / Shift-Tab  cycle focus through the visible panels                                  ║                                      │
+│         ···                ···      ║  ←/→  move within the panel · Shift+←/→ jumps amp↔cab / pedal-to-pedal                    ║            ···              ···      │
+│        · ● ◇              · ● ·     ║  [ / ]  move the ribbon's stage earlier / later                                           ║           · ● ·            · ● ·     │
+│         · ·                ◇ ·      ║  note  between AMP and CAB = line-level; a full-rig AU is post-mic                        ║            ◇ ·              ◇ ·      │
+│     VOL II 7.5          VOL I 0.0   ║  Space  bypass stage, pedal, or transport under focus                                     ║0        BLEND 0.0        ROOM 0.0    │
+│                                     ║Mouse                                                                                      ║                                      │
+│                                     ║  click  focus a panel / knob / tile / row · waveform seeks · Shift+drag selects           ║                                      │
+│▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚║Play & edit                                                                                ║▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚│
+╰─────────────────────────────────────║  ↑/↓  +/−  knob / adjust value                                                            ║──────────────────────────────────────╯
+╭ GUITAR RIG ─────────────────────────║  D  remove pedal from the board                                                           ║──────────────────────────────────────╮
+│╭ + ADD ─────────────────────────────║  A  amp model browser (on the pedalboard: add a pedal)                                    ║─────────────────────────────────────╮│
 ││                                    ║  C  cabinet model browser                                                                 ║                                     ││
-│└────────────────────────────────────║  I / X  IR browser / IR bypass                                                            ║─────────────────────────────────────┘│
+│╰────────────────────────────────────║  I / X  IR browser / IR bypass                                                            ║─────────────────────────────────────╯│
 ││├───────────────────────────────────║  O  change audio devices                                                                  ║────────────────────────────────────┤││
 ││SELECT A PEDAL — ←→                 ║  W  studio-master width: neutral / wide                                                   ║                                     ││
 ││                                    ║  F4 / Ctrl+G  mains-hum floor: on / off (live A/B)                                        ║                                     ││
@@ -26,14 +26,15 @@ expression: text
 ││                                    ║  ;  tap tempo: set the delay time by tapping                                              ║                                     ││
 ││                                    ║  Z / U  amp-plugin bypass / browser                                                       ║                                     ││
 ││                                    ║Tools                                                                                      ║                                     ││
-│└────────────────────────────────────║  P  preset browser (rig snapshot)                                                         ║─────────────────────────────────────┘│
-└─────────────────────────────────────║  S  save session (asks for a name when new)                                               ║──────────────────────────────────────┘
+│╰────────────────────────────────────║  P  preset browser (rig snapshot)                                                         ║─────────────────────────────────────╯│
+╰─────────────────────────────────────║  S  save session (asks for a name when new)                                               ║──────────────────────────────────────╯
                                       ║  J  session browser: new / save / save as / load (/ search)                               ║                                       
                                       ║  T  chromatic tuner                                                                       ║                                       
                                       ║  M  practice metronome (+/− tempo, Space on/off)                                          ║                                       
                                       ║  N  calibrate input level                                                                 ║                                       
                                       ║  F2  MIDI bindings: learn a controller control                                            ║                                       
                                       ║  F3  cycle the UI theme                                                                   ║                                       
+                                      ║  F5  cycle the panel look (rounded → classic)                                             ║                                       
                                       ║  V  plugin browser                                                                        ║                                       
                                       ║  R  arm / stop a dry raw take (auto-plays; lands on the timeline)                         ║                                       
                                       ║Looper (monitor only)                                                                      ║                                       
@@ -54,6 +55,5 @@ expression: text
                                       ║  Space  play / pause (any row)                                                            ║                                       
                                       ║  M  mute the selected track                                                               ║                                       
                                       ║  Enter  jump to start (loop in-point if looped)                                           ║                                       
-                                      ║  ↑/↓  ←/→  select row / seek by the step                                                  ║                                       
                                       ║                          ↑/↓  PgUp/PgDn scroll  ·  Esc / K close                          ║                                       
                                       ╚═══════════════════════════════════════════════════════════════════════════════════════════╝

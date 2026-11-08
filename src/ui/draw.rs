@@ -1,3 +1,4 @@
+use ratatui::symbols::border;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -163,8 +164,8 @@ fn render_header(
 ) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_type(BorderType::Plain)
-        .border_style(border_style(focused))
+        .border_set(frame_set(border::PLAIN))
+        .border_style(panel_border_style(focused))
         .title(
             Line::from(Span::styled("[ ] move", Style::default().fg(theme().dim))).right_aligned(),
         )
@@ -630,14 +631,17 @@ fn render_amp_box(
         Some(name) => format!("AU: {name}"),
         None => params.amp_model().name().to_uppercase(),
     };
-    let border_color = border_glyph(box_active);
+    let border_color = panel_edge_color(box_active);
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_type(BorderType::Thick)
-        .border_style(border_style(box_active))
+        .border_set(frame_set(border::THICK))
+        .border_style(panel_border_style(box_active))
         .title(Line::from(vec![
-            Span::styled("┤ ", Style::default().fg(border_color)),
+            Span::styled(
+                format!("{} ", frame_rule().right),
+                Style::default().fg(border_color),
+            ),
             Span::styled(
                 amp_name,
                 Style::default()
@@ -649,7 +653,7 @@ fn render_amp_box(
                 format!("  {:.1} ms ", builtin_latency_ms(sr)),
                 Style::default().fg(theme().dim).add_modifier(dim),
             ),
-            Span::styled("├", Style::default().fg(border_color)),
+            Span::styled(frame_rule().left, Style::default().fg(border_color)),
         ]))
         .style(panel_style());
     let inner = block.inner(area);
@@ -731,15 +735,18 @@ fn render_cab_box(
             None => params.cab_model().short_name().to_owned(),
         }
     };
-    let border_color = border_glyph(box_active);
+    let border_color = panel_edge_color(box_active);
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_type(BorderType::Thick)
-        .border_style(border_style(box_active))
+        .border_set(frame_set(border::THICK))
+        .border_style(panel_border_style(box_active))
         .title(
             Line::from(vec![
-                Span::styled("┤ 🎙 ", Style::default().fg(border_color)),
+                Span::styled(
+                    format!("{} 🎙 ", frame_rule().right),
+                    Style::default().fg(border_color),
+                ),
                 Span::styled(
                     cab_name,
                     Style::default()
@@ -747,7 +754,10 @@ fn render_cab_box(
                         .add_modifier(Modifier::BOLD)
                         .add_modifier(dim),
                 ),
-                Span::styled(" ├", Style::default().fg(border_color)),
+                Span::styled(
+                    format!(" {}", frame_rule().left),
+                    Style::default().fg(border_color),
+                ),
             ])
             .right_aligned(),
         )
@@ -863,12 +873,12 @@ fn render_rig(
         .is_some_and(|i| i == ADD_TILE || PEDALS.iter().any(|p| (p.start..p.end).contains(&i)));
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_type(BorderType::Plain)
-        .border_style(border_style(rig_active))
+        .border_set(frame_set(border::PLAIN))
+        .border_style(panel_border_style(rig_active))
         .title(Line::from(Span::styled(
             " GUITAR RIG ",
             Style::default()
-                .fg(border_glyph(rig_active))
+                .fg(panel_edge_color(rig_active))
                 .add_modifier(Modifier::BOLD),
         )))
         .style(panel_style());
@@ -947,7 +957,7 @@ fn render_add_tile(f: &mut Frame, area: Rect, focused: bool) {
     // A closed box like every other tile; focus shows in the border colour.
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_type(BorderType::Plain)
+        .border_set(frame_set(border::PLAIN))
         .border_style(Style::default().fg(color).add_modifier(dim))
         .title(Line::from(Span::styled(
             " + ADD ",
@@ -1045,7 +1055,7 @@ fn render_pedal_tile(
     // colour, not by shape, so selecting a pedal never reflows or opens its border.
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_type(BorderType::Plain)
+        .border_set(frame_set(border::PLAIN))
         .border_style(Style::default().fg(body).add_modifier(dim))
         .title(title)
         .style(panel_style());
@@ -1086,17 +1096,18 @@ fn render_pedal_tile(
 /// as a full `├──┤` rule.
 fn editor_top_edge(rule: Rect, color: Color) -> Line<'static> {
     let style = Style::default().fg(color);
+    let glyphs = frame_rule();
     let w = rule.width as usize;
     if w == 0 {
         return Line::from(Span::raw(""));
     }
-    let mut s = String::with_capacity(w);
-    s.push('├');
+    let mut s = String::with_capacity(w * glyphs.mid.len());
+    s.push_str(glyphs.left);
     for _ in 1..w.saturating_sub(1) {
-        s.push('─');
+        s.push_str(glyphs.mid);
     }
     if w > 1 {
-        s.push('┤');
+        s.push_str(glyphs.right);
     }
     Line::from(Span::styled(s, style))
 }
@@ -1118,7 +1129,7 @@ fn render_pedal_detail(
 
     let block = Block::default()
         .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
-        .border_type(BorderType::Plain)
+        .border_set(frame_set(border::PLAIN))
         .border_style(Style::default().fg(border_color))
         .style(panel_style());
     let inner = block.inner(area);
@@ -1221,7 +1232,7 @@ fn knob_cell(f: &mut Frame, area: Rect, focused: bool) -> Rect {
         let frame = Rect::new(area.x + (area.width - w) / 2, area.y, w, area.height);
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_type(BorderType::Plain)
+            .border_set(frame_set(border::PLAIN))
             .border_style(
                 Style::default()
                     .fg(theme().accent)
@@ -1717,6 +1728,7 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         row("  N", "  calibrate input level"),
         row("  F2", "  MIDI bindings: learn a controller control"),
         row("  F3", "  cycle the UI theme"),
+        row("  F5", "  cycle the panel look (rounded → classic)"),
     ]);
     #[cfg(feature = "clap")]
     lines.push(row("  V", "  plugin browser"));
@@ -2120,44 +2132,6 @@ fn build_dial(value: f32, focused: bool, rows: usize) -> Vec<String> {
     grid.into_iter().map(|r| r.into_iter().collect()).collect()
 }
 
-/// Scales an RGB color toward black by `factor` (0.0 = black, 1.0 = unchanged).
-fn shade(c: Color, factor: f32) -> Color {
-    match c {
-        Color::Rgb(r, g, b) => Color::Rgb(
-            (f32::from(r) * factor) as u8,
-            (f32::from(g) * factor) as u8,
-            (f32::from(b) * factor) as u8,
-        ),
-        other => other,
-    }
-}
-
-/// Border style for a structural panel: the full [`Theme::border`] when the
-/// region is active/focused, otherwise a heavily faded border with the
-/// terminal's `DIM` attribute. A terminal has no alpha channel, so `DIM` + a
-/// dark shade is the closest we get to a "transparent" inactive border — it
-/// recedes so the focused region stands out.
-fn border_style(active: bool) -> Style {
-    if active {
-        Style::default()
-            .fg(theme().border)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
-            .fg(shade(theme().border, 0.35))
-            .add_modifier(Modifier::DIM)
-    }
-}
-
-/// Color for a region's on-border glyphs (titles), matching [`border_style`].
-fn border_glyph(active: bool) -> Color {
-    if active {
-        theme().border
-    } else {
-        shade(theme().border, 0.35)
-    }
-}
-
 /// Whether an external amp is active *and* supplying its own cab (amp+cab mode), so the
 /// built-in cabinet stage — model selector and mic knobs — is bypassed. False in
 /// amp-only mode, where the built-in cab/IR stays in the path.
@@ -2331,13 +2305,13 @@ mod tests {
     fn focused_knob_gets_a_border_box() {
         let on = knob_text(true);
         assert!(
-            on.contains('┌') && on.contains('┐') && on.contains('└') && on.contains('┘'),
+            on.contains('╭') && on.contains('╮') && on.contains('╰') && on.contains('╯'),
             "focused knob draws no box:\n{on}"
         );
         assert!(on.contains("GAIN"), "focused knob lost its label");
         let off = knob_text(false);
         assert!(
-            !off.contains('┌') && !off.contains('└'),
+            !off.contains('╭') && !off.contains('╰'),
             "unfocused knob draws a box:\n{off}"
         );
         assert!(off.contains("GAIN"), "unfocused knob lost its label");
@@ -2349,11 +2323,11 @@ mod tests {
         let text = knob_text_wide(true);
         let top = text
             .lines()
-            .find(|l| l.contains('┌'))
+            .find(|l| l.contains('╭'))
             .expect("frame top row");
         let chars: Vec<char> = top.chars().collect();
-        let lo = chars.iter().position(|&c| c == '┌').expect("top-left");
-        let hi = chars.iter().position(|&c| c == '┐').expect("top-right");
+        let lo = chars.iter().position(|&c| c == '╭').expect("top-left");
+        let hi = chars.iter().position(|&c| c == '╮').expect("top-right");
         let width = hi - lo + 1;
         assert_eq!(
             width, KNOB_FRAME_W as usize,

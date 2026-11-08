@@ -1067,6 +1067,18 @@ pub fn run(
                     continue;
                 }
 
+                // Panel frame look: F5 steps the cumulative chrome ladder
+                // (classic → rounded → ...). Runtime-only experiment switch, so
+                // the look can be A/B'd against the shipped rendering live.
+                if key.code == KeyCode::F(5) && !any_overlay {
+                    styles::cycle_frame();
+                    save_msg = Some((
+                        format!("Panels: {}", styles::frame_name()),
+                        std::time::Instant::now(),
+                    ));
+                    continue;
+                }
+
                 // Unsaved-changes prompt: block the quit or session change until
                 // the user chooses save, discard, or cancel.
                 if let Some(prompt) = unsaved_prompt.take() {

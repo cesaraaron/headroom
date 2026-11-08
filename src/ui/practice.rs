@@ -16,16 +16,17 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crossterm::event::KeyCode;
+use ratatui::symbols::border;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
 };
 use std::sync::atomic::Ordering::Relaxed;
 
-use super::styles::{panel_style, theme};
+use super::styles::{frame_set, panel_border_style, panel_style, shade, theme};
 use crate::audio::AudioEngine;
 use crate::audio::calibration::{InputCalibration, REFERENCE_VERSION};
 use crate::dsp::Params;
@@ -1780,8 +1781,8 @@ impl PracticeUi {
         };
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_type(BorderType::Plain)
-            .border_style(border_style(focused))
+            .border_set(frame_set(border::PLAIN))
+            .border_style(panel_border_style(focused))
             .title(Line::from(Span::styled(
                 " T I M E L I N E ",
                 Style::default()
@@ -3239,25 +3240,6 @@ fn playhead_col(
 ) -> Option<usize> {
     (wave_w > 0 && position >= view_start && position < view_start + view_len)
         .then(|| (position - view_start) * wave_w.saturating_sub(1) / view_len.max(1))
-}
-
-fn shade(c: Color, factor: f32) -> Color {
-    match c {
-        Color::Rgb(r, g, b) => Color::Rgb(
-            (r as f32 * factor) as u8,
-            (g as f32 * factor) as u8,
-            (b as f32 * factor) as u8,
-        ),
-        other => other,
-    }
-}
-
-fn border_style(active: bool) -> Style {
-    Style::default().fg(if active {
-        theme().border
-    } else {
-        shade(theme().border, 0.5)
-    })
 }
 
 /// Dimmed border used for the gutter/timeline divider (matches an unfocused
