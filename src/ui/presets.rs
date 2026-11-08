@@ -164,27 +164,27 @@ pub(super) fn render_preset_modal(
         Span::styled(" search  ", Style::default().fg(theme().dim)),
         Span::styled("Enter", Style::default().fg(theme().amber)),
         Span::styled(" apply  ", Style::default().fg(theme().dim)),
-        Span::styled("S", Style::default().fg(theme().amber)),
+        Span::styled("s", Style::default().fg(theme().amber)),
         Span::styled(" save  ", Style::default().fg(theme().dim)),
-        Span::styled("E", Style::default().fg(theme().amber)),
+        Span::styled("e", Style::default().fg(theme().amber)),
         Span::styled(" export  ", Style::default().fg(theme().dim)),
-        Span::styled("I", Style::default().fg(theme().amber)),
+        Span::styled("i", Style::default().fg(theme().amber)),
         Span::styled(" import  ", Style::default().fg(theme().dim)),
-        Span::styled("F", Style::default().fg(theme().amber)),
+        Span::styled("f", Style::default().fg(theme().amber)),
         Span::styled(" favorite  ", Style::default().fg(theme().dim)),
-        Span::styled("X", Style::default().fg(theme().amber)),
+        Span::styled("x", Style::default().fg(theme().amber)),
         Span::styled(" A/B  ", Style::default().fg(theme().dim)),
     ];
     if on_user_preset {
         footer_spans.push(Span::styled(
-            "D",
+            "d",
             Style::default()
                 .fg(ratatui::style::Color::Red)
                 .add_modifier(Modifier::BOLD),
         ));
         footer_spans.push(Span::styled(" delete  ", Style::default().fg(theme().dim)));
     }
-    footer_spans.push(Span::styled("Esc / P", Style::default().fg(theme().amber)));
+    footer_spans.push(Span::styled("Esc / p", Style::default().fg(theme().amber)));
     footer_spans.push(Span::styled(" close", Style::default().fg(theme().dim)));
 
     f.render_widget(
@@ -200,6 +200,45 @@ pub(super) fn render_preset_modal(
         .alignment(Alignment::Center),
         footer[1],
     );
+}
+
+/// A quick action available from the preset browser's footer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PresetCommand {
+    Save,
+    Delete,
+    Export,
+    Import,
+    Favorite,
+    AbCompare,
+    Close,
+}
+
+/// What a printable character does in the preset browser. Filter input is only
+/// accepted in search mode (entered with `/`); otherwise the letter is a quick
+/// action, and anything unbound is ignored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PresetChar {
+    Command(PresetCommand),
+    Filter,
+    Ignore,
+}
+
+pub(super) fn preset_char_action(c: char, searching: bool) -> PresetChar {
+    if searching {
+        return PresetChar::Filter;
+    }
+    let command = match c.to_ascii_lowercase() {
+        's' => PresetCommand::Save,
+        'd' => PresetCommand::Delete,
+        'e' => PresetCommand::Export,
+        'i' => PresetCommand::Import,
+        'f' => PresetCommand::Favorite,
+        'x' => PresetCommand::AbCompare,
+        'p' => PresetCommand::Close,
+        _ => return PresetChar::Ignore,
+    };
+    PresetChar::Command(command)
 }
 
 /// Whether `p` matches `filter` (case-insensitively) over its **name** only. An
@@ -532,5 +571,52 @@ mod tests {
         assert!(!preset_matches(&p, "strat"));
         assert_eq!(filter_indices(std::slice::from_ref(&p), ""), vec![0]);
         assert!(filter_indices(std::slice::from_ref(&p), "blues").is_empty());
+    }
+
+    /// Outside search mode a letter must not start filtering: it is either a
+    /// quick action or a no-op. `/` (search mode) is the only way into the
+    /// filter.
+    #[test]
+    fn letters_only_filter_while_searching() {
+        assert_eq!(preset_char_action('a', false), PresetChar::Ignore);
+        assert_eq!(preset_char_action('g', false), PresetChar::Ignore);
+        assert_eq!(preset_char_action('1', false), PresetChar::Ignore);
+        assert_eq!(preset_char_action('a', true), PresetChar::Filter);
+        assert_eq!(preset_char_action('1', true), PresetChar::Filter);
+        assert_eq!(preset_char_action('S', true), PresetChar::Filter);
+    }
+
+    /// The quick actions are the lower-case letters shown in the footer.
+    #[test]
+    fn quick_actions_are_lowercase() {
+        let cases = [
+            ('s', PresetCommand::Save),
+            ('d', PresetCommand::Delete),
+            ('e', PresetCommand::Export),
+            ('i', PresetCommand::Import),
+            ('f', PresetCommand::Favorite),
+            ('x', PresetCommand::AbCompare),
+            ('p', PresetCommand::Close),
+        ];
+        for (c, command) in cases {
+            assert_eq!(
+                preset_char_action(c, false),
+                PresetChar::Command(command),
+                "{c} should be {command:?}"
+            );
+        }
+    }
+
+    /// Upper-case still works outside search, for muscle memory.
+    #[test]
+    fn quick_actions_accept_uppercase_too() {
+        assert_eq!(
+            preset_char_action('S', false),
+            PresetChar::Command(PresetCommand::Save)
+        );
+        assert_eq!(
+            preset_char_action('P', false),
+            PresetChar::Command(PresetCommand::Close)
+        );
     }
 }

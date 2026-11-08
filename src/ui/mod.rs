@@ -55,8 +55,8 @@ use input::{
 use midi::{MidiUi, render_midi};
 use practice::{PracticeUi, SaveContext};
 use presets::{
-    PathDialogKind, render_path_dialog, render_preset_modal, render_save_dialog, selected_preset,
-    visible_len,
+    PathDialogKind, PresetChar, PresetCommand, preset_char_action, render_path_dialog,
+    render_preset_modal, render_save_dialog, selected_preset, visible_len,
 };
 use sessions::{Action as SessionAction, SessionBrowser};
 
@@ -1591,8 +1591,8 @@ pub fn run(
                         _ => {}
                     }
                 } else if preset_open {
-                    // Commands are the upper-case letters (S/D/E/I/F/P); lower-case
-                    // and other printable keys append to the type-to-filter query.
+                    // Letters are quick actions (lower-case, also accepted in
+                    // upper-case); only `/` then typing feeds the filter.
                     match key.code {
                         KeyCode::Up => {
                             preset_cursor = preset_cursor.saturating_sub(1);
@@ -1626,81 +1626,6 @@ pub fn run(
                             preset_filter.clear();
                             preset_cursor = 0;
                         }
-                        KeyCode::Char('X') if !preset_search => {
-                            // A/B: flip to the other of the two most recently applied
-                            // presets (or apply the highlighted one if none yet),
-                            // keeping the browser open.
-                            let target = if let Some(prev) = prev_preset.clone() {
-                                presets.iter().find(|p| p.name == prev)
-                            } else {
-                                selected_preset(&presets, &preset_filter, preset_cursor)
-                            };
-                            if let Some(p) = target {
-                                p.apply(&params);
-                                let new_applied = p.name.clone();
-                                prev_preset = applied_preset.take();
-                                applied_preset = Some(new_applied);
-                                resync_board_after_rig_change(
-                                    &params, &mut board, &mut focus, &panels,
-                                );
-                            }
-                        }
-                        KeyCode::Char('S') if !preset_search => {
-                            preset_open = false;
-                            preset_search = false;
-                            save_open = true;
-                            save_name.clear();
-                            save_desc.clear();
-                            save_field = 0;
-                            save_error = None;
-                        }
-                        KeyCode::Char('D') if preset_cursor > 0 && !preset_search => {
-                            if let Some(p) =
-                                selected_preset(&presets, &preset_filter, preset_cursor)
-                                && p.source == crate::preset::PresetSource::User
-                            {
-                                let _ = p.delete();
-                                presets = crate::preset::load_all();
-                                preset_cursor =
-                                    preset_cursor.min(visible_len(&presets, &preset_filter));
-                            }
-                        }
-                        KeyCode::Char('E') if preset_cursor > 0 && !preset_search => {
-                            if let Some(p) =
-                                selected_preset(&presets, &preset_filter, preset_cursor)
-                            {
-                                let stem: String = p
-                                    .name
-                                    .to_lowercase()
-                                    .chars()
-                                    .map(|c| if c.is_alphanumeric() { c } else { '_' })
-                                    .collect();
-                                path_input = format!("./{stem}.toml");
-                                path_error = None;
-                                path_open = Some(PathDialogKind::Export);
-                            }
-                        }
-                        KeyCode::Char('I') if !preset_search => {
-                            path_input.clear();
-                            path_error = None;
-                            path_open = Some(PathDialogKind::Import);
-                        }
-                        KeyCode::Char('F') if preset_cursor > 0 && !preset_search => {
-                            if let Some(p) =
-                                selected_preset(&presets, &preset_filter, preset_cursor)
-                            {
-                                let name = p.name.clone();
-                                if !favorites.remove(&name) {
-                                    favorites.insert(name);
-                                }
-                                crate::preset::save_favorites(&favorites);
-                            }
-                        }
-                        KeyCode::Char('P') if !preset_search => {
-                            preset_open = false;
-                            preset_filter.clear();
-                            preset_search = false;
-                        }
                         KeyCode::Esc => {
                             if preset_search {
                                 // Leave search mode and drop the filter.
@@ -1720,17 +1645,99 @@ pub fn run(
                                     preset_cursor.min(visible_len(&presets, &preset_filter));
                             }
                         }
-                        // Lower-case (and any printable char while searching)
-                        // appends to the filter; the upper-case command arms
-                        // above are disabled during search.
+                        // Printable keys: literal filter input while searching,
+                        // else a lower-case quick action (upper-case accepted
+                        // too); anything unbound is ignored.
                         KeyCode::Char(c)
-                            if (!c.is_ascii_uppercase() || preset_search)
-                                && !key.modifiers.contains(KeyModifiers::CONTROL)
+                            if !key.modifiers.contains(KeyModifiers::CONTROL)
                                 && !key.modifiers.contains(KeyModifiers::ALT) =>
                         {
-                            preset_filter.push(c);
-                            preset_cursor =
-                                preset_cursor.min(visible_len(&presets, &preset_filter));
+                            match preset_char_action(c, preset_search) {
+                                PresetChar::Filter => {
+                                    preset_filter.push(c);
+                                    preset_cursor =
+                                        preset_cursor.min(visible_len(&presets, &preset_filter));
+                                }
+                                PresetChar::Command(PresetCommand::Save) => {
+                                    preset_open = false;
+                                    preset_search = false;
+                                    save_open = true;
+                                    save_name.clear();
+                                    save_desc.clear();
+                                    save_field = 0;
+                                    save_error = None;
+                                }
+                                PresetChar::Command(PresetCommand::Delete) if preset_cursor > 0 => {
+                                    if let Some(p) =
+                                        selected_preset(&presets, &preset_filter, preset_cursor)
+                                        && p.source == crate::preset::PresetSource::User
+                                    {
+                                        let _ = p.delete();
+                                        presets = crate::preset::load_all();
+                                        preset_cursor = preset_cursor
+                                            .min(visible_len(&presets, &preset_filter));
+                                    }
+                                }
+                                PresetChar::Command(PresetCommand::Export) if preset_cursor > 0 => {
+                                    if let Some(p) =
+                                        selected_preset(&presets, &preset_filter, preset_cursor)
+                                    {
+                                        let stem: String = p
+                                            .name
+                                            .to_lowercase()
+                                            .chars()
+                                            .map(|c| if c.is_alphanumeric() { c } else { '_' })
+                                            .collect();
+                                        path_input = format!("./{stem}.toml");
+                                        path_error = None;
+                                        path_open = Some(PathDialogKind::Export);
+                                    }
+                                }
+                                PresetChar::Command(PresetCommand::Import) => {
+                                    path_input.clear();
+                                    path_error = None;
+                                    path_open = Some(PathDialogKind::Import);
+                                }
+                                PresetChar::Command(PresetCommand::Favorite)
+                                    if preset_cursor > 0 =>
+                                {
+                                    if let Some(p) =
+                                        selected_preset(&presets, &preset_filter, preset_cursor)
+                                    {
+                                        let name = p.name.clone();
+                                        if !favorites.remove(&name) {
+                                            favorites.insert(name);
+                                        }
+                                        crate::preset::save_favorites(&favorites);
+                                    }
+                                }
+                                PresetChar::Command(PresetCommand::AbCompare) => {
+                                    // A/B: flip to the other of the two most
+                                    // recently applied presets (or apply the
+                                    // highlighted one if none yet), keeping the
+                                    // browser open.
+                                    let target = if let Some(prev) = prev_preset.clone() {
+                                        presets.iter().find(|p| p.name == prev)
+                                    } else {
+                                        selected_preset(&presets, &preset_filter, preset_cursor)
+                                    };
+                                    if let Some(p) = target {
+                                        p.apply(&params);
+                                        let new_applied = p.name.clone();
+                                        prev_preset = applied_preset.take();
+                                        applied_preset = Some(new_applied);
+                                        resync_board_after_rig_change(
+                                            &params, &mut board, &mut focus, &panels,
+                                        );
+                                    }
+                                }
+                                PresetChar::Command(PresetCommand::Close) => {
+                                    preset_open = false;
+                                    preset_filter.clear();
+                                    preset_search = false;
+                                }
+                                _ => {}
+                            }
                         }
                         _ => {}
                     }

@@ -107,7 +107,7 @@ is saved and restored on restart.
 `W` toggles the master-bus stereo width (neutral / wide).
 
 `S` saves the session to its folder; when the session is new the session
-browser opens asking for a name. (Saving the rig as a preset lives on `S`
+browser opens asking for a name. (Saving the rig as a preset lives on `s`
 inside the preset browser.)
 
 ## Expression pedal (MIDI)
@@ -148,11 +148,12 @@ A preset is a snapshot of the whole rig. Press `P` to open the browser:
 | --- | --- |
 | `↑` / `↓`, `Enter` | Navigate / apply (audio stays uninterrupted) |
 | `/` | Search: type to filter by name (`Backspace`; `Esc` clears) |
-| `S` | Save the current rig as a preset |
-| `E` / `I` | Export / import a preset file |
-| `F` | Favorite the selected preset |
-| `X` | A/B: swap the last two applied presets |
-| `D` | Delete (user presets only) |
+| `s` | Save the current rig as a preset |
+| `e` / `i` | Export / import a preset file |
+| `f` | Favorite the selected preset |
+| `x` | A/B: swap the last two applied presets |
+| `d` | Delete (user presets only) |
+| `p` | Close the browser |
 
 Applying a preset switches the rig without stopping audio. Favorites are marked
 with a star and tags (artist / genre / role) show in brackets; bundled presets

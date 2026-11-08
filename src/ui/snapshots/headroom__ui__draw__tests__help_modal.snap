@@ -44,12 +44,12 @@ expression: text
                                       ║Panels                                                                                     ║                                       
                                       ║  B  import a track (MP3/WAV/FLAC); / search · L library                                   ║                                       
                                       ║Preset browser                                                                             ║                                       
-                                      ║  /  search: type to filter by name (Backspace; Esc clears)                                ║                                       
+                                      ║  /  search: press / then type to filter by name (Backspace; Esc clears)                   ║                                       
                                       ║  ↑/↓  Enter  navigate / apply (audio uninterrupted)                                       ║                                       
-                                      ║  S / E / I  save / export / import                                                        ║                                       
-                                      ║  F  favorite the selected preset                                                          ║                                       
-                                      ║  X  A/B: swap the last two applied presets                                                ║                                       
-                                      ║  D  delete (user presets only)                                                            ║                                       
+                                      ║  s / e / i  save / export / import                                                        ║                                       
+                                      ║  f  favorite the selected preset                                                          ║                                       
+                                      ║  x  A/B: swap the last two applied presets                                                ║                                       
+                                      ║  d  delete (user presets only)                                                            ║                                       
                                       ║Timeline (focused)                                                                         ║                                       
                                       ║  Space  play / pause (any row)                                                            ║                                       
                                       ║  M  mute the selected track                                                               ║                                       
