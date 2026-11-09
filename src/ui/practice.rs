@@ -32,7 +32,7 @@ use crate::audio::calibration::{InputCalibration, REFERENCE_VERSION};
 use crate::dsp::Params;
 use crate::dsp::cab::{ExternalIrCab, LIVE_MAX_IR_LEN, load_ir};
 use crate::dsp::metronome::Metronome;
-use crate::dsp::player::{MAX_TRACKS, TrackKind as PlayerKind};
+use crate::dsp::player::{MAX_TRACKS, PlayerTrack, TrackKind as PlayerKind};
 use crate::practice::{DecodedTrack, Practice, decode_track, peak_buckets, peaks};
 use crate::preset::Preset;
 use crate::project::{self, AssetCopy, MetronomeSection, TrackSection, TransportSection};
@@ -52,6 +52,12 @@ const ROW_HEIGHT: usize = 3;
 /// Fixed left gutter width shared by the ruler and every track row, so the
 /// waveform columns line up. See `row_header`.
 const GUTTER: usize = 27;
+
+/// Monitor peak a newly imported backing track is normalised to, in dBFS.
+/// A mastered file is usually near 0 dBFS; normalising to −6 gives the track
+/// gain room to work and leaves the guitar/backing split sane by default.
+/// Raw takes are never normalised (their gain is the pre-rig level).
+const IMPORT_PEAK_DBFS: f32 = -6.0;
 
 /// Tick spacings (seconds) the ruler may choose from, coarsest that avoids
 /// label collisions. Sub-second entries matter once the view is zoomed in.
@@ -523,6 +529,33 @@ impl PracticeUi {
         touched
     }
 
+    /// Bring an imported backing track to a known monitor peak so its default
+    /// gain is musical instead of "whatever the file was mastered to". The
+    /// gain is clamped to a sane ±12 dB range so a near-silent file is not
+    /// amplified into its noise floor. Imports only — raw takes keep their
+    /// recorded level.
+    fn normalize_import(track: &mut PlayerTrack) {
+        let peak = track
+            .l
+            .iter()
+            .chain(track.r.iter())
+            .fold(0.0f32, |m, &x| m.max(x.abs()));
+        if peak <= 1e-6 {
+            return;
+        }
+        let target = crate::dsp::effects::db_to_lin(IMPORT_PEAK_DBFS);
+        let gain = (target / peak).clamp(0.25, 4.0);
+        if (gain - 1.0).abs() < 1e-6 {
+            return;
+        }
+        for x in &mut track.l {
+            *x *= gain;
+        }
+        for x in &mut track.r {
+            *x *= gain;
+        }
+    }
+
     fn finish_decode(
         &mut self,
         engine: &mut AudioEngine,
@@ -541,6 +574,10 @@ impl PracticeUi {
         let length_ticks = self.session.frames_to_ticks(frames, self.sample_rate);
         let mut player_track = decoded.track;
         player_track.start = start_frames;
+        // Backing imports get a known monitor level; takes keep their capture.
+        if pending.kind == TrackKind::Import {
+            Self::normalize_import(&mut player_track);
+        }
         let pk = peaks(&player_track, peak_buckets(frames, self.sample_rate));
 
         let asset = AssetRef {
@@ -3261,6 +3298,36 @@ mod tests {
             }),
             TrackKind::RawTake,
         )
+    }
+
+    /// Imported backing tracks are normalised to a known monitor peak; raw
+    /// takes keep their recorded level. A silent track is left alone.
+    #[test]
+    fn imports_are_normalised_to_the_monitor_peak() {
+        let target = crate::dsp::effects::db_to_lin(IMPORT_PEAK_DBFS);
+        let mut track = PlayerTrack {
+            l: vec![0.5, -1.0, 0.25],
+            r: vec![-0.5, 0.5, 0.0],
+            start: 0,
+        };
+        PracticeUi::normalize_import(&mut track);
+        let peak = track
+            .l
+            .iter()
+            .chain(track.r.iter())
+            .fold(0.0f32, |m, &x| m.max(x.abs()));
+        assert!(
+            (peak - target).abs() < 1e-5,
+            "normalised peak {peak} != target {target}"
+        );
+
+        let mut silent = PlayerTrack {
+            l: vec![0.0; 4],
+            r: vec![0.0; 4],
+            start: 0,
+        };
+        PracticeUi::normalize_import(&mut silent);
+        assert!(silent.l.iter().all(|&x| x == 0.0));
     }
 
     fn scratch_dir(tag: &str) -> PathBuf {

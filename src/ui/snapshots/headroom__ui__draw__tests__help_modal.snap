@@ -12,22 +12,22 @@ expression: text
 │         · ·                ◇ ·      ║  note  between AMP and CAB = line-level; a full-rig AU is post-mic                        ║            ◇ ·              ◇ ·      │
 │     VOL II 7.5          VOL I 0.0   ║  Space  bypass stage, pedal, or transport under focus                                     ║0        BLEND 0.0        ROOM 0.0    │
 │                                     ║Mouse                                                                                      ║                                      │
-│                                     ║  click  focus a panel / knob / tile / row · waveform seeks · Shift+drag selects           ║                                      │
-│▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚║Play & edit                                                                                ║▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚│
-╰─────────────────────────────────────║  ↑/↓  +/−  knob / adjust value                                                            ║──────────────────────────────────────╯
-╭ GUITAR RIG ─────────────────────────║  D  remove pedal from the board                                                           ║──────────────────────────────────────╮
-│╭ + ADD ─────────────────────────────║  A  amp model browser (on the pedalboard: add a pedal)                                    ║─────────────────────────────────────╮│
-││                                    ║  C  cabinet model browser                                                                 ║                                     ││
-│╰────────────────────────────────────║  I / X  IR browser / IR bypass                                                            ║─────────────────────────────────────╯│
-││├───────────────────────────────────║  O  change audio devices                                                                  ║────────────────────────────────────┤││
-││SELECT A PEDAL — ←→                 ║  W  studio-master width: neutral / wide                                                   ║                                     ││
+│▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚║  click  focus a panel / knob / tile / row · waveform seeks · Shift+drag selects           ║▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚│
+╰─────────────────────────────────────║Play & edit                                                                                ║──────────────────────────────────────╯
+╭ GUITAR RIG ─────────────────────────║  ↑/↓  +/−  knob / adjust value                                                            ║──────────────────────────────────────╮
+│╭ + ADD ─────────────────────────────║  D  remove pedal from the board                                                           ║─────────────────────────────────────╮│
+││                                    ║  A  amp model browser (on the pedalboard: add a pedal)                                    ║                                     ││
+│╰────────────────────────────────────║  C  cabinet model browser                                                                 ║─────────────────────────────────────╯│
+│╭────────────────────────────────────║  I / X  IR browser / IR bypass                                                            ║─────────────────────────────────────╮│
+││SELECT A PEDAL — ←→                 ║  O  change audio devices                                                                  ║                                     ││
+││                                    ║  W  studio-master width: neutral / wide                                                   ║                                     ││
 ││                                    ║  F4 / Ctrl+G  mains-hum floor: on / off (live A/B)                                        ║                                     ││
 ││                                    ║  panel 1 master cell: ←/→ select it, ↑/↓ set the rig output                               ║                                     ││
 ││                                    ║  ;  tap tempo: set the delay time by tapping                                              ║                                     ││
 ││                                    ║  Z / U  amp-plugin bypass / browser                                                       ║                                     ││
-││                                    ║Tools                                                                                      ║                                     ││
-│╰────────────────────────────────────║  P  preset browser (rig snapshot)                                                         ║─────────────────────────────────────╯│
-╰─────────────────────────────────────║  S  save session (asks for a name when new)                                               ║──────────────────────────────────────╯
+│╰────────────────────────────────────║Tools                                                                                      ║─────────────────────────────────────╯│
+╰─────────────────────────────────────║  P  preset browser (rig snapshot)                                                         ║──────────────────────────────────────╯
+                                      ║  S  save session (asks for a name when new)                                               ║                                       
                                       ║  J  session browser: new / save / save as / load (/ search)                               ║                                       
                                       ║  T  chromatic tuner                                                                       ║                                       
                                       ║  M  practice metronome (+/− tempo, Space on/off)                                          ║                                       

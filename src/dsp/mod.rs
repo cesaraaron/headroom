@@ -1586,13 +1586,14 @@ pub struct Levels {
     /// before the take bus is added. That combination is why a rig sitting at
     /// full-scale can show a meter that never reaches the top.
     pub output_peak: Arc<AtomicF32>,
-    /// 0–1 "the output ceiling is (or recently was) engaging". Decays rather
-    /// than latches, so the indicator fades instead of sticking.
+    /// 0–1 "the **final** output ceiling is (or recently was) engaging".
+    /// Decays rather than latches, so the indicator fades instead of sticking.
+    /// This is the safety limiter on the summed monitor mix.
     pub limiting: Arc<AtomicF32>,
-    /// Stereo-linked gain reduction the **live** master limiter has applied
-    /// since the last read, in dB (≤ 0.0; 0.0 when open). The meter row
-    /// follows the live path — take playback moves only the peak tick — so
-    /// the take bus is intentionally not included here.
+    /// Stereo-linked gain reduction the **final safety limiter** has applied
+    /// since the last read, in dB (≤ 0.0; 0.0 when open). It sits on the summed
+    /// monitor mix (guitar + backing + click) after the headroom trim, so it is
+    /// normally open and only reports the last few dB when the mix is pushed.
     pub gr_db: Arc<AtomicF32>,
 }
 
@@ -2501,9 +2502,9 @@ impl DspChain {
         )
     }
 
-    /// Gain reduction the live master limiter has applied since the last take,
-    /// in dB — powers the OUT-row readout. The take bus is intentionally not
-    /// included (see [`Levels::gr_db`]).
+    /// Gain reduction this chain's own master limiter has applied since the
+    /// last take, in dB. This is the chain's internal limiter, not the final
+    /// output stage's program ceiling (see [`Levels::gr_db`]).
     pub fn take_gr_db(&mut self) -> f32 {
         self.master_limiter.take_gr_db()
     }

@@ -88,6 +88,14 @@ pub struct TrackAck {
 /// their maximum block size.
 pub const MAX_BLOCK: usize = 4096;
 
+/// Headroom trim on the **summed monitor mix** (guitar + backing + click),
+/// in dB. `-6` leaves room for a normalized backing track at unity without
+/// asking the safety limiter to do mix work; the user's interface/monitor
+/// volume supplies the absolute level. This is the "master fader" of the
+/// practice mix (GarageBand-style: track faders set the balance, the master
+/// sets headroom, the limiter is a safety).
+const MONITOR_TRIM_DB: f32 = -6.0;
+
 /// Split `frames` interleaved frames into half-open `(start, end)` ranges of at
 /// most `max` frames each, in order. An oversized device callback is processed
 /// one range at a time so every buffer stays within its preallocated capacity
@@ -722,26 +730,22 @@ fn with_buffer(cfg: &StreamConfig, buffer_size: cpal::BufferSize) -> StreamConfi
     }
 }
 
-/// Split one frame's monitor sources between the two monitor buses.
+/// Split one frame's monitor sources between the take and monitor buses.
 ///
-/// The looper records the post-trim dry DI, so its playback is *take* audio: it
-/// belongs on the take bus, where `take_chain` re-amps it with the current rig.
-/// The click and the import bus are finished signals and stay on the live bus.
+/// The live bus is the processed guitar and is left untouched. The looper
+/// records the post-trim dry DI, so its playback is *take* audio: it belongs on
+/// the take bus, where `take_chain` re-amps it with the current rig. The click
+/// and the import bus are finished signals and go to the monitor bus, which is
+/// added after the program limiter at unity.
 #[inline]
 fn monitor_frame(
-    live_l: f32,
-    live_r: f32,
     import_l: f32,
     import_r: f32,
     click: f32,
     take: f32,
     loop_sample: f32,
 ) -> (f32, f32, f32) {
-    (
-        live_l + import_l + click,
-        live_r + import_r + click,
-        take + loop_sample,
-    )
+    (take + loop_sample, import_l + click, import_r + click)
 }
 
 /// Peak-follow one frame of the final output for the `OUT` meter.
@@ -754,40 +758,43 @@ fn follow_stereo(env: f32, l: f32, r: f32, attack: f32, release: f32) -> f32 {
     env + if a > env { attack } else { release } * (a - env)
 }
 
-/// Final output stage: sum the live and take buses, then apply the output
-/// ceiling.
+/// Final output stage: protect the **program** bus (live rig + re-amped
+/// takes/looper), then add the **monitor** bus (backing import + metronome
+/// click) at unity.
 ///
-/// Both buses have *already* been through their own `master_bus` (the take bus
-/// is a whole second [`DspChain`]), so each is bounded by 1.0 on its own. Their
-/// **sum** is not: two buses at the ceiling are +3 dB, and the metronome click
-/// and looper are mixed into the live bus before this point with nothing after
-/// them. Before this existed, the converter clipped and the overload grew with
-/// every take layer.
+/// The program is the only bus that gets a limiter. Both of its sources have
+/// already been through their own chain's `master_bus` at −1 dBFS, so the
+/// limiter is transparent for a single bus and only catches a take stacked on
+/// the live rig. The monitor bus deliberately bypasses it: a backing track is a
+/// finished, mastered signal, and its per-track gain is its level control. That
+/// keeps the guitar and the backing independent — the backing can never turn the
+/// guitar down, and the backing is not compressed by a per-backing ceiling.
 ///
-/// This is the final *safety* only: each chain already left its own lookahead
-/// limiter at `−1 dBFS`, so the sum is normally well under the ceiling. It exists
-/// for the monitor-only mixes (metronome/backing/looper) and for stacking a take on
-/// the live rig, where two limited buses add and can exceed full scale.
-///
-/// The ceiling is a **lookahead limiter** at full scale, not the old memoryless
-/// soft-clip: the soft-clip was a base-rate nonlinearity, so when it bit (a take
-/// stacked on a hot live rig) its harmonics aliased — the same hiss the master bus
-/// had. The limiter turns the sum down cleanly.
+/// The two are still summed into one stereo DAC. The caller applies a fixed
+/// [`MONITOR_TRIM_DB`] headroom trim to that sum and then a final **safety
+/// limiter** at −1 dBFS, so the normal mix is transparent and only the last few
+/// dB are caught. This is the DAW model: the track gains set the balance, the
+/// master trim sets headroom, and the limiter is a safety rather than the
+/// backing's compressor.
 #[inline]
 fn output_stage(
     live_l: f32,
     live_r: f32,
     take_l: f32,
     take_r: f32,
+    monitor_l: f32,
+    monitor_r: f32,
     limiter: &mut Limiter,
 ) -> (f32, f32) {
-    limiter.process(live_l + take_l, live_r + take_r)
+    let (pl, pr) = limiter.process(live_l + take_l, live_r + take_r);
+    (pl + monitor_l, pr + monitor_r)
 }
 
 /// True-peak hold for the OUT meter: 4× upsample-only measurement over the
-/// post-ceiling output, block max into a slow-decay hold. The old code held
-/// the *sample* peak here, which is structurally blind to inter-sample overs
-/// (a hot transient can clip the converter while every sample reads safe).
+/// final summed output (before the converter clamp), block max into a
+/// slow-decay hold. The old code held the *sample* peak here, which is
+/// structurally blind to inter-sample overs (a hot transient can clip the
+/// converter while every sample reads safe).
 /// A helper struct (rather than inline oversamplers on the audio state) so
 /// the hold is unit-testable without standing up an audio engine.
 struct TruePeak {
@@ -809,8 +816,8 @@ impl TruePeak {
         }
     }
 
-    /// Fold one post-ceiling stereo sample into the hold: max over the 4×
-    /// phases of both channels, kept against the decaying hold.
+    /// Fold one stereo sample into the hold: max over the 4× phases of both
+    /// channels, kept against the decaying hold.
     #[inline]
     fn push(&mut self, l: f32, r: f32) {
         let mut peak = 0.0f32;
@@ -868,12 +875,22 @@ struct InputState {
     /// Take-bus rig output for this block.
     take_l: Vec<f32>,
     take_r: Vec<f32>,
+    /// Monitor bus (backing import + metronome click) for this block, kept
+    /// separate from the program so a backing cannot drive the guitar's gain.
+    monitor_l: Vec<f32>,
+    monitor_r: Vec<f32>,
     /// DC blockers for the tuner bypass, which writes straight to the output
     /// without passing through the chain's master bus.
     tuner_dc_l: DcBlocker,
     tuner_dc_r: DcBlocker,
-    /// Full-scale lookahead limiter on the final output (see [`output_stage`]).
-    final_limiter: Limiter,
+    /// Final lookahead limiter on the **program** bus (live + take/looper only).
+    /// The monitor bus (backing + click) is added after it, unprocessed.
+    program_limiter: Limiter,
+    /// Headroom trim on the summed monitor mix, linear (see [`MONITOR_TRIM_DB`]).
+    monitor_trim: f32,
+    /// Final safety limiter on the trimmed mix at −1 dBFS. Transparent at normal
+    /// levels; catches the last few dB when the user pushes the backing/master.
+    safety_limiter: Limiter,
     insert_rx: Consumer<InsertCommand>,
     dropped_tx: Producer<Box<dyn StereoInsert>>,
     ext_cab_rx: Consumer<ExtCabCommand>,
@@ -1034,14 +1051,17 @@ impl InputState {
         self.levels.input.store(self.in_env, Relaxed);
         self.levels.output.store(self.out_env, Relaxed);
         self.levels.output_peak.store(self.out_peak.peak(), Relaxed);
-        // Live-master gain reduction since the last callback (take resets the
-        // latch, so this covers exactly this callback's chunks).
-        self.levels.gr_db.store(self.chain.take_gr_db(), Relaxed);
-        // Fade rather than latch, so the indicator releases on its own. The final
-        // stage's limiter is the authoritative "output touched the ceiling"
+        // Final safety-limiter gain reduction since the last callback (take
+        // resets the latch, so this covers exactly this callback's chunks). It
+        // sits on the summed monitor mix, so it reports the last few dB only
+        // when the user pushes the backing or the master.
+        let safety_gr = self.safety_limiter.take_gr_db();
+        self.levels.gr_db.store(safety_gr, Relaxed);
+        // Fade rather than latch, so the indicator releases on its own. The
+        // safety limiter is the authoritative "output touched the ceiling"
         // signal: its knee *is* the ceiling, unlike the old 0.95 guess (which was
         // the retired soft-clip knee and lit before the limiter did anything).
-        if self.final_limiter.take_gr_db() < 0.0 {
+        if safety_gr < 0.0 {
             self.limit_indicator = 1.0;
         }
         // The decay is a per-sample coefficient; apply it once per callback.
@@ -1175,16 +1195,16 @@ impl InputState {
                 self.release
             } * (a - self.in_env);
 
-            // Metronome click, the import bus, and the looper are mixed into the
-            // monitor path only (post-capture), so none ever lands in a take. The
-            // looper captures the post-trim dry `sample`, so its playback is raw
-            // take audio and rides the take bus (see `monitor_frame`).
+            // The metronome click and the import bus are monitor-only (post-
+            // capture), so neither ever lands in a take. The looper captures the
+            // post-trim dry `sample`, so its playback is raw take audio and rides
+            // the take bus with the other re-amped takes (see `monitor_frame`).
+            // The live bus (`out_l`/`out_r`) is already the processed guitar and
+            // is left untouched.
             let click = self.metro_voice.next_sample(metro_active, metro_bpm);
             let frame = self.player.next_frame(&transport);
             let loop_sample = self.looper.process(sample);
-            let (out_left, out_right, take_in) = monitor_frame(
-                self.out_l[i],
-                self.out_r[i],
+            let (take_in, monitor_l, monitor_r) = monitor_frame(
                 frame.import_l,
                 frame.import_r,
                 click,
@@ -1192,8 +1212,8 @@ impl InputState {
                 loop_sample,
             );
             self.take_in[i] = take_in;
-            self.out_l[i] = out_left;
-            self.out_r[i] = out_right;
+            self.monitor_l[i] = monitor_l;
+            self.monitor_r[i] = monitor_r;
         }
 
         // Reflect any mid-block transport change (recording grew, or auto-stopped
@@ -1208,41 +1228,47 @@ impl InputState {
         }
 
         // The summed raw-take bus is processed by its own rig instance, then
-        // added to the monitor. It is intentionally not part of the live chain.
+        // added to the live program bus. It is intentionally not part of the
+        // live chain.
         self.take_chain.process_block(
             &self.take_in[..frames],
             &mut self.take_l[..frames],
             &mut self.take_r[..frames],
         );
 
-        for ((&live_l, &live_r), (&take_l, &take_r)) in self
-            .out_l
-            .iter()
-            .zip(self.out_r.iter())
-            .zip(self.take_l.iter().zip(self.take_r.iter()))
-            .take(frames)
-        {
-            // Final output ceiling. Both buses above were already limited by
-            // their *own* `master_bus` (the take bus runs a whole second
-            // `DspChain`), so their sum can reach twice the ceiling — a hot rig
-            // at 1.0 plus a take layer is +3 dB — and the metronome click
-            // (0.5) and the looper ride on top of that with nothing after
-            // them. Without this the converter clips, and the overload grows
-            // with every take layer.
-            let (out_left, out_right) =
-                output_stage(live_l, live_r, take_l, take_r, &mut self.final_limiter);
-            let out_mono = 0.5 * (out_left + out_right);
+        for i in 0..frames {
+            // Protect the program (live + take/looper) only; the monitor
+            // (backing + click) is added at unity afterwards. A hot backing can
+            // never turn the guitar down, and the backing is not compressed by a
+            // per-backing ceiling.
+            let (mix_l, mix_r) = output_stage(
+                self.out_l[i],
+                self.out_r[i],
+                self.take_l[i],
+                self.take_r[i],
+                self.monitor_l[i],
+                self.monitor_r[i],
+                &mut self.program_limiter,
+            );
 
-            // The `OUT` follower reads the final sum (live + takes + loop), not
-            // the live bus alone, so a take or loop playing on its own still
-            // moves the meter.
+            // Master-strip headroom trim, then the final safety limiter. At the
+            // default trim a normalized backing and the guitar sum below the
+            // knee, so the limiter is transparent; only the last few dB are
+            // caught when the user pushes the mix.
+            let (out_left, out_right) = self
+                .safety_limiter
+                .process(mix_l * self.monitor_trim, mix_r * self.monitor_trim);
+
+            // The `OUT` follower and peak hold read the post-safety output: the
+            // true peak of what actually reaches the converter.
             self.out_env =
                 follow_stereo(self.out_env, out_left, out_right, self.attack, self.release);
-
-            // True peak of the final, post-ceiling signal, with a slow decay so a
-            // transient stays readable. The `output` meter is a *follower*: it
-            // tracks level but does not hold a peak; this is its peak-hold pair.
             self.out_peak.push(out_left, out_right);
+
+            // Belt-and-braces: the limiter already holds −1 dBFS.
+            let out_left = out_left.clamp(-1.0, 1.0);
+            let out_right = out_right.clamp(-1.0, 1.0);
+            let out_mono = 0.5 * (out_left + out_right);
 
             // Fan the stereo pair out to the device channels: L→0, R→1, any extra
             // channels get the mono sum; a mono device gets the sum.
@@ -1417,6 +1443,8 @@ fn build_engine(
     let take_in: Vec<f32> = vec![0.0; MAX_BLOCK];
     let take_l: Vec<f32> = vec![0.0; MAX_BLOCK];
     let take_r: Vec<f32> = vec![0.0; MAX_BLOCK];
+    let monitor_l: Vec<f32> = vec![0.0; MAX_BLOCK];
+    let monitor_r: Vec<f32> = vec![0.0; MAX_BLOCK];
 
     let state = InputState {
         chain,
@@ -1440,9 +1468,13 @@ fn build_engine(
         take_in,
         take_l,
         take_r,
+        monitor_l,
+        monitor_r,
         tuner_dc_l: DcBlocker::new(sr),
         tuner_dc_r: DcBlocker::new(sr),
-        final_limiter: Limiter::output_stage(sr),
+        program_limiter: Limiter::output_stage(sr),
+        monitor_trim: db_to_lin(MONITOR_TRIM_DB),
+        safety_limiter: Limiter::safety(sr),
         insert_rx,
         dropped_tx,
         ext_cab_rx,
@@ -1549,7 +1581,9 @@ fn build_engine(
 
 #[cfg(test)]
 mod tests {
-    use super::{Limiter, block_ranges, follow_stereo, monitor_frame, output_stage};
+    use super::{
+        Limiter, MONITOR_TRIM_DB, block_ranges, follow_stereo, monitor_frame, output_stage,
+    };
 
     const SR: f32 = 48_000.0;
 
@@ -1572,111 +1606,151 @@ mod tests {
     }
 
     /// The looper records the post-trim dry DI, so its playback is raw take
-    /// audio: it must be re-amped by `take_chain` instead of summed raw onto the
-    /// live bus (where it played as un-amplified DI ~20 dB below the rig).
+    /// audio: it rides the take bus with the other re-amped takes. The click and
+    /// the import bus are monitor-only and go to the separate monitor bus.
     #[test]
-    fn looper_playback_rides_the_take_bus_not_the_live_bus() {
-        let (l, r, take) = monitor_frame(0.10, 0.20, 0.01, 0.02, 0.03, 0.40, 0.25);
-        assert!(
-            (l - 0.14).abs() < 1e-6,
-            "live L must not carry the loop: {l}"
-        );
-        assert!(
-            (r - 0.25).abs() < 1e-6,
-            "live R must not carry the loop: {r}"
-        );
+    fn looper_plays_on_the_take_bus_and_imports_on_the_monitor_bus() {
+        let (take, monitor_l, monitor_r) = monitor_frame(0.10, 0.20, 0.03, 0.40, 0.25);
         assert!(
             (take - 0.65).abs() < 1e-6,
             "loop must ride the take bus: {take}"
         );
+        assert!(
+            (monitor_l - 0.13).abs() < 1e-6,
+            "import + click must go to the monitor bus: {monitor_l}"
+        );
+        assert!(
+            (monitor_r - 0.23).abs() < 1e-6,
+            "import + click must go to the monitor bus: {monitor_r}"
+        );
     }
 
-    /// An idle/empty loop contributes silence to the take bus.
+    /// An idle/empty loop and no monitor sources contribute silence to both buses.
     #[test]
     fn idle_looper_adds_nothing_to_either_bus() {
-        let (l, r, take) = monitor_frame(0.3, 0.4, 0.0, 0.0, 0.0, 0.0, 0.0);
-        assert_eq!((l, r, take), (0.3, 0.4, 0.0));
+        let (take, monitor_l, monitor_r) = monitor_frame(0.0, 0.0, 0.0, 0.0, 0.0);
+        assert_eq!((take, monitor_l, monitor_r), (0.0, 0.0, 0.0));
     }
 
     fn stage() -> Limiter {
         Limiter::output_stage(SR)
     }
 
-    /// Run the stage past its lookahead so a settled output can be read.
+    /// Run the program limiter past its lookahead so a settled output can be read.
     fn settle(lim: &mut Limiter, l: f32, r: f32) {
         for _ in 0..(lim.latency() + 8) {
             lim.process(l, r);
         }
     }
 
-    /// The final output stage must hold a full-scale ceiling **no matter how many
-    /// already-limited buses are summed into it** (live rig + a take bus, each its
-    /// own `master_bus`, plus the metronome/looper on the live bus).
+    /// A single program bus below the knee passes at unity: the final limiter
+    /// is a safety for stacked takes, not a permanent colouration.
     #[test]
-    fn summed_monitor_buses_cannot_exceed_the_ceiling() {
-        const CLICK: f32 = 0.5;
-        for &(live, take) in &[
-            (1.0f32, 1.0f32),
-            (1.0, 0.5),
-            (1.0, 0.0),
-            (1.5, 1.5),
-            (4.0, 4.0),
-            (1.0e6, 1.0e6),
-        ] {
-            for extra in [0.0f32, CLICK] {
-                let mut lim = stage();
-                let mut worst = 0.0f32;
-                for _ in 0..(lim.latency() + 4000) {
-                    let (l, r) = output_stage(live + extra, live + extra, take, take, &mut lim);
-                    worst = worst.max(l.abs()).max(r.abs());
-                }
-                assert!(
-                    worst <= 1.0 + 1e-3 && worst.is_finite(),
-                    "ceiling failed at {worst} for {live}+{take} (+{extra})"
-                );
-            }
-        }
-    }
-
-    /// A quiet sum passes the final stage at unity, so it is a safety net and not a
-    /// permanent colouration. (Read after the lookahead settles.)
-    #[test]
-    fn final_stage_is_transparent_at_normal_levels() {
-        // Stay below the gain computer's knee (1.0 * MARGIN = 0.97): this stage
-        // now starts turning down at -0.265 dBFS, not at 0 dBFS. A step to 0.9
-        // also rings the true-peak detector's interpolator over 0.97.
+    fn final_program_stage_is_transparent_below_the_knee() {
+        // Stay below the knee (0.97): a step to 0.9 also rings the true-peak
+        // detector's interpolator over the knee.
         for v in [0.0f32, 0.1, 0.5, 0.8] {
             let mut lim = stage();
             settle(&mut lim, v, -v);
-            let (l, r) = output_stage(v, -v, 0.0, 0.0, &mut lim);
+            let (l, r) = output_stage(v, -v, 0.0, 0.0, 0.0, 0.0, &mut lim);
             assert!((l - v).abs() < 1e-3, "L changed a quiet sample: {v} -> {l}");
             assert!((r + v).abs() < 1e-3, "R changed a quiet sample: {v} -> {r}");
         }
     }
 
-    /// The rig master output is applied inside the chain's master bus, *before* the
-    /// monitor-only buses are summed here — so turning the master up cannot change the
-    /// level of a backing import, the metronome click or the looper. That separation is
-    /// what makes the master usable for balancing the guitar against a backing track.
+    /// The monitor/backing bus is added *after* the program limiter at unity.
+    /// A full-scale backing must not turn the guitar down at all — the exact
+    /// bug the old shared limiter had (measured −5.6 dB).
     #[test]
-    fn monitor_buses_are_added_after_the_master_and_carry_no_gain() {
-        const IMPORT: f32 = 0.2;
-        // Kept below the ceiling so the stage is transparent and the only thing under
-        // test is that the monitor bus adds at unity on top of the chain.
-        // Kept below the knee (0.97 on this full-scale stage), including IMPORT.
-        for live in [0.0f32, 0.2, 0.4, 0.6] {
-            let mut a = stage();
-            settle(&mut a, live + IMPORT, live + IMPORT);
-            let (with_monitor, _) = output_stage(live + IMPORT, live + IMPORT, 0.0, 0.0, &mut a);
-            let mut b = stage();
-            settle(&mut b, live, live);
-            let (without, _) = output_stage(live, live, 0.0, 0.0, &mut b);
+    fn a_hot_monitor_bus_cannot_pull_the_program_down() {
+        const GUITAR: f32 = 0.85;
+        const BACKING: f32 = 1.0;
+        // Long enough for the program limiter's peak-hold envelope and release
+        // to settle, so the reading is steady-state, not an attack transient.
+        const SETTLE: usize = 24_000;
+
+        let mut lim = stage();
+        for _ in 0..SETTLE {
+            lim.process(GUITAR, GUITAR);
+        }
+        let (alone, _) = output_stage(GUITAR, GUITAR, 0.0, 0.0, 0.0, 0.0, &mut lim);
+
+        let mut lim = stage();
+        for _ in 0..SETTLE {
+            lim.process(GUITAR, GUITAR);
+        }
+        let (sum, _) = output_stage(GUITAR, GUITAR, 0.0, 0.0, BACKING, BACKING, &mut lim);
+        // The monitor is unprocessed, so subtracting it leaves the guitar.
+        let guitar = sum - BACKING;
+
+        let delta_db = 20.0 * (guitar / alone).log10();
+        assert!(
+            delta_db.abs() < 0.01,
+            "backing pulled the guitar {delta_db:.2} dB ({alone:.3} -> {guitar:.3})"
+        );
+    }
+
+    /// The monitor bus gets no limiter and no pad: it adds at exactly its
+    /// track gain, so the backing's own gain is its level control.
+    #[test]
+    fn monitor_bus_adds_at_unity_and_is_not_limited() {
+        for import in [0.0f32, 0.05, 0.2, 0.5, 1.0, 2.0] {
+            let mut lim = stage();
+            let (without, _) = output_stage(0.3, -0.3, 0.0, 0.0, 0.0, 0.0, &mut lim);
+            let mut lim = stage();
+            let (with_monitor, _) = output_stage(0.3, -0.3, 0.0, 0.0, import, import, &mut lim);
             assert!(
-                (with_monitor - without - IMPORT).abs() < 1e-3,
-                "monitor bus must add at unity on top of the chain output: \
-                 {without} + {IMPORT} != {with_monitor}"
+                (with_monitor - without - import).abs() < 1e-6,
+                "monitor must add at unity: {without} + {import} != {with_monitor}"
             );
         }
+    }
+
+    /// The program is protected by its own limiter; the summed monitor mix is
+    /// then trimmed for headroom. With a normalized backing and a hot guitar,
+    /// the trimmed sum stays below the safety knee, so the safety limiter is
+    /// transparent.
+    #[test]
+    fn monitor_trim_leaves_the_normal_mix_below_the_safety_knee() {
+        const GUITAR: f32 = 0.85;
+        const BACKING: f32 = 0.501; // normalized import
+
+        let mut program = stage();
+        let mut safety = Limiter::safety(SR);
+        settle(&mut program, GUITAR, GUITAR);
+        let (sum, _) = output_stage(GUITAR, GUITAR, 0.0, 0.0, BACKING, BACKING, &mut program);
+
+        let trim = crate::dsp::effects::db_to_lin(MONITOR_TRIM_DB);
+        let trimmed = sum * trim;
+        assert!(
+            trimmed < 0.891,
+            "the default mix must leave headroom, got {trimmed}"
+        );
+
+        settle(&mut safety, trimmed, trimmed);
+        let (out, _) = safety.process(trimmed, trimmed);
+        assert!(
+            (out - trimmed).abs() < 1e-3,
+            "the safety limiter must be transparent at the default mix: \
+             {trimmed} -> {out}"
+        );
+        assert!(out <= 0.891 + 1e-3);
+    }
+
+    /// Pushing the backing past the trim is caught by the safety limiter at
+    /// −1 dBFS, not by the converter clamp.
+    #[test]
+    fn the_safety_limiter_holds_the_ceiling_on_a_pushed_mix() {
+        let mut safety = Limiter::safety(SR);
+        let mut worst = 0.0f32;
+        for _ in 0..4_000 {
+            let (l, r) = safety.process(4.0, 4.0);
+            worst = worst.max(l.abs()).max(r.abs());
+        }
+        assert!(
+            worst <= 0.891 + 1e-3 && worst.is_finite(),
+            "safety limiter let {worst} through"
+        );
     }
 
     /// An oversized callback is split into preallocated pieces: contiguous,

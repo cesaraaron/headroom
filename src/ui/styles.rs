@@ -171,20 +171,17 @@ fn frame_set_at(level: u8, classic: border::Set<'static>) -> border::Set<'static
     }
 }
 
-/// A horizontal rule in the panel's own stroke weight: (`├`, `─`, `┤`), matching
-/// the light rounded frame. Used where a panel draws its own rule or title cap,
-/// so an inner divider never looks heavier than the frame around it.
+/// The glyphs that cap a panel title on its top edge: (`├`, `┤`), matching the
+/// light rounded frame so a title never looks heavier than the frame around it.
 #[derive(Clone, Copy)]
 pub(super) struct Rule {
     pub left: &'static str,
-    pub mid: &'static str,
     pub right: &'static str,
 }
 
 pub(super) fn frame_rule() -> Rule {
     Rule {
         left: "├",
-        mid: "─",
         right: "┤",
     }
 }
@@ -468,7 +465,7 @@ mod tests {
         assert_eq!(frame_name_at(255), "rounded");
 
         let rule = frame_rule();
-        assert_eq!((rule.left, rule.mid, rule.right), ("├", "─", "┤"));
+        assert_eq!((rule.left, rule.right), ("├", "┤"));
     }
 
     /// Cycling visits every palette and wraps, writing the canonical index each

@@ -61,10 +61,10 @@ pub(super) fn draw(
         Constraint::Length(3), // chain box + mini input/output bars
     ];
     if panels.amp {
-        // Two side-by-side boxes (amp + cab, 10 rows each): knobs, bottom
-        // margin, grille strip inside each box. Model picking lives in the
-        // `A`/`C` browser modals; the titles show the active models.
-        cons.push(Constraint::Length(10)); // amplifier + cabinet/mic
+        // Two side-by-side boxes (amp + cab, 9 rows each): knobs, grille strip
+        // inside each box. Model picking lives in the `A`/`C` browser modals; the
+        // titles show the active models.
+        cons.push(Constraint::Length(9)); // amplifier + cabinet/mic
     }
     if show_timeline {
         // Fixed 10-row strip (transport + two 3-row tracks + hint); any leftover
@@ -429,7 +429,7 @@ fn render_vu_row(f: &mut Frame, area: Rect, label: &str, level: f32) {
 
 /// As [`render_vu_row`], plus output-only overlays: a **true peak** tick (so a
 /// transient stays visible after it has gone) and a `LIM` badge that lights when
-/// the output ceiling is engaging.
+/// the final safety ceiling is engaging.
 ///
 /// Both exist because of a specific blind spot: `level` is a *follower*, so it
 /// tracks the loudness but does not hold a peak, and it structurally cannot tell
@@ -605,8 +605,9 @@ fn render_amp_panel(
 }
 
 /// Built-in monitoring latency, in ms: the cab convolver's fixed block latency, the
-/// chain master limiter's lookahead, and the final output stage's lookahead. Device
-/// buffering sits on top and is not known here.
+/// chain master limiter's lookahead, and the final program limiter's lookahead.
+/// The monitor bus (backing/click) is added after that limiter, so it does not add
+/// another. Device buffering sits on top and is not known here.
 fn builtin_latency_ms(sr: f32) -> f32 {
     crate::dsp::conv::latency() as f32 / sr.max(1.0) * 1000.0
         + 2.0 * crate::dsp::limiter::LOOKAHEAD_MS
@@ -666,7 +667,6 @@ fn render_amp_box(
         .constraints([
             Constraint::Min(6),
             Constraint::Length(1),
-            Constraint::Length(1),
         ])
         .split(inner);
 
@@ -703,10 +703,11 @@ fn render_amp_box(
             hits.push((knob_cols[i], HitTarget::Knob(ki)));
         }
     }
-    // parts[1] stays blank: bottom margin below the knobs.
+    // The grille sits directly under the knobs: no blank margin row between the
+    // controls and the zebra strip.
     render_grille(
         f,
-        parts[2],
+        parts[1],
         shade(theme().border, if box_active { 0.45 } else { 0.18 }),
     );
 }
@@ -771,7 +772,6 @@ fn render_cab_box(
         .constraints([
             Constraint::Min(6),
             Constraint::Length(1),
-            Constraint::Length(1),
         ])
         .split(inner);
 
@@ -812,10 +812,10 @@ fn render_cab_box(
         }
     }
 
-    // parts[1] stays blank: bottom margin mirroring the amp box.
+    // Grille directly under the mic knobs, mirroring the amp box.
     render_grille(
         f,
-        parts[2],
+        parts[1],
         shade(theme().border, if box_active { 0.45 } else { 0.18 }),
     );
 }
@@ -1087,31 +1087,6 @@ fn render_pedal_tile(
 }
 
 /// The detail editor: full-size dials for whichever pedal currently has focus.
-/// When focus is elsewhere (amp/mic/selectors) it shows a hint instead.
-/// The tile above already names the pedal, so the editor carries no title. Its top
-/// edge is a full rule joining the side borders, and the knobs fill the interior.
-/// The editor takes on the focused pedal's livery.
-///
-/// Top edge of the detail editor, drawn on the rule row *inside* the side borders,
-/// as a full `├──┤` rule.
-fn editor_top_edge(rule: Rect, color: Color) -> Line<'static> {
-    let style = Style::default().fg(color);
-    let glyphs = frame_rule();
-    let w = rule.width as usize;
-    if w == 0 {
-        return Line::from(Span::raw(""));
-    }
-    let mut s = String::with_capacity(w * glyphs.mid.len());
-    s.push_str(glyphs.left);
-    for _ in 1..w.saturating_sub(1) {
-        s.push_str(glyphs.mid);
-    }
-    if w > 1 {
-        s.push_str(glyphs.right);
-    }
-    Line::from(Span::styled(s, style))
-}
-
 fn render_pedal_detail(
     f: &mut Frame,
     area: Rect,
@@ -1127,23 +1102,15 @@ fn render_pedal_detail(
     let border_color = pedal.map_or(theme().dim, |p| p.color);
     let adding = focus == Some(ADD_TILE);
 
+    // A closed frame of its own — rounded all round, like the pedal it models,
+    // rather than side rails capped by an interior rule.
     let block = Block::default()
-        .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
+        .borders(Borders::ALL)
         .border_set(frame_set(border::PLAIN))
         .border_style(Style::default().fg(border_color))
         .style(panel_style());
-    let inner = block.inner(area);
+    let body = block.inner(area);
     f.render_widget(block, area);
-
-    // Rule row on top (inside the side borders), knobs below.
-    let body = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(6)])
-        .split(inner);
-    f.render_widget(
-        Paragraph::new(editor_top_edge(body[0], border_color)),
-        body[0],
-    );
 
     let Some(pedal) = pedal else {
         // No pedal under focus: one-line state label, hint beneath it.
@@ -1161,7 +1128,7 @@ fn render_pedal_detail(
         let parts = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
-            .split(body[1]);
+            .split(body);
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 label,
@@ -1185,7 +1152,7 @@ fn render_pedal_detail(
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![Constraint::Ratio(1, count as u32); count])
-        .split(body[1]);
+        .split(body);
 
     for (i, ki) in (pedal.start..pedal.end).enumerate() {
         let val = (KNOBS[ki].param)(params).load(Relaxed);
@@ -2361,30 +2328,6 @@ mod tests {
         assert!(
             needed <= KNOB_FRAME_W as usize,
             "KNOB_FRAME_W={KNOB_FRAME_W} is too narrow: a {widest}-char label needs {needed} cells"
-        );
-    }
-
-    /// Flatten a [`Line`] to plain text for glyph assertions.
-    fn line_text(line: Line<'_>) -> String {
-        line.spans.iter().map(|s| s.content.as_ref()).collect()
-    }
-
-    /// The editor top edge is always a full `├──┤` rule joining the side borders.
-    #[test]
-    fn editor_top_edge_is_a_full_rule() {
-        use ratatui::layout::Rect;
-        assert_eq!(
-            line_text(editor_top_edge(Rect::new(30, 0, 20, 1), theme().accent)),
-            "├──────────────────┤"
-        );
-        // Degenerate widths still emit a sane, non-panicking glyph.
-        assert_eq!(
-            line_text(editor_top_edge(Rect::new(0, 0, 0, 1), theme().accent)),
-            ""
-        );
-        assert_eq!(
-            line_text(editor_top_edge(Rect::new(0, 0, 1, 1), theme().accent)),
-            "├"
         );
     }
 

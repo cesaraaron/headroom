@@ -125,10 +125,19 @@ impl Limiter {
         Self::with_ceiling(sr, CEILING, MAKEUP)
     }
 
-    /// A limiter for the final output stage: a full-scale ceiling, no makeup (it
-    /// receives the sum of already-limited buses).
+    /// A limiter for the final program bus: a full-scale ceiling, no makeup (it
+    /// receives the live rig plus the re-amped take/looper bus, which have each
+    /// already been limited by their own `master_bus`).
     pub fn output_stage(sr: f32) -> Self {
         Self::with_ceiling(sr, 1.0, 1.0)
+    }
+
+    /// The master-bus **safety** limiter: the same −1 dBFS ceiling as
+    /// [`new`](Self::new) but with **no makeup gain**. It sits on the summed
+    /// monitor mix after the headroom trim, so it is transparent at normal
+    /// levels and only catches the last few dB when the mix is pushed.
+    pub fn safety(sr: f32) -> Self {
+        Self::with_ceiling(sr, CEILING, 1.0)
     }
 
     fn with_ceiling(sr: f32, ceiling: f32, makeup: f32) -> Self {
@@ -312,6 +321,22 @@ mod tests {
                 "quiet signal must pass at makeup, got {l}"
             );
             assert!((r + 0.1 * MAKEUP).abs() < 1e-5);
+        }
+    }
+
+    /// The final safety limiter must be unity below the ceiling: unlike the
+    /// master-bus limiter it applies no makeup, so a quiet mix is not lifted.
+    #[test]
+    fn safety_limiter_passes_at_unity() {
+        let mut lim = Limiter::safety(48_000.0);
+        let n = lim.latency() + 64;
+        for _ in 0..n {
+            lim.process(0.1, -0.1);
+        }
+        for _ in 0..100 {
+            let (l, r) = lim.process(0.1, -0.1);
+            assert!((l - 0.1).abs() < 1e-5, "safety limiter added makeup: {l}");
+            assert!((r + 0.1).abs() < 1e-5);
         }
     }
 
