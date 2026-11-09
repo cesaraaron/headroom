@@ -125,17 +125,22 @@ impl Limiter {
         Self::with_ceiling(sr, CEILING, MAKEUP)
     }
 
-    /// A limiter for the final program bus: a full-scale ceiling, no makeup (it
-    /// receives the live rig plus the re-amped take/looper bus, which have each
-    /// already been limited by their own `master_bus`).
+    /// A limiter for the final program bus at an explicit `ceiling`, no makeup.
+    /// The engine uses this for the program bus's headroom budget; the default
+    /// full-scale variant is [`output_stage`](Self::output_stage).
+    pub fn output_stage_at(sr: f32, ceiling: f32) -> Self {
+        Self::with_ceiling(sr, ceiling, 1.0)
+    }
+
+    /// A limiter for the final program bus at full scale, no makeup (it receives
+    /// the live rig plus the re-amped take/looper bus, which have each already
+    /// been limited by their own `master_bus`).
     pub fn output_stage(sr: f32) -> Self {
         Self::with_ceiling(sr, 1.0, 1.0)
     }
 
-    /// The master-bus **safety** limiter: the same −1 dBFS ceiling as
-    /// [`new`](Self::new) but with **no makeup gain**. It sits on the summed
-    /// monitor mix after the headroom trim, so it is transparent at normal
-    /// levels and only catches the last few dB when the mix is pushed.
+    /// The master-bus ceiling (−1 dBFS) with **no makeup gain**. For a bus that
+    /// is already gain-staged and only needs the ceiling applied.
     pub fn safety(sr: f32) -> Self {
         Self::with_ceiling(sr, CEILING, 1.0)
     }

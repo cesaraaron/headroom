@@ -97,12 +97,13 @@ track, the metronome, or the looper, which is what makes it useful for balancing
 the guitar against a backing track. The top of its range reaches the program
 output ceiling, so turning it up past the point where the signal is already loud
 engages the limiter — just as winding up a real power amp does. The backing track
-and click ride a separate monitor bus added after that limiter, so a loud backing
-can never pull the guitar down; use its track gain to set its level (imports are
-normalized to −6 dBFS peak). The summed monitor mix is then trimmed 6 dB for
-headroom and runs through a final safety limiter at −1 dBFS: at normal settings
-it is transparent, and only the last few dB are caught. If the `LIM` badge
-lights, lower the backing gain or the MASTER.
+and click ride a separate monitor bus that is **ducked under the guitar**, not
+summed through the guitar's limiter: the backing is full-level when you are not
+playing and turns down only as far as your current peak needs. That means a loud
+backing can never clip or compress the guitar, no matter how far you push its
+gain. Imports are normalized to −6 dBFS peak, and you balance the two with the
+track gain and the MASTER. If you want more backing while you play, lower the
+MASTER a little — the freed headroom goes to the backing.
 
 The **OUT** meter shows the true peak (held tick) plus the limiter's gain
 reduction in dB beside the `LIM` badge, so you can see exactly how hard the
