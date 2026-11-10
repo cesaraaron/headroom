@@ -604,10 +604,11 @@ fn render_amp_panel(
     );
 }
 
-/// Built-in monitoring latency, in ms: the cab convolver's fixed block latency, the
-/// chain master limiter's lookahead, and the final program limiter's lookahead.
-/// The monitor bus (backing/click) is added after that limiter, so it does not add
-/// another. Device buffering sits on top and is not known here.
+/// Built-in monitoring latency, in ms: the cab convolver's fixed block latency,
+/// the chain master limiter's lookahead, and the final mix limiter's lookahead.
+/// Both the program and monitor buses pass through that last limiter, so the
+/// backing/click are delayed with the guitar. Device buffering sits on top and is
+/// not known here.
 fn builtin_latency_ms(sr: f32) -> f32 {
     crate::dsp::conv::latency() as f32 / sr.max(1.0) * 1000.0
         + 2.0 * crate::dsp::limiter::LOOKAHEAD_MS
@@ -664,10 +665,7 @@ fn render_amp_box(
     // lives in the `A` browser modal; the title shows the active amp.
     let parts = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(6),
-            Constraint::Length(1),
-        ])
+        .constraints([Constraint::Min(6), Constraint::Length(1)])
         .split(inner);
 
     // Amp front-panel knobs: the active model's own controls, count and labels.
@@ -769,10 +767,7 @@ fn render_cab_box(
     // Mic knobs, blank bottom margin, grille strip inside the box.
     let parts = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(6),
-            Constraint::Length(1),
-        ])
+        .constraints([Constraint::Min(6), Constraint::Length(1)])
         .split(inner);
 
     // Cabinet mics (position, dynamic↔ribbon blend, room) in front of the cabinet.

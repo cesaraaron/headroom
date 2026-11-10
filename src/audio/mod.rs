@@ -88,18 +88,19 @@ pub struct TrackAck {
 /// their maximum block size.
 pub const MAX_BLOCK: usize = 4096;
 
-/// Peak ceiling of the **program** bus (live guitar + re-amped takes/looper) at
-/// the final stage. It matches the chain's own −1 dBFS ceiling, so it is
-/// transparent for one chain and only catches a take stacked on the live rig.
-/// The headroom for the backing comes from the duck, not from turning the
-/// guitar down.
-const PROGRAM_CEILING: f32 = 0.891;
+/// Peak ceiling of the final mix (live guitar + re-amped takes/looper +
+/// backing + click) at the output stage. It matches the chain's own −1 dBFS
+/// ceiling, so the limiter is a safety: it catches a stacked take or a hot
+/// backing, not the ordinary guitar.
+const MIX_CEILING: f32 = 0.891;
 
-/// Ceiling the **sum** of program + monitor is kept under by the monitor duck.
-/// The program limiter holds the guitar below [`PROGRAM_CEILING`]; the duck
-/// gives the rest of full scale to the backing. The guitar is never multiplied
-/// by this gain — only the monitor bus is.
-const DUCK_CEILING: f32 = 0.97;
+/// Headroom the internal mix runs at before the output limiter. Both the
+/// program and monitor buses are scaled by this, so the limiter sees a mix
+/// that already has room to breathe and rarely has to move. Loudness is made
+/// up after the converter (interface/headphone volume), not by pushing the
+/// limiter. −4 dB keeps a full-scale guitar (0.891) plus a −6 dBFS import
+/// (0.5) at 0.878, right at the limiter's 0.864 knee.
+const MIX_HEADROOM: f32 = 0.630_957_3; // −4 dB
 
 /// Split `frames` interleaved frames into half-open `(start, end)` ranges of at
 /// most `max` frames each, in order. An oversized device callback is processed
@@ -741,7 +742,7 @@ fn with_buffer(cfg: &StreamConfig, buffer_size: cpal::BufferSize) -> StreamConfi
 /// records the post-trim dry DI, so its playback is *take* audio: it belongs on
 /// the take bus, where `take_chain` re-amps it with the current rig. The click
 /// and the import bus are finished signals and go to the monitor bus, which is
-/// added after the program limiter at unity.
+/// summed with the program and protected by the final mix limiter.
 #[inline]
 fn monitor_frame(
     import_l: f32,
@@ -763,20 +764,22 @@ fn follow_stereo(env: f32, l: f32, r: f32, attack: f32, release: f32) -> f32 {
     env + if a > env { attack } else { release } * (a - env)
 }
 
-/// Final output stage: protect the **program** bus (live rig + re-amped
-/// takes/looper), then mix in the **monitor** bus (backing import + click)
-/// through the [`MonitorDuck`].
+/// Final output stage: sum the **program** bus (live rig + re-amped
+/// takes/looper) and the **monitor** bus (backing import + click), then run the
+/// whole mix through one stereo-linked lookahead limiter.
 ///
-/// The program is the only bus that gets a limiter. Both of its sources have
-/// already been through their own chain's `master_bus` at −1 dBFS, so the
-/// limiter is transparent for a single bus and only catches a take stacked on
-/// the live rig. The monitor bus is not limited at all: it is **ducked under
-/// the program** — full level when the guitar is quiet, turned down only as far
-/// as the guitar's current peak needs. The guitar is never multiplied by the
-/// duck gain, so a backing track cannot clip, compress, or otherwise change the
-/// guitar, no matter how loud it is.
+/// Both buses get the same [`MIX_HEADROOM`] trim before the sum. That is the
+/// headroom the old monitor duck was trying to buy: at −4 dB a full-scale
+/// guitar plus a −6 dBFS backing lands just under the limiter knee, so the
+/// limiter stays transparent and the backing is never pulled down under the
+/// guitar. The limiter is the only thing that touches the mix after the sum,
+/// and it applies one gain to both buses, so the guitar/backing balance is
+/// preserved.
+///
+/// The trim costs 4 dB of output level; raise the interface/headphone volume to
+/// make it up. It is deliberately *before* the limiter: turning the mix up only
+/// spends the headroom the trim bought.
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn output_stage(
     live_l: f32,
     live_r: f32,
@@ -785,11 +788,12 @@ fn output_stage(
     monitor_l: f32,
     monitor_r: f32,
     limiter: &mut Limiter,
-    duck: &mut MonitorDuck,
 ) -> (f32, f32) {
-    let (pl, pr) = limiter.process(live_l + take_l, live_r + take_r);
-    let (ml, mr) = duck.process(pl, pr, monitor_l, monitor_r);
-    (pl + ml, pr + mr)
+    let program_l = (live_l + take_l) * MIX_HEADROOM;
+    let program_r = (live_r + take_r) * MIX_HEADROOM;
+    let monitor_l = monitor_l * MIX_HEADROOM;
+    let monitor_r = monitor_r * MIX_HEADROOM;
+    limiter.process(program_l + monitor_l, program_r + monitor_r)
 }
 
 /// True-peak hold for the OUT meter: 4× upsample-only measurement over the
@@ -839,99 +843,6 @@ impl TruePeak {
     }
 }
 
-/// Sidechain ducker for the monitor bus.
-///
-/// The program bus (live guitar + take/looper) is **never** multiplied by this
-/// gain. The monitor bus (backing import + click) is delayed by the program
-/// limiter's lookahead and multiplied by whatever gain keeps
-/// `|program| + |monitor|` under [`DUCK_CEILING`]. So the backing is at full
-/// level when the guitar is quiet, ducks under it when the guitar is loud, and
-/// the guitar keeps its own gain regardless of how loud the backing is.
-///
-/// The gain is stereo-linked (one value for both monitor channels), so the
-/// backing's stereo image does not shift.
-struct MonitorDuck {
-    delay_l: Vec<f32>,
-    delay_r: Vec<f32>,
-    pos: usize,
-    /// Peak-hold envelopes of the program output and the monitor input.
-    env_p: f32,
-    env_m: f32,
-    env_release: f32,
-    /// The applied monitor gain. Starts open; moves quickly down and releases
-    /// slowly so the backing recovers smoothly between phrases.
-    gain: f32,
-    attack: f32,
-    release: f32,
-    ceiling: f32,
-}
-
-impl MonitorDuck {
-    /// `delay` must be the program limiter's latency, so the delayed monitor
-    /// stays aligned with the already-delayed program output.
-    fn new(sr: f32, delay: usize, ceiling: f32) -> Self {
-        let sr = sr.max(1.0);
-        Self {
-            delay_l: vec![0.0; delay.max(1)],
-            delay_r: vec![0.0; delay.max(1)],
-            pos: 0,
-            env_p: 0.0,
-            env_m: 0.0,
-            // 80 ms: long enough not to pump on every waveform cycle, short
-            // enough that the backing comes up as the guitar note decays.
-            env_release: (-1.0 / (0.080 * sr)).exp(),
-            gain: 1.0,
-            // ~0.05 ms attack: the monitor is delayed by the program lookahead,
-            // so the gain is fully down before the first ducked sample emerges.
-            attack: 1.0 - (-1.0 / (0.00005 * sr)).exp(),
-            // 150 ms release: a musical sidechain recovery, not a pump.
-            release: 1.0 - (-1.0 / (0.150 * sr)).exp(),
-            ceiling,
-        }
-    }
-
-    /// Feed one frame of (post-program-limiter) program and (undelayed) monitor.
-    /// Returns the delayed, ducked monitor; the caller adds the program.
-    #[inline]
-    fn process(&mut self, p_l: f32, p_r: f32, m_l: f32, m_r: f32) -> (f32, f32) {
-        let p_peak = p_l.abs().max(p_r.abs());
-        self.env_p = if p_peak > self.env_p {
-            p_peak
-        } else {
-            self.env_p * self.env_release
-        };
-        // The monitor envelope reads the *undelayed* input, so it anticipates
-        // the delayed monitor by the same lookahead the program limiter uses.
-        let m_peak = m_l.abs().max(m_r.abs());
-        self.env_m = if m_peak > self.env_m {
-            m_peak
-        } else {
-            self.env_m * self.env_release
-        };
-
-        let target = if self.env_m > 1e-9 {
-            ((self.ceiling - self.env_p).max(0.0) / self.env_m).min(1.0)
-        } else {
-            1.0
-        };
-        let coeff = if target < self.gain {
-            self.attack
-        } else {
-            self.release
-        };
-        self.gain += (target - self.gain) * coeff;
-
-        let (ml, mr) = (self.delay_l[self.pos], self.delay_r[self.pos]);
-        self.delay_l[self.pos] = m_l;
-        self.delay_r[self.pos] = m_r;
-        self.pos += 1;
-        if self.pos == self.delay_l.len() {
-            self.pos = 0;
-        }
-        (ml * self.gain, mr * self.gain)
-    }
-}
-
 /// All state owned by the audio *input* callback.
 ///
 /// Bundling it in one struct lets the same block-processing code be compiled for
@@ -978,12 +889,10 @@ struct InputState {
     /// without passing through the chain's master bus.
     tuner_dc_l: DcBlocker,
     tuner_dc_r: DcBlocker,
-    /// Final lookahead limiter on the **program** bus (live + take/looper only).
-    /// At −1 dBFS it is transparent for one chain and only catches a stacked take.
-    program_limiter: Limiter,
-    /// Sidechain ducker for the monitor bus: the backing is turned down under
-    /// the guitar, never the other way around.
-    duck: MonitorDuck,
+    /// Final lookahead limiter on the whole mix (program + monitor). At −1 dBFS
+    /// it is transparent for a normal guitar + backing and only catches a
+    /// stacked take or a hot backing.
+    mix_limiter: Limiter,
     insert_rx: Consumer<InsertCommand>,
     dropped_tx: Producer<Box<dyn StereoInsert>>,
     ext_cab_rx: Consumer<ExtCabCommand>,
@@ -1144,17 +1053,16 @@ impl InputState {
         self.levels.input.store(self.in_env, Relaxed);
         self.levels.output.store(self.out_env, Relaxed);
         self.levels.output_peak.store(self.out_peak.peak(), Relaxed);
-        // Final program-limiter gain reduction since the last callback (take
-        // resets the latch, so this covers exactly this callback's chunks). The
-        // backing is ducked *outside* this limiter, so it never makes the
-        // guitar's meter twitch.
-        let program_gr = self.program_limiter.take_gr_db();
-        self.levels.gr_db.store(program_gr, Relaxed);
-        // Fade rather than latch, so the indicator releases on its own. The
-        // program limiter is the authoritative "guitar touched the ceiling"
-        // signal: its knee *is* the ceiling, unlike the old 0.95 guess (which was
-        // the retired soft-clip knee and lit before the limiter did anything).
-        if program_gr < 0.0 {
+        // Final mix-limiter gain reduction since the last callback (take resets
+        // the latch, so this covers exactly this callback's chunks). It is the
+        // whole mix now: a hot backing can move it, which is the point.
+        let mix_gr = self.mix_limiter.take_gr_db();
+        self.levels.gr_db.store(mix_gr, Relaxed);
+        // Fade rather than latch, so the indicator releases on its own. The mix
+        // limiter is the authoritative "the mix touched the ceiling" signal: its
+        // knee *is* the ceiling, unlike the old 0.95 guess (which was the retired
+        // soft-clip knee and lit before the limiter did anything).
+        if mix_gr < 0.0 {
             self.limit_indicator = 1.0;
         }
         // The decay is a per-sample coefficient; apply it once per callback.
@@ -1330,10 +1238,10 @@ impl InputState {
         );
 
         for i in 0..frames {
-            // Protect the program (live + take/looper) with its own limiter,
-            // then add the monitor (backing + click) through the sidechain duck.
-            // The duck gain applies **only** to the monitor: the guitar's level
-            // is independent of the backing.
+            // Trim both buses for headroom, sum them, and protect the whole mix
+            // with one limiter. The limiter is a safety: ordinary guitar +
+            // backing sits below its knee, so the backing is not ducked, and
+            // what gain reduction it does apply is shared by both buses.
             let (out_left, out_right) = output_stage(
                 self.out_l[i],
                 self.out_r[i],
@@ -1341,8 +1249,7 @@ impl InputState {
                 self.take_r[i],
                 self.monitor_l[i],
                 self.monitor_r[i],
-                &mut self.program_limiter,
-                &mut self.duck,
+                &mut self.mix_limiter,
             );
 
             // The `OUT` follower and peak hold read the final output.
@@ -1350,7 +1257,7 @@ impl InputState {
                 follow_stereo(self.out_env, out_left, out_right, self.attack, self.release);
             self.out_peak.push(out_left, out_right);
 
-            // Belt-and-braces: the duck holds the sum at DUCK_CEILING.
+            // Belt-and-braces: the mix limiter holds the sum at MIX_CEILING.
             let out_left = out_left.clamp(-1.0, 1.0);
             let out_right = out_right.clamp(-1.0, 1.0);
             let out_mono = 0.5 * (out_left + out_right);
@@ -1531,10 +1438,9 @@ fn build_engine(
     let monitor_l: Vec<f32> = vec![0.0; MAX_BLOCK];
     let monitor_r: Vec<f32> = vec![0.0; MAX_BLOCK];
 
-    // The program limiter and the monitor duck share one lookahead: the duck
-    // delays the monitor by the limiter's latency so the two buses stay aligned.
-    let program_limiter = Limiter::output_stage_at(sr, PROGRAM_CEILING);
-    let duck = MonitorDuck::new(sr, program_limiter.latency(), DUCK_CEILING);
+    // One lookahead limiter protects the final mix; the internal headroom trim
+    // keeps ordinary guitar + backing below its knee.
+    let mix_limiter = Limiter::output_stage_at(sr, MIX_CEILING);
 
     let state = InputState {
         chain,
@@ -1562,8 +1468,7 @@ fn build_engine(
         monitor_r,
         tuner_dc_l: DcBlocker::new(sr),
         tuner_dc_r: DcBlocker::new(sr),
-        program_limiter,
-        duck,
+        mix_limiter,
         insert_rx,
         dropped_tx,
         ext_cab_rx,
@@ -1671,8 +1576,8 @@ fn build_engine(
 #[cfg(test)]
 mod tests {
     use super::{
-        DUCK_CEILING, Limiter, MonitorDuck, PROGRAM_CEILING, block_ranges, follow_stereo,
-        monitor_frame, output_stage,
+        Limiter, MIX_CEILING, MIX_HEADROOM, block_ranges, follow_stereo, monitor_frame,
+        output_stage,
     };
 
     const SR: f32 = 48_000.0;
@@ -1723,26 +1628,22 @@ mod tests {
     }
 
     fn stage() -> Limiter {
-        Limiter::output_stage_at(SR, PROGRAM_CEILING)
+        Limiter::output_stage_at(SR, MIX_CEILING)
     }
 
-    fn duck_stage() -> MonitorDuck {
-        MonitorDuck::new(SR, stage().latency(), DUCK_CEILING)
-    }
-
-    /// Run the program limiter past its lookahead so a settled output can be read.
+    /// Run the output limiter past its lookahead so a settled output can be read.
     fn settle(lim: &mut Limiter, l: f32, r: f32) {
         for _ in 0..(lim.latency() + 8) {
             lim.process(l, r);
         }
     }
 
-    /// A single program bus below the knee passes at unity: the program limiter
-    /// is a safety for stacked takes, not a permanent colouration.
+    /// A single bus below the knee passes at unity: the output limiter is a
+    /// safety for stacked sources, not a permanent colouration.
     #[test]
-    fn final_program_stage_is_transparent_below_the_knee() {
-        // Stay below the program knee (0.891 * 0.97 ≈ 0.864): a larger step also
-        // rings the true-peak detector's interpolator over the knee.
+    fn the_sum_limiter_is_transparent_below_the_knee() {
+        // Stay below the knee (0.891 * 0.97 ≈ 0.864): a larger step also rings
+        // the true-peak detector's interpolator over the knee.
         for v in [0.0f32, 0.1, 0.5, 0.7] {
             let mut lim = stage();
             settle(&mut lim, v, -v);
@@ -1752,112 +1653,64 @@ mod tests {
         }
     }
 
-    /// A full-scale backing must not change the guitar at all. The program
-    /// limiter output is the guitar; the duck adds only the monitor, so
-    /// subtracting the duck's own contribution leaves the untouched guitar.
+    /// The internal mix trim gives the limiter room, so a quiet guitar + backing
+    /// sum passes at exactly the trim with no gain reduction.
     #[test]
-    fn a_hot_monitor_bus_cannot_pull_the_program_down() {
-        const GUITAR: f32 = 0.85;
-        const BACKING: f32 = 1.0;
-        const SETTLE: usize = 24_000;
-
-        // Program alone.
-        let mut program = stage();
-        for _ in 0..SETTLE {
-            program.process(GUITAR, GUITAR);
+    fn a_quiet_mix_passes_at_the_headroom_trim() {
+        for (guitar, backing) in [(0.0f32, 0.2f32), (0.1, 0.2), (0.3, 0.2)] {
+            let mut lim = stage();
+            let want = (guitar + backing) * MIX_HEADROOM;
+            for _ in 0..(lim.latency() + 64) {
+                output_stage(guitar, guitar, 0.0, 0.0, backing, backing, &mut lim);
+            }
+            let (l, r) = output_stage(guitar, guitar, 0.0, 0.0, backing, backing, &mut lim);
+            assert!(
+                (l - want).abs() < 1e-3 && (r - want).abs() < 1e-3,
+                "quiet mix {guitar} + {backing} -> ({l}, {r}), wanted {want}"
+            );
+            assert_eq!(lim.take_gr_db(), 0.0, "the limiter moved on a quiet mix");
         }
-        let (alone, _) = program.process(GUITAR, GUITAR);
-
-        // The same program through `output_stage`, plus a hot backing.
-        let mut program = stage();
-        let mut duck = duck_stage();
-        for _ in 0..SETTLE {
-            program.process(GUITAR, GUITAR);
-        }
-        let (sum, _) = output_stage(
-            GUITAR,
-            GUITAR,
-            0.0,
-            0.0,
-            BACKING,
-            BACKING,
-            &mut program,
-            &mut duck,
-        );
-
-        // The duck's own output for the same frame.
-        let mut program_ref = stage();
-        let mut duck_ref = duck_stage();
-        for _ in 0..SETTLE {
-            program_ref.process(GUITAR, GUITAR);
-        }
-        let (pl, _) = program_ref.process(GUITAR, GUITAR);
-        let (monitor_out, _) = duck_ref.process(pl, pl, BACKING, BACKING);
-        let guitar = sum - monitor_out;
-
-        let delta_db = 20.0 * (guitar / alone).log10();
-        assert!(
-            delta_db.abs() < 0.01,
-            "backing pulled the guitar {delta_db:.2} dB ({alone:.3} -> {guitar:.3})"
-        );
     }
 
-    /// Below the duck ceiling a silent guitar lets the monitor pass at unity:
-    /// the backing's own gain is its level control.
+    /// A hot guitar plus a full-level backing is not aggressively ducked: the
+    /// mix trim leaves only a fraction of a dB for the limiter to take, instead
+    /// of pulling the backing down by the guitar's whole peak.
     #[test]
-    fn monitor_bus_passes_at_unity_below_the_ceiling() {
-        const IMPORT: f32 = 0.4;
-        let mut duck = duck_stage();
-        let delay = Limiter::safety(SR).latency() + 100;
-        for _ in 0..delay {
-            duck.process(0.0, 0.0, IMPORT, IMPORT);
-        }
-        let (l, r) = duck.process(0.0, 0.0, IMPORT, IMPORT);
-        assert!(
-            (l - IMPORT).abs() < 1e-3 && (r - IMPORT).abs() < 1e-3,
-            "monitor must pass at unity: ({l}, {r}) != {IMPORT}"
-        );
-    }
-
-    /// A hot guitar ducks the monitor and the summed output stays under the
-    /// duck ceiling; the guitar itself is never scaled by the duck.
-    #[test]
-    fn a_hot_guitar_ducks_the_monitor_under_the_ceiling() {
-        // The program limiter's steady output at PROGRAM_CEILING.
-        const GUITAR: f32 = PROGRAM_CEILING * 0.97;
-        const BACKING: f32 = 1.0;
-        let mut duck = duck_stage();
-        let delay = Limiter::safety(SR).latency() + 400;
-        let mut worst_sum = 0.0f32;
-        let mut last_mon = 0.0f32;
-        for _ in 0..delay {
-            let (ml, _) = duck.process(GUITAR, GUITAR, BACKING, BACKING);
-            last_mon = ml;
-            worst_sum = worst_sum.max(GUITAR + ml);
-        }
-        assert!(
-            last_mon < 0.4,
-            "the backing was not ducked under the guitar: {last_mon}"
-        );
-        assert!(
-            worst_sum <= DUCK_CEILING + 2e-3,
-            "the ducked sum exceeded its ceiling: {worst_sum}"
-        );
-    }
-
-    /// Stacked live + take is still caught by the program limiter at −1 dBFS.
-    #[test]
-    fn stacked_program_is_held_at_the_program_ceiling() {
+    fn a_hot_backing_is_not_ducked_under_the_guitar() {
+        // The program limiter's steady output at the ceiling, plus a backing at
+        // its −6 dBFS import peak.
+        const GUITAR: f32 = MIX_CEILING;
+        const BACKING: f32 = 0.5;
         let mut lim = stage();
-        let mut duck = duck_stage();
+        let mut worst = 0.0f32;
+        for _ in 0..(lim.latency() + 4_800) {
+            let (l, _) = output_stage(GUITAR, GUITAR, 0.0, 0.0, BACKING, BACKING, &mut lim);
+            worst = worst.max(l.abs());
+        }
+        let gr = lim.take_gr_db();
+        assert!(
+            worst <= MIX_CEILING + 1e-3,
+            "the mix limiter let {worst} through (ceiling {MIX_CEILING})"
+        );
+        assert!(
+            gr > -1.0,
+            "the mix limiter crushed the backing: {gr:.2} dB of gain reduction"
+        );
+    }
+
+    /// Stacked live + take + monitor is still caught by the sum limiter at
+    /// −1 dBFS.
+    #[test]
+    fn a_hot_sum_is_held_at_the_mix_ceiling() {
+        let mut lim = stage();
         let mut worst = 0.0f32;
         for _ in 0..(lim.latency() + 4_000) {
-            let (l, _) = output_stage(1.0e6, 1.0e6, 1.0e6, 1.0e6, 0.0, 0.0, &mut lim, &mut duck);
+            let (l, _) = output_stage(1.0e6, 1.0e6, 1.0e6, 1.0e6, 1.0e6, 1.0e6, &mut lim);
             worst = worst.max(l.abs());
         }
         assert!(
-            worst <= PROGRAM_CEILING + 1e-3 && worst.is_finite(),
-            "the program limiter let {worst} through"
+            worst <= MIX_CEILING + 1e-3 && worst.is_finite(),
+            "the mix limiter let {worst} through"
         );
     }
 

@@ -85,8 +85,8 @@ pub struct Limiter {
     delay_l: Vec<f32>,
     delay_r: Vec<f32>,
     pos: usize,
-    /// Output ceiling. The master bus uses [`CEILING`] (−1 dBFS); the final output
-    /// stage uses 1.0 (it sums already-limited buses).
+    /// Output ceiling. The master bus uses [`CEILING`] (−1 dBFS); the final mix
+    /// stage passes its own ceiling (see `audio::MIX_CEILING`).
     ceiling: f32,
     /// Makeup applied before the ceiling. The master bus uses [`MAKEUP`]; the final
     /// stage applies none.
@@ -125,16 +125,16 @@ impl Limiter {
         Self::with_ceiling(sr, CEILING, MAKEUP)
     }
 
-    /// A limiter for the final program bus at an explicit `ceiling`, no makeup.
-    /// The engine uses this for the program bus's headroom budget; the default
-    /// full-scale variant is [`output_stage`](Self::output_stage).
+    /// A limiter for the final mix at an explicit `ceiling`, no makeup. The
+    /// engine uses this for the mix's headroom budget; the full-scale variant is
+    /// [`output_stage`](Self::output_stage).
     pub fn output_stage_at(sr: f32, ceiling: f32) -> Self {
         Self::with_ceiling(sr, ceiling, 1.0)
     }
 
-    /// A limiter for the final program bus at full scale, no makeup (it receives
-    /// the live rig plus the re-amped take/looper bus, which have each already
-    /// been limited by their own `master_bus`).
+    /// A limiter for the final mix at full scale, no makeup. The live engine
+    /// uses [`output_stage_at`](Self::output_stage_at) with its own ceiling;
+    /// this variant remains for callers that sum already-limited buses.
     pub fn output_stage(sr: f32) -> Self {
         Self::with_ceiling(sr, 1.0, 1.0)
     }

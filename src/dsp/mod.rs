@@ -1586,15 +1586,13 @@ pub struct Levels {
     /// before the take bus is added. That combination is why a rig sitting at
     /// full-scale can show a meter that never reaches the top.
     pub output_peak: Arc<AtomicF32>,
-    /// 0–1 "the **program** (guitar + take/looper) ceiling is engaging".
+    /// 0–1 "the final mix ceiling is engaging".
     /// Decays rather than latches, so the indicator fades instead of sticking.
-    /// The monitor bus is ducked *outside* this limiter, so a backing track
-    /// cannot light it.
+    /// The mix limiter sees the guitar + take/looper and the backing + click.
     pub limiting: Arc<AtomicF32>,
-    /// Stereo-linked gain reduction the **program limiter** has applied since
-    /// the last read, in dB (≤ 0.0; 0.0 when open). It sits on the guitar +
-    /// take/looper bus only; the backing is ducked separately and deliberately
-    /// does not report here, so a backing track cannot make the meter twitch.
+    /// Stereo-linked gain reduction the final mix limiter has applied since
+    /// the last read, in dB (≤ 0.0; 0.0 when open). It sits on the whole mix,
+    /// so a hot backing can move it.
     pub gr_db: Arc<AtomicF32>,
 }
 

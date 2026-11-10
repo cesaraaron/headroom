@@ -50,15 +50,18 @@ changed at runtime with `[` / `]` (see `ChainStage::default_order`).
 **Monitor-only buses.** The practice metronome and the practice player (backing
 track + recorded take) are summed into the output **after** the recording tap (see
 `audio/mod.rs`), so none of them is ever captured in a rendered WAV. The backing
-track and click ride a separate **monitor bus**. The live guitar and the re-amped
-take/looper bus share the **program** limiter; the monitor is not limited, it is
-**ducked under the program** by a sidechain (`MonitorDuck`). The duck gain is
-applied only to the monitor, so the backing is full-level when the guitar is
-quiet and turns down only as far as the guitar's current peak needs — the guitar
-is never scaled by the backing. Imports are normalized to −6 dBFS peak. The
-practice player reads two pre-decoded stereo tracks against a shared timeline
-cursor with a loop region; decoded buffers are installed lock-free and displaced
-buffers are disposed of on the control thread.
+track and click ride a separate **monitor bus**; the live guitar and the re-amped
+take/looper bus ride the **program** bus. At the output stage both buses get the
+same −4 dB `MIX_HEADROOM` trim, are summed, and the whole mix goes through one
+stereo-linked lookahead limiter at −1 dBFS (`MIX_CEILING`). The trim leaves a
+full-scale guitar plus a −6 dBFS backing just under the limiter knee, so the
+limiter stays transparent and the backing is never ducked under the guitar; any
+gain reduction it does apply is shared by both buses, preserving the balance.
+Loudness is made up after the converter (interface/headphone volume), not by
+pushing the limiter. Imports are normalized to −6 dBFS peak. The practice player
+reads two pre-decoded stereo tracks against a shared timeline cursor with a loop
+region; decoded buffers are installed lock-free and displaced buffers are
+disposed of on the control thread.
 
 ### Key modules to know
 
