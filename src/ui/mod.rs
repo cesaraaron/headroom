@@ -160,6 +160,27 @@ fn resync_board_after_rig_change(
     *focus = ensure_focus_visible(*focus, board, panels, &params.chain_slots());
 }
 
+/// Keep the ribbon cursor on a stage the ribbon still renders after a preset
+/// rewrote the board. Otherwise `Space` and `[`/`]` silently no-op because the
+/// cursor points at a disabled pedal, until an arrow re-anchors it.
+fn ensure_chain_cursor_visible(
+    params: &Params,
+    board: &[bool],
+    cursor: &mut ChainStage,
+    on_master: &mut bool,
+) {
+    if *on_master {
+        return;
+    }
+    let order = params.chain_slots();
+    if !input::rendered_stages(&order, board)
+        .iter()
+        .any(|&(_, stage)| stage == *cursor)
+    {
+        *cursor = ChainStage::Amp;
+    }
+}
+
 /// Reset the rig to factory defaults and repair the board + focus, mirroring the
 /// preset browser's "Default values" row. Used at startup and for a new session.
 fn apply_factory_defaults(
@@ -442,8 +463,8 @@ pub fn run(
     let mut chain_cursor: ChainStage = ChainStage::Amp;
     // Panel 1: whether the header cursor is on the master-output cell.
     let mut header_on_master = false;
-    // Last-focused knob per amp/mic/pedal group, so panel-local `Tab` returns
-    // to where you left off.
+    // Last-focused knob per amp/mic/pedal group, so the global panel walk
+    // returns to where you left off.
     let mut panel_mem = PanelMemory::new();
     // Board membership: a pedal is on the board iff it is enabled. Off-board
     // pedals are bypassed in the DSP and hidden from the rig. Rebuilt with
@@ -510,6 +531,11 @@ pub fn run(
     let mut export_error: Option<String> = None;
     let mut export_handle: Option<ExportHandle> = None;
     let mut export_range = ExportRange::Full;
+    // Autosave bookkeeping: the revision captured as the saved baseline, the
+    // time of the most recent unsaved edit, and a flag set by a save/load/new
+    // so the next tick re-baselines. Kept outside the session loop so a device
+    // change (`O`) cannot silently re-baseline unsaved edits as clean.
+    let mut saved_revision = session_revision(&params, &practice_ui, &practice, &metronome);
 
     // ── Session loop: (re)select devices, start the engine, run the UI ─────────
     // The `O` key drops the engine and loops back here so the picker runs again —
@@ -607,7 +633,7 @@ pub fn run(
 
         // ── Timeline: reset the transport, keep the session, re-install tracks ─────
         practice.reset();
-        practice_ui.attach(&mut engine);
+        practice_ui.attach(&mut engine, &capture);
 
         // Offer recovery of abandoned dry takes once, after the first engine start.
         if !recovery_prompted {
@@ -624,11 +650,8 @@ pub fn run(
 
         // ── Main UI loop ──────────────────────────────────────────────────────────
         let mut change_device = false;
-        // Autosave bookkeeping: the revision captured as the saved baseline, the
-        // time of the most recent unsaved edit, and a flag set by a save/load/new
-        // so the next tick re-baselines. `quit_confirm` blocks `q` on an unnamed,
-        // dirty session until the user decides.
-        let mut saved_revision = session_revision(&params, &practice_ui, &practice, &metronome);
+        // `sync_revision` re-baselines after a save/load/new; `quit_confirm`
+        // blocks `q` on an unnamed, dirty session until the user decides.
         let mut sync_revision = false;
         // Set when the user tries to quit or change session with unsaved changes;
         // the prompt blocks it until they save, discard, or cancel.
@@ -662,6 +685,12 @@ pub fn run(
                     UnsavedAction::New => {
                         practice_ui.new_session(&mut engine, &practice, &metronome, &capture);
                         apply_factory_defaults(&params, &mut board, &mut focus, &panels);
+                        ensure_chain_cursor_visible(
+                            &params,
+                            &board,
+                            &mut chain_cursor,
+                            &mut header_on_master,
+                        );
                         session_browser.refresh(
                             practice_ui.session.recovery_dir().as_deref(),
                             &practice_ui.recovery_in_use(),
@@ -760,9 +789,9 @@ pub fn run(
                 if session_dirty { "*" } else { "" }
             );
 
-            // Looper transport readout (footer, since the looper has no panel). It
-            // takes precedence over a transient save message so an active loop is
-            // always visible; an idle, empty looper shows nothing at all.
+            // Looper transport readout (footer, since the looper has no panel). An
+            // idle, empty looper shows nothing at all. A transient save/export
+            // message takes the slot ahead of it (see `status` below).
             let loop_status = match looper.state() {
                 LoopState::Idle if looper.is_empty() => None,
                 state => {
@@ -777,9 +806,13 @@ pub fn run(
                     })
                 }
             };
-            let status = loop_status
-                .as_deref()
-                .or_else(|| save_msg.as_ref().map(|(msg, _)| msg.as_str()));
+            // A transient save/export result wins for its four seconds: a failed
+            // export must not be hidden behind a paused loop's readout. The loop
+            // status returns as soon as the message expires.
+            let status = save_msg
+                .as_ref()
+                .map(|(msg, _)| msg.as_str())
+                .or(loop_status.as_deref());
             // The loaded plugin (if any) is shown in the header, not the status line, so
             // the help/status footer stays intact while a plugin is active.
             #[cfg(feature = "clap")]
@@ -1628,6 +1661,12 @@ pub fn run(
                             // The preset rewrote the enabled flags (and maybe the
                             // chain order), so rebuild the board and repair focus.
                             resync_board_after_rig_change(&params, &mut board, &mut focus, &panels);
+                            ensure_chain_cursor_visible(
+                                &params,
+                                &board,
+                                &mut chain_cursor,
+                                &mut header_on_master,
+                            );
                             preset_open = false;
                             preset_filter.clear();
                         }
@@ -1741,6 +1780,12 @@ pub fn run(
                                         resync_board_after_rig_change(
                                             &params, &mut board, &mut focus, &panels,
                                         );
+                                        ensure_chain_cursor_visible(
+                                            &params,
+                                            &board,
+                                            &mut chain_cursor,
+                                            &mut header_on_master,
+                                        );
                                     }
                                 }
                                 PresetChar::Command(PresetCommand::Close) => {
@@ -1837,7 +1882,9 @@ pub fn run(
                         KeyCode::Char(' ') if focus == Some(PRACTICE_TILE) => {
                             practice_ui.toggle_play(&practice);
                         }
-                        KeyCode::Char('m') | KeyCode::Char('M') if focus == Some(PRACTICE_TILE) => {
+                        // Lowercase `m` mutes on the timeline; uppercase `M`
+                        // deliberately falls through to the metronome arm below.
+                        KeyCode::Char('m') if focus == Some(PRACTICE_TILE) => {
                             practice_ui.toggle_selected_mute(&mut engine);
                         }
                         KeyCode::Enter if focus == Some(PRACTICE_TILE) => {
@@ -1999,7 +2046,7 @@ pub fn run(
                             (panels, focus) =
                                 press_number(4, focus, &board, &panels, &params.chain_slots());
                         }
-                        KeyCode::Char('q') => {
+                        KeyCode::Char('q') | KeyCode::Char('Q') => {
                             // Guard unsaved changes: prompt instead of dropping work.
                             if session_dirty {
                                 unsaved_prompt = Some(UnsavedPrompt::Choice(UnsavedAction::Quit));
@@ -2070,7 +2117,7 @@ pub fn run(
                                 ));
                             }
                         }
-                        // Looper (monitor-only). `Y` is the record/pause/resume
+                        // Looper (re-amped on the take bus). `Y` is the record/pause/resume
                         // transport; `F` clears, `,` toggles overdub, `.` undoes
                         // the last overdub layer.
                         KeyCode::Char('y') | KeyCode::Char('Y') => match looper.state() {
@@ -2324,7 +2371,20 @@ pub fn run(
                         // Space bypasses the selected stage; on the master cell it
                         // resets the rig output to unity, the one neutral value.
                         KeyCode::Char(' ') if focus == Some(CHAIN_TILE) && !header_on_master => {
-                            toggle_stage(&params, &board, chain_cursor);
+                            if chain_cursor.pedal_index().is_none() {
+                                save_msg = Some((
+                                    "Amp and cab cannot be bypassed".to_owned(),
+                                    std::time::Instant::now(),
+                                ));
+                            } else {
+                                toggle_stage(&params, &mut board, chain_cursor);
+                                ensure_chain_cursor_visible(
+                                    &params,
+                                    &board,
+                                    &mut chain_cursor,
+                                    &mut header_on_master,
+                                );
+                            }
                         }
                         KeyCode::Char(' ') if focus == Some(CHAIN_TILE) => {
                             params.master_output.store(
@@ -2340,7 +2400,12 @@ pub fn run(
                                 add_cursor = 0;
                             }
                             Some(PRACTICE_TILE) => {}
-                            Some(i) => toggle_pedal(&params, i),
+                            Some(i) => {
+                                toggle_pedal(&params, &mut board, i);
+                                if pedal_of(i).is_some_and(|pi| !board[pi]) {
+                                    focus = Some(ADD_TILE);
+                                }
+                            }
                             None => {}
                         },
                         _ => {}

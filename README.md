@@ -39,14 +39,16 @@ cargo run --release -- --opaque
 | `K` | Full in-app key reference |
 | `A` / `C` | Amp / cabinet browser |
 | `P` | Preset browser |
-| `↑` / `↓` or `+` / `-` | Select a knob / adjust its value |
-| `Space` | Bypass the focused stage |
+| `←` / `→` | Select a knob, stage, or panel cell |
+| `↑` / `↓` or `+` / `-` | Adjust the selected value |
+| `Space` | Bypass the focused pedal (play/pause on the timeline) |
 | `[` / `]` | Move the selected stage earlier or later |
 | `1`–`4` | Focus the chain, amp, timeline, or pedals |
 | `Shift+1`–`4` | Solo a panel: close the others, keep just that one |
 | `R` | Record / stop a dry take |
+| `M` | Metronome (uppercase `M` on the timeline; lowercase `m` mutes the selected track) |
 | `/` | Search the preset, session, or import list |
-| `L` | Import library settings (path, only, subpaths) |
+| `L` | In the import browser: library settings (path, only, subpaths) |
 | `N` | Calibrate the input level |
 | `F2` | MIDI bindings (learn a controller) |
 | `F4` / `Ctrl+G` | Toggle the mains-hum floor (live A/B) |

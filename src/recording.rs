@@ -42,10 +42,12 @@ pub struct CaptureState {
     pub generation: AtomicU64,
     /// Audio → UI: timeline frame of the first captured sample.
     pub start_frame: AtomicU64,
-    /// Audio → UI: samples pushed so far (progress display).
-    pub frames: AtomicU64,
     /// Audio → UI: the ring filled and samples were dropped; take incomplete.
     pub overflowed: AtomicBool,
+    /// Audio → worker: the callback is not pushing new samples. Used by the
+    /// writer to drain an aborted/finished take without racing the tail of the
+    /// callback's current block into the next take.
+    pub producer_idle: AtomicBool,
     /// Engine sample rate for the take.
     pub sample_rate: AtomicU32,
 }
@@ -63,8 +65,8 @@ impl CaptureState {
             auto_stop: AtomicBool::new(false),
             generation: AtomicU64::new(0),
             start_frame: AtomicU64::new(0),
-            frames: AtomicU64::new(0),
             overflowed: AtomicBool::new(false),
+            producer_idle: AtomicBool::new(true),
             sample_rate: AtomicU32::new(44_100),
         }
     }
@@ -72,9 +74,9 @@ impl CaptureState {
     pub fn arm(&self, generation: u64) {
         self.generation.store(generation, Relaxed);
         self.start_frame.store(0, Relaxed);
-        self.frames.store(0, Relaxed);
         self.overflowed.store(false, Relaxed);
         self.auto_stop.store(false, Relaxed);
+        self.producer_idle.store(false, Relaxed);
         self.active.store(true, Relaxed);
     }
 
@@ -150,7 +152,6 @@ pub struct CaptureResult {
     pub generation: u64,
     pub path: PathBuf,
     pub frames: usize,
-    pub overflowed: bool,
     pub peaks: Vec<(f32, f32)>,
     /// `None` when the take was empty, aborted, or failed.
     pub track: Option<PlayerTrack>,
@@ -175,13 +176,38 @@ pub enum CaptureCommand {
 }
 
 /// Spawn the writer worker and return the command sender.
-pub fn spawn_capture_worker(mut consumer: Consumer<f32>) -> Sender<CaptureCommand> {
+pub fn spawn_capture_worker(
+    mut consumer: Consumer<f32>,
+    capture: Arc<CaptureState>,
+) -> Sender<CaptureCommand> {
     let (tx, rx) = mpsc::channel::<CaptureCommand>();
-    std::thread::spawn(move || worker_loop(&mut consumer, &rx));
+    std::thread::spawn(move || worker_loop(&mut consumer, &rx, &capture));
     tx
 }
 
-fn worker_loop(consumer: &mut Consumer<f32>, cmds: &Receiver<CaptureCommand>) {
+/// Wait (bounded) for the callback to finish the block it was in when the UI
+/// disarmed, then discard everything still queued.
+fn wait_for_producer(capture: &CaptureState) {
+    // A callback block is ~10 ms; 250 ms covers a badly delayed scheduler slice
+    // without letting a wedged device hang the writer forever.
+    for _ in 0..250 {
+        if capture.producer_idle.load(Relaxed) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+fn drain_after_stop(consumer: &mut Consumer<f32>, capture: &CaptureState) {
+    wait_for_producer(capture);
+    while consumer.pop().is_ok() {}
+}
+
+fn worker_loop(
+    consumer: &mut Consumer<f32>,
+    cmds: &Receiver<CaptureCommand>,
+    capture: &CaptureState,
+) {
     loop {
         let Ok(cmd) = cmds.recv() else {
             // The UI dropped the sender (engine teardown); exit.
@@ -197,6 +223,7 @@ fn worker_loop(consumer: &mut Consumer<f32>, cmds: &Receiver<CaptureCommand>) {
             } => run_capture(
                 consumer,
                 cmds,
+                capture,
                 generation,
                 path,
                 sample_rate,
@@ -212,6 +239,7 @@ fn worker_loop(consumer: &mut Consumer<f32>, cmds: &Receiver<CaptureCommand>) {
 fn run_capture(
     consumer: &mut Consumer<f32>,
     cmds: &Receiver<CaptureCommand>,
+    capture: &CaptureState,
     generation: u64,
     path: PathBuf,
     sample_rate: u32,
@@ -222,7 +250,6 @@ fn run_capture(
         generation,
         path: path.clone(),
         frames: 0,
-        overflowed: false,
         peaks: Vec::new(),
         track: None,
         error: None,
@@ -274,7 +301,10 @@ fn run_capture(
         }
         match cmds.try_recv() {
             Ok(CaptureCommand::End) => {
-                // Drain whatever the callback left in the ring, then finalize.
+                // Wait for the callback's in-flight block, then write its tail
+                // and finalize. Without the wait, a sample pushed after this
+                // drain would leak into the next take.
+                wait_for_producer(capture);
                 let mut live = live.lock().unwrap_or_else(|e| e.into_inner());
                 while let Ok(s) = consumer.pop() {
                     if let Some(w) = writer.as_mut()
@@ -289,6 +319,7 @@ fn run_capture(
                 break;
             }
             Ok(CaptureCommand::Abort) => {
+                drain_after_stop(consumer, capture);
                 aborted = true;
                 break;
             }
@@ -352,7 +383,7 @@ mod tests {
     #[test]
     fn writer_captures_and_finalizes_a_take() {
         let (mut producer, consumer) = capture_ring(48_000.0);
-        let tx = spawn_capture_worker(consumer);
+        let tx = spawn_capture_worker(consumer, Arc::new(CaptureState::new()));
         let (result_tx, result_rx) = mpsc::channel();
         let path = temp_path("ok");
         let _ = std::fs::remove_file(&path);
@@ -384,7 +415,7 @@ mod tests {
     #[test]
     fn abort_removes_the_partial_file() {
         let (mut producer, consumer) = capture_ring(48_000.0);
-        let tx = spawn_capture_worker(consumer);
+        let tx = spawn_capture_worker(consumer, Arc::new(CaptureState::new()));
         let (result_tx, result_rx) = mpsc::channel();
         let path = temp_path("abort");
         let _ = std::fs::remove_file(&path);
@@ -407,10 +438,61 @@ mod tests {
         assert!(!path.exists());
     }
 
+    /// Aborting must drain the tail still queued in the ring; otherwise the next
+    /// take starts with the aborted take's samples and is offset.
+    #[test]
+    fn a_new_take_does_not_inherit_an_aborted_tail() {
+        let (mut producer, consumer) = capture_ring(48_000.0);
+        let tx = spawn_capture_worker(consumer, Arc::new(CaptureState::new()));
+        let (result_tx, result_rx) = mpsc::channel();
+        let first = temp_path("abort-tail-1");
+        let _ = std::fs::remove_file(&first);
+
+        tx.send(CaptureCommand::Begin {
+            generation: 10,
+            path: first.clone(),
+            sample_rate: 48_000,
+            result: result_tx.clone(),
+            live: Arc::new(Mutex::new(LivePeaks::new(48_000))),
+        })
+        .ok();
+        let _ = producer.push(0.75);
+        tx.send(CaptureCommand::Abort).ok();
+        let aborted = result_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("abort must reply");
+        assert!(aborted.track.is_none());
+        assert!(!first.exists());
+
+        let (result_tx, result_rx) = mpsc::channel();
+        let second = temp_path("abort-tail-2");
+        let _ = std::fs::remove_file(&second);
+        tx.send(CaptureCommand::Begin {
+            generation: 11,
+            path: second.clone(),
+            sample_rate: 48_000,
+            result: result_tx,
+            live: Arc::new(Mutex::new(LivePeaks::new(48_000))),
+        })
+        .ok();
+        for _ in 0..1000 {
+            let _ = producer.push(0.25);
+        }
+        tx.send(CaptureCommand::End).ok();
+        let take = result_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("second take must reply");
+        assert_eq!(
+            take.frames, 1000,
+            "the aborted take's tail leaked into the new take"
+        );
+        let _ = std::fs::remove_file(&second);
+    }
+
     #[test]
     fn empty_take_yields_no_track() {
         let (_producer, consumer) = capture_ring(48_000.0);
-        let tx = spawn_capture_worker(consumer);
+        let tx = spawn_capture_worker(consumer, Arc::new(CaptureState::new()));
         let (result_tx, result_rx) = mpsc::channel();
         let path = temp_path("empty");
         let _ = std::fs::remove_file(&path);

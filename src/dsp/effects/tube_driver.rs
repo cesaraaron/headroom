@@ -87,7 +87,10 @@ fn tube_clip(u: f32) -> f32 {
     if u >= 0.0 {
         (u * 1.35).tanh()
     } else {
-        (u * 1.05).tanh() * 1.22
+        // Match the positive half's 1.35 small-signal slope while keeping the
+        // deeper 1.22 negative rail; the old `(u*1.05).tanh()*1.22` had slope
+        // 1.281 and rectified quiet signals at the origin.
+        1.22 * (u * (1.35 / 1.22)).tanh()
     }
 }
 
@@ -106,6 +109,18 @@ mod tests {
                 td.process(x, drive, 0.5, 0.5, 0.6)
             })
             .collect()
+    }
+
+    /// The asymmetric shaper must keep the same slope on both sides of zero.
+    #[test]
+    fn tube_clip_slope_matches_at_the_origin() {
+        let h = 1e-4;
+        let slope = |x: f32| (tube_clip(x + h) - tube_clip(x - h)) / (2.0 * h);
+        let (positive, negative) = (slope(1e-3), slope(-1e-3));
+        assert!(
+            (positive - negative).abs() < 1e-3,
+            "slope kink at the origin: {positive} vs {negative}"
+        );
     }
 
     #[test]

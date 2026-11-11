@@ -210,7 +210,7 @@ impl Delay {
     }
 }
 
-/// Fractional read of `buf` at `delay` samples behind `write` (linear
+/// Fractional read of `buf` at `delay` samples behind `write` (Catmull-Rom
 /// interpolation), clamped so it never reads the future or wraps past the buffer.
 #[inline]
 fn read_tap(buf: &[f32], write: usize, delay: f32) -> f32 {

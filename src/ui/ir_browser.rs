@@ -224,16 +224,18 @@ impl IrBrowser {
             .constraints([Constraint::Length(1), Constraint::Length(1)])
             .split(rows[2]);
 
-        let hint = vec![
+        let mut hint = vec![
             Span::styled("↑/↓", Style::default().fg(theme().amber)),
             Span::styled(" navigate  ", Style::default().fg(theme().dim)),
             Span::styled("Enter", Style::default().fg(theme().amber)),
             Span::styled(" load/clear  ", Style::default().fg(theme().dim)),
-            Span::styled("X", Style::default().fg(theme().amber)),
-            Span::styled(" A/B  ", Style::default().fg(theme().dim)),
-            Span::styled("Esc / I", Style::default().fg(theme().amber)),
-            Span::styled(" close", Style::default().fg(theme().dim)),
         ];
+        if self.loaded_name().is_some() {
+            hint.push(Span::styled("X", Style::default().fg(theme().amber)));
+            hint.push(Span::styled(" A/B  ", Style::default().fg(theme().dim)));
+        }
+        hint.push(Span::styled("Esc / I", Style::default().fg(theme().amber)));
+        hint.push(Span::styled(" close", Style::default().fg(theme().dim)));
         f.render_widget(
             Paragraph::new(Line::from(hint)).alignment(Alignment::Center),
             footer[0],
@@ -370,9 +372,9 @@ fn entry(name: &str, detail: &str, selected: bool) -> Line<'static> {
 }
 
 fn centered_rect(percent_x: u16, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
-    let width = area.width * percent_x / 100;
+    let width = (area.width * percent_x / 100).min(area.width);
     let x = (area.width - width) / 2;
-    let height = (area.height * 70 / 100).max(6);
+    let height = (area.height * 70 / 100).max(6).min(area.height);
     let y = (area.height - height) / 2;
     ratatui::layout::Rect {
         x: area.x + x,

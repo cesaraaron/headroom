@@ -534,10 +534,10 @@ pub(super) fn render_path_dialog(
 }
 
 fn centered_rect(percent_x: u16, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
-    let width = area.width * percent_x / 100;
+    let width = (area.width * percent_x / 100).min(area.width);
     let x = (area.width - width) / 2;
 
-    let height = (area.height * 70 / 100).max(6);
+    let height = (area.height * 70 / 100).max(6).min(area.height);
     let y = (area.height - height) / 2;
 
     ratatui::layout::Rect {

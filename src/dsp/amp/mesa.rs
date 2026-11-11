@@ -58,7 +58,7 @@ pub const KNOBS: &[AmpKnob] = &[
 ///   • 8× oversampling through all three nonlinear stages keeps aliasing inaudible
 ///   • Asymmetric waveshapers on tube stages add even-harmonic warmth
 ///   • Dynamic grid-bias bloom adds touch sensitivity under hard playing
-///   • Two inter-stage HPs (680 Hz and 1 kHz) prevent bass accumulation across stages
+///   • Two inter-stage HPs (225 Hz and 320 Hz) prevent bass accumulation across stages
 ///   • Presence shelf at 4 kHz — Recto's presence is brighter/tighter than the JCM800
 pub struct Mesa {
     sr: f32,
@@ -312,7 +312,7 @@ impl Amplifier for Mesa {
 
         // Output trim: level-match the Recto to the other models so switching
         // doesn't jump in volume. The master's level is in the power-amp input scale.
-        x * MASTER_DRIVE_REF * 5.3722
+        x * MASTER_DRIVE_REF * 5.7760
     }
 }
 

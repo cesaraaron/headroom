@@ -46,9 +46,9 @@ pub struct Distortion {
     // Mid-focused pre-clip emphasis (base rate) — the DS-1's voice + definition.
     mid_emphasis: Biquad,
     os: Oversampler4,
-    // Pre-clip HP at 4× rate — tightens the low end before the clipper.
+    // Pre-clip HP at base rate — tightens the low end before the clipper.
     pre_clip_hp: Biquad,
-    // Pre-clip LP at 4× rate — rounds the top off the wave before the clipper so it
+    // Pre-clip LP at base rate — rounds the top off the wave before the clipper so it
     // generates a shorter harmonic ladder: less fizzy top-octave buzz and less
     // high-order intermod, the studio way to keep the crunch smooth not brittle.
     pre_clip_lp: Biquad,

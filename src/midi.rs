@@ -20,8 +20,8 @@
 //!
 //! A bound CC that drives `wah_position` also switches the wah to manual mode, so
 //! an expression pedal overrides a preset's auto-wah as soon as it moves. When
-//! `clock` is on, incoming 24-ppqn clock sets the delay `TIME` to the beat and
-//! the UI footer shows the tempo; a clock `Stop` (or the signal going idle) hands
+//! `clock` is on, incoming 24-ppqn clock sets the delay `TIME` to the beat
+//! (clamped to the delay's 0–500 ms range) and the UI footer shows the tempo; a clock `Stop` (or the signal going idle) hands
 //! control back to the knob and the `;` tap.
 //!
 //! The `F2` **MIDI bindings** screen (`crate::ui::midi`) edits the table live:
@@ -533,7 +533,8 @@ pub fn connect(state: &Arc<MidiState>, params: Arc<Params>) -> Option<MidiHandle
             move |ts, msg, _| {
                 if clock && let Some(ev) = parse_realtime(msg) {
                     match tempo.feed(ev, ts) {
-                        // A beat's worth of delay (the tapped-tempo equivalent).
+                        // A beat's worth of delay (the tapped-tempo equivalent),
+                        // clamped by the delay's 500 ms maximum.
                         Some(bpm) => {
                             let secs = 60.0 / bpm;
                             p.delay_time.store((secs / 0.5).clamp(0.0, 1.0), Relaxed);

@@ -23,7 +23,3 @@ retries = 0
 fail-fast = true
 test-threads = "num-cpus"
 status-level = "skip"
-
-# Test groups for better organization
-[test-groups]
-unit = { max-threads = "num-cpus" }

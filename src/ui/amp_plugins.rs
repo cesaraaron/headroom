@@ -351,18 +351,23 @@ impl AmpBrowser {
             .split(rows[1]);
 
         let hint = match self.view {
-            View::Browse => vec![
-                Span::styled("↑/↓", Style::default().fg(theme().amber)),
-                Span::styled(" navigate  ", Style::default().fg(theme().dim)),
-                Span::styled("Enter", Style::default().fg(theme().amber)),
-                Span::styled(" load/clear  ", Style::default().fg(theme().dim)),
-                Span::styled("Tab", Style::default().fg(theme().amber)),
-                Span::styled(" params  ", Style::default().fg(theme().dim)),
-                Span::styled("C", Style::default().fg(theme().amber)),
-                Span::styled(" cab  ", Style::default().fg(theme().dim)),
-                Span::styled("Esc / U", Style::default().fg(theme().amber)),
-                Span::styled(" close", Style::default().fg(theme().dim)),
-            ],
+            View::Browse => {
+                let mut hint = vec![
+                    Span::styled("↑/↓", Style::default().fg(theme().amber)),
+                    Span::styled(" navigate  ", Style::default().fg(theme().dim)),
+                    Span::styled("Enter", Style::default().fg(theme().amber)),
+                    Span::styled(" load/clear  ", Style::default().fg(theme().dim)),
+                ];
+                if self.loaded.is_some() {
+                    hint.push(Span::styled("Tab", Style::default().fg(theme().amber)));
+                    hint.push(Span::styled(" params  ", Style::default().fg(theme().dim)));
+                    hint.push(Span::styled("C", Style::default().fg(theme().amber)));
+                    hint.push(Span::styled(" cab  ", Style::default().fg(theme().dim)));
+                }
+                hint.push(Span::styled("Esc / U", Style::default().fg(theme().amber)));
+                hint.push(Span::styled(" close", Style::default().fg(theme().dim)));
+                hint
+            }
             View::Edit => vec![
                 Span::styled("↑/↓", Style::default().fg(theme().amber)),
                 Span::styled(" select  ", Style::default().fg(theme().dim)),
@@ -540,9 +545,9 @@ fn entry(name: &str, selected: bool) -> Line<'static> {
 }
 
 fn centered_rect(percent_x: u16, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
-    let width = area.width * percent_x / 100;
+    let width = (area.width * percent_x / 100).min(area.width);
     let x = (area.width - width) / 2;
-    let height = (area.height * 70 / 100).max(6);
+    let height = (area.height * 70 / 100).max(6).min(area.height);
     let y = (area.height - height) / 2;
     ratatui::layout::Rect {
         x: area.x + x,

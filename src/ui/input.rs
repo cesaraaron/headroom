@@ -297,11 +297,10 @@ pub(super) fn apply_hit(
 }
 
 // `Tab` / `Shift-Tab` cycle the visible panels (see `cycle_panel`).
-// switched with the number keys, so the old global panel walk is gone.
 
 /// The cells `←`/`→` walk within the focused panel, in order. Movement is one
 /// flat walk that crosses sub-groups and wraps at the ends:
-/// - panel 2: the active model's amp knobs, the master output, then cab/mic knobs;
+/// - panel 2: the active model's amp knobs, then cab/mic knobs;
 /// - panel 4: every on-board pedal's knobs in chain order, then `+ ADD`.
 ///
 /// Panels 1 and 3 own their arrows elsewhere (chain cursor, seek), so they return
@@ -546,14 +545,14 @@ pub(super) fn move_selected_stage(
 
 /// Bypass/un-bypass the cursor's pedal on the ribbon. The amp and cab stages and
 /// off-board stages are a no-op. Returns true when a flag flipped.
-pub(super) fn toggle_stage(params: &Params, board: &[bool], cursor: ChainStage) -> bool {
+pub(super) fn toggle_stage(params: &Params, board: &mut [bool], cursor: ChainStage) -> bool {
     let Some(pi) = cursor.pedal_index() else {
         return false;
     };
     if !board.get(pi).copied().unwrap_or(false) {
         return false;
     }
-    toggle_pedal(params, PEDALS[pi].start);
+    toggle_pedal(params, board, PEDALS[pi].start);
     true
 }
 
@@ -625,11 +624,18 @@ pub(super) fn init_cab_cursor(params: &Params) -> usize {
     }
 }
 
-pub(super) fn toggle_pedal(params: &Params, knob_idx: usize) {
+pub(super) fn toggle_pedal(params: &Params, board: &mut [bool], knob_idx: usize) {
     // Amp and mic sections have no on/off toggle, so `pedal_of` returns `None`.
     if let Some(p) = pedal_of(knob_idx) {
         let flag = (PEDALS[p].enabled)(params);
-        flag.store(!flag.load(Relaxed), Relaxed);
+        let on = !flag.load(Relaxed);
+        flag.store(on, Relaxed);
+        // Board membership is the same flag (an off-board pedal is bypassed in
+        // the DSP), so keep the cache in step immediately instead of waiting
+        // for the next preset/session resync.
+        if let Some(slot) = board.get_mut(p) {
+            *slot = on;
+        }
     }
 }
 
@@ -1257,8 +1263,12 @@ mod tests {
         let p = Params::new();
         let flag = (PEDALS[0].enabled)(&p);
         let before = flag.load(Relaxed);
-        toggle_pedal(&p, PEDALS[0].start);
+        let mut b = board(true);
+        toggle_pedal(&p, &mut b, PEDALS[0].start);
         assert_eq!(flag.load(Relaxed), !before);
+        assert!(b[0], "toggling on must put the pedal on the board");
+        toggle_pedal(&p, &mut b, PEDALS[0].start);
+        assert!(!b[0], "toggling off must take it off the board");
     }
 
     #[test]
@@ -1269,8 +1279,9 @@ mod tests {
             .iter()
             .map(|pd| (pd.enabled)(&p).load(Relaxed))
             .collect();
-        toggle_pedal(&p, AMP_START);
-        toggle_pedal(&p, MIC_START);
+        let mut b = board(true);
+        toggle_pedal(&p, &mut b, AMP_START);
+        toggle_pedal(&p, &mut b, MIC_START);
         let flags_after: Vec<bool> = PEDALS
             .iter()
             .map(|pd| (pd.enabled)(&p).load(Relaxed))
@@ -1560,14 +1571,18 @@ mod tests {
         let mut b = board(true);
         let flag = (PEDALS[3].enabled)(&p);
         let before = flag.load(Relaxed);
-        assert!(toggle_stage(&p, &b, ChainStage::Comp));
+        assert!(toggle_stage(&p, &mut b, ChainStage::Comp));
         assert_eq!(flag.load(Relaxed), !before);
+        assert_eq!(b[3], !before, "the board cache must follow the flag");
+        // Toggling it off again bypasses it and removes it from the board.
+        assert!(toggle_stage(&p, &mut b, ChainStage::Comp));
+        assert_eq!(flag.load(Relaxed), before);
+        assert!(!b[3]);
         // The amp and cab are no-ops, and so is an off-board pedal.
-        assert!(!toggle_stage(&p, &b, ChainStage::Amp));
-        assert!(!toggle_stage(&p, &b, ChainStage::Cab));
-        b[3] = false;
-        assert!(!toggle_stage(&p, &b, ChainStage::Comp));
-        assert_eq!(flag.load(Relaxed), !before);
+        assert!(!toggle_stage(&p, &mut b, ChainStage::Amp));
+        assert!(!toggle_stage(&p, &mut b, ChainStage::Cab));
+        assert!(!toggle_stage(&p, &mut b, ChainStage::Comp));
+        assert_eq!(flag.load(Relaxed), before);
     }
 
     // ── apply_hit: a mouse click resolved to a focus change ────────────────────

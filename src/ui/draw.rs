@@ -437,10 +437,8 @@ fn render_vu_row(f: &mut Frame, area: Rect, label: &str, level: f32) {
 /// with the meter never reaching the top — which reads as "the interface isn't
 /// clipping" when it very much is.
 ///
-/// The true-peak tick is currently switched off (see the `SHOW_TRUE_PEAK_TICK`
-/// flag below): its hold-and-drain read as a stray cursor parked on the bar. The
-/// detector and the `output_peak` level stay live, so flipping the flag brings
-/// it back.
+/// The held true-peak tick marks the highest inter-sample peak since the last
+/// drain, so a transient stays visible after it has gone.
 fn render_vu_row_detail(
     f: &mut Frame,
     area: Rect,
@@ -452,10 +450,6 @@ fn render_vu_row_detail(
 ) {
     /// Dim factor for meter chrome: hush the bars without losing the hues.
     const METER_DIM: f32 = 0.45;
-    // The held true-peak tick is off: it reads as a delayed cursor sitting on
-    // the bar (it holds, drains red → amber, then vanishes). The peak level is
-    // still captured and published; only the drawn tick is gated here.
-    const SHOW_TRUE_PEAK_TICK: bool = false;
     let db = amp_to_db(level);
     let fill = ((db + 60.0) / 60.0).clamp(0.0, 1.0) as f64;
 
@@ -470,10 +464,9 @@ fn render_vu_row_detail(
     let green_end = (bar_width as f64 * 0.72) as usize;
     let yellow_end = (bar_width as f64 * 0.88) as usize;
 
-    // Where the held true peak sits, as a column in the bar. Switched off at the
-    // moment (`SHOW_TRUE_PEAK_TICK`); the plumbing stays for when it returns.
+    // Where the held true peak sits, as a column in the bar.
     let peak_col = peak
-        .filter(|p| SHOW_TRUE_PEAK_TICK && *p > 1e-4)
+        .filter(|p| *p > 1e-4)
         .map(|p| (((amp_to_db(p) + 60.0) / 60.0).clamp(0.0, 1.0) * bar_width as f32) as usize);
 
     let mut spans = vec![
@@ -1651,7 +1644,10 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
             "  note",
             "  between AMP and CAB = line-level; a full-rig AU is post-mic",
         ),
-        row("  Space", "  bypass stage, pedal, or transport under focus"),
+        row(
+            "  Space",
+            "  bypass pedal / play transport under focus (amp/cab cannot be bypassed)",
+        ),
         head("Mouse"),
         row(
             "  click",
@@ -1675,7 +1671,7 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         ),
         row("  ;", "  tap tempo: set the delay time by tapping"),
     ];
-    #[cfg(feature = "au")]
+    #[cfg(all(feature = "au", target_os = "macos"))]
     lines.push(row("  Z / U", "  amp-plugin bypass / browser"));
     lines.extend([
         head("Tools"),
@@ -1686,7 +1682,10 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
             "  session browser: new / save / save as / load (/ search)",
         ),
         row("  T", "  chromatic tuner"),
-        row("  M", "  practice metronome (+/− tempo, Space on/off)"),
+        row(
+            "  M",
+            "  practice metronome (uppercase M on the timeline; +/− tempo, Space on/off)",
+        ),
         row("  N", "  calibrate input level"),
         row("  F2", "  MIDI bindings: learn a controller control"),
         row("  F3", "  cycle the UI theme"),
@@ -1699,7 +1698,7 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
             "  R",
             "  arm / stop a dry raw take (auto-plays; lands on the timeline)",
         ),
-        head("Looper (monitor only)"),
+        head("Looper"),
         row("  Y", "  record / pause / resume the loop"),
         row("  F", "  clear the loop"),
         row("  , / .", "  toggle overdub / undo the last overdub layer"),
@@ -1719,9 +1718,10 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         row("  f", "  favorite the selected preset"),
         row("  x", "  A/B: swap the last two applied presets"),
         row("  d", "  delete (user presets only)"),
+        row("  p", "  close the browser"),
         head("Timeline (focused)"),
         row("  Space", "  play / pause (any row)"),
-        row("  M", "  mute the selected track"),
+        row("  m / M", "  mute the selected track / open the metronome"),
         row("  Enter", "  jump to start (loop in-point if looped)"),
         row("  ↑/↓  ←/→", "  select row / seek by the step"),
         row(
@@ -1740,8 +1740,8 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         row("  Del", "  remove selected track"),
     ]);
 
-    let width = (f.area().width * 55 / 100).max(40);
-    let height = ((lines.len() as u16 + 6).min(f.area().height)).max(8);
+    let width = (f.area().width * 55 / 100).max(40).min(f.area().width);
+    let height = ((lines.len() as u16 + 6).max(8)).min(f.area().height);
     let area = Rect {
         x: f.area().x + (f.area().width - width) / 2,
         y: f.area().y + (f.area().height - height) / 2,
@@ -1790,8 +1790,8 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
 pub(super) fn render_add_pedal_modal(f: &mut Frame, available: &[usize], cursor: usize) {
     let area = {
         let a = f.area();
-        let width = (a.width * 45 / 100).max(24);
-        let height = ((available.len() as u16 + 4).min(a.height)).max(6);
+        let width = (a.width * 45 / 100).max(24).min(a.width);
+        let height = ((available.len() as u16 + 4).max(6)).min(a.height);
         Rect {
             x: a.x + (a.width - width) / 2,
             y: a.y + (a.height - height) / 2,
@@ -1883,8 +1883,8 @@ pub(super) fn render_add_pedal_modal(f: &mut Frame, available: &[usize], cursor:
 fn picker_shell(f: &mut Frame, title: &str, rows: usize) -> Rect {
     let area = {
         let a = f.area();
-        let width = (a.width * 45 / 100).max(30);
-        let height = ((rows as u16 + 4).min(a.height)).max(6);
+        let width = (a.width * 45 / 100).max(30).min(a.width);
+        let height = ((rows as u16 + 4).max(6)).min(a.height);
         Rect {
             x: a.x + (a.width - width) / 2,
             y: a.y + (a.height - height) / 2,
@@ -2372,6 +2372,26 @@ mod tests {
         })
         .expect("draw");
         screen_text(&term)
+    }
+
+    /// Modal geometry must clamp to the frame. A terminal narrower/shorter than
+    /// a modal's preferred minimum used to underflow the `u16` centering math
+    /// (a debug panic, and an off-screen modal in release).
+    #[test]
+    fn modals_fit_a_tiny_terminal() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let params = Params::new();
+        let mut term = Terminal::new(TestBackend::new(20, 5)).expect("test backend");
+        term.draw(|f| {
+            let mut scroll = 0;
+            render_help_modal(f, &mut scroll);
+            render_add_pedal_modal(f, &[0, 1], 0);
+            render_amp_modal(f, &params, None, false, 0);
+            render_cab_modal(f, &params, None, false, 0);
+        })
+        .expect("draw");
     }
 
     /// The add-pedal list scrolls to keep the cursor's pedal on screen, so the

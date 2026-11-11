@@ -1,5 +1,7 @@
 use std::f32::consts::TAU;
 
+use super::param_changed;
+
 /// Stereo tremolo / vibrato — one LFO driving two kinds of modulation, blended by
 /// the MODE knob.
 ///
@@ -30,6 +32,9 @@ pub struct Tremolo {
     tap: f32,
     tap_coeff: f32,
     sr: f32,
+    /// Cached LFO rate (Hz): the exponential knob map runs only on change.
+    last_rate: f32,
+    rate_hz: f32,
 }
 
 /// Centre delay of the vibrato tap. The pitch swing modulates around this, so it
@@ -53,6 +58,8 @@ impl Tremolo {
             // zero, fast enough to feel immediate.
             tap_coeff: 1.0 - (-1.0 / (0.010 * sr)).exp(),
             sr,
+            last_rate: -1.0,
+            rate_hz: 0.5,
         }
     }
 
@@ -63,7 +70,7 @@ impl Tremolo {
         self.write = 0;
     }
 
-    /// Linear-interpolated read `delay` samples behind the write head.
+    /// Catmull-Rom-interpolated read `delay` samples behind the write head.
     #[inline]
     fn read(buf: &[f32], write: usize, delay: f32) -> f32 {
         super::read_cubic(buf, write, delay)
@@ -81,8 +88,12 @@ impl Tremolo {
     ) -> (f32, f32) {
         // LFO advances once per sample; exponential map puts the slow, musical rates
         // across most of the knob's travel and the fast helicopter chop up top.
-        let rate_hz = 0.5 * 28.0_f32.powf(rate.clamp(0.0, 1.0));
-        self.phase = (self.phase + rate_hz / self.sr).fract();
+        // Cached: a knob-rate `powf`.
+        if param_changed(rate, self.last_rate) {
+            self.rate_hz = 0.5 * 28.0_f32.powf(rate.clamp(0.0, 1.0));
+            self.last_rate = rate;
+        }
+        self.phase = (self.phase + self.rate_hz / self.sr).fract();
         let sine = (self.phase * TAU).sin();
 
         let depth = depth.clamp(0.0, 1.0);

@@ -10,7 +10,7 @@ expression: text
 │         ···                ···      ║  ←/→  move within the panel · Shift+←/→ jumps amp↔cab / pedal-to-pedal                    ║            ···              ···      │
 │        · ● ◇              · ● ·     ║  [ / ]  move the ribbon's stage earlier / later                                           ║           · ● ·            · ● ·     │
 │         · ·                ◇ ·      ║  note  between AMP and CAB = line-level; a full-rig AU is post-mic                        ║            ◇ ·              ◇ ·      │
-│     VOL II 7.5          VOL I 0.0   ║  Space  bypass stage, pedal, or transport under focus                                     ║0        BLEND 0.0        ROOM 0.0    │
+│     VOL II 7.5          VOL I 0.0   ║  Space  bypass pedal / play transport under focus (amp/cab cannot be bypassed)            ║0        BLEND 0.0        ROOM 0.0    │
 │                                     ║Mouse                                                                                      ║                                      │
 │▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚║  click  focus a panel / knob / tile / row · waveform seeks · Shift+drag selects           ║▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚│
 ╰─────────────────────────────────────║Play & edit                                                                                ║──────────────────────────────────────╯
@@ -30,14 +30,14 @@ expression: text
                                       ║  S  save session (asks for a name when new)                                               ║                                       
                                       ║  J  session browser: new / save / save as / load (/ search)                               ║                                       
                                       ║  T  chromatic tuner                                                                       ║                                       
-                                      ║  M  practice metronome (+/− tempo, Space on/off)                                          ║                                       
+                                      ║  M  practice metronome (uppercase M on the timeline; +/− tempo, Space on/off)             ║                                       
                                       ║  N  calibrate input level                                                                 ║                                       
                                       ║  F2  MIDI bindings: learn a controller control                                            ║                                       
                                       ║  F3  cycle the UI theme                                                                   ║                                       
                                       ║  F5  cycle the panel look (rounded → classic)                                             ║                                       
                                       ║  V  plugin browser                                                                        ║                                       
                                       ║  R  arm / stop a dry raw take (auto-plays; lands on the timeline)                         ║                                       
-                                      ║Looper (monitor only)                                                                      ║                                       
+                                      ║Looper                                                                                     ║                                       
                                       ║  Y  record / pause / resume the loop                                                      ║                                       
                                       ║  F  clear the loop                                                                        ║                                       
                                       ║  , / .  toggle overdub / undo the last overdub layer                                      ║                                       
@@ -51,9 +51,9 @@ expression: text
                                       ║  f  favorite the selected preset                                                          ║                                       
                                       ║  x  A/B: swap the last two applied presets                                                ║                                       
                                       ║  d  delete (user presets only)                                                            ║                                       
+                                      ║  p  close the browser                                                                     ║                                       
                                       ║Timeline (focused)                                                                         ║                                       
                                       ║  Space  play / pause (any row)                                                            ║                                       
-                                      ║  M  mute the selected track                                                               ║                                       
-                                      ║  Enter  jump to start (loop in-point if looped)                                           ║                                       
+                                      ║  m / M  mute the selected track / open the metronome                                      ║                                       
                                       ║                          ↑/↓  PgUp/PgDn scroll  ·  Esc / K close                          ║                                       
                                       ╚═══════════════════════════════════════════════════════════════════════════════════════════╝

@@ -33,9 +33,10 @@ open (otherwise the chain ribbon):
 | `3` | Practice timeline |
 | `4` | Pedals |
 
-`Tab` / `Shift-Tab` cycle options inside the amp (2) or pedals (4) panel,
-`←`/`→` move within the focused panel, and `Space` bypasses the stage, pedal, or
-transport under focus. On the pedalboard, `A` opens the **add-pedal** picker
+`Tab` / `Shift-Tab` cycle focus through the visible panels (1–4), `←`/`→` move
+within the focused panel, and `Space` bypasses a pedal — which also takes it off
+the board; add it back with `A` on the pedalboard (or plays/pauses the transport
+when the timeline is focused). Amp and cab have no bypass. On the pedalboard, `A` opens the **add-pedal** picker
 (`D` removes the focused pedal); elsewhere `A` opens the amp model browser.
 
 The mouse is a second way to move focus, never a way to edit a value: click a
@@ -68,8 +69,8 @@ The default order is:
 
 ```text
 NOISE GATE → WHAMMY → CRY BABY → DYNA COMP → BIG MUFF → TS-808 → DS-1 → ML-2 METAL CORE
-  → PRE-AMP EQ → UNI-VIBE → POWER BOOST → AMP → CAB
-  → GE-7 → PARAMETRIC EQ → FLANGER → CE-2 → PHASER → TREMOLO/VIBRATO
+  → RAT → TUBE DRIVER → PRE-AMP EQ → UNI-VIBE → POWER BOOST → AMP → CAB
+  → ROTARY → GE-7 → PARAMETRIC EQ → FLANGER → CE-2 → PHASER → TREMOLO/VIBRATO
   → DELAY → SPRING REVERB
 ```
 
@@ -104,11 +105,11 @@ hot backing. That costs about 4 dB of output level — turn up your interface or
 headphones to compensate. Imports are normalized to −6 dBFS peak, and you balance
 the two with the track gain and the MASTER.
 
-The **OUT** meter shows the true peak (held tick) plus the limiter's gain
-reduction in dB beside the `LIM` badge, so you can see exactly how hard the
-ceiling is working. Press **`F3`** to cycle the UI theme — `rust` (the default), the
-warm amber-orange of the project this one is forked from, or `teal`; the choice
-is saved and restored on restart.
+The **OUT** meter shows the output level, the held true-peak tick, and the
+limiter's gain reduction in dB beside the `LIM` badge, so you can see exactly how
+hard the ceiling is working. Press **`F3`** to cycle the UI theme — `rust` (the
+default, the warm amber-orange of the project this one is forked from) or `teal`;
+the choice is saved and restored on restart.
 
 `W` toggles the master-bus stereo width (neutral / wide).
 
@@ -142,8 +143,8 @@ cc = 11                 # wah treadle
 ```
 
 With `clock = true`, an incoming 24-ppqn **MIDI clock** sets the delay `TIME` to
-the beat and the footer shows `MIDI CLK <bpm>`; `Start`/`Continue`/`Stop` are
-followed. When the clock stops, the `TIME` knob and the `;` tap-tempo take back
+the beat when it fits the 0–500 ms delay range (slower tempos clamp to 500 ms),
+and the footer shows `MIDI CLK <bpm>`; `Start`/`Continue`/`Stop` are followed. When the clock stops, the `TIME` knob and the `;` tap-tempo take back
 over (the last clocked value stays until you change it).
 
 ## Presets
@@ -188,8 +189,9 @@ so abandoned recordings are only offered back after a crash.
 
 ## Practice & recording
 
-- **Metronome** — `M` opens it. `←`/`→` set the tempo, `Space` starts/stops. The
-  metronome is monitor-only and is never recorded.
+- **Metronome** — `M` opens it (on the timeline, lowercase `m` mutes the selected
+  track, so use uppercase **`M`** there). `←`/`→` set the tempo, `Space`
+  starts/stops. The metronome is monitor-only and is never recorded.
 - **Backing track** — `B` opens the import browser (MP3 / WAV / FLAC). Selecting
   a file adds it as a track at the playhead; `/` searches the list. `L` opens the
   **library** settings: the directory to fetch from, plus *only this path* and
@@ -202,7 +204,8 @@ so abandoned recordings are only offered back after a crash.
   subpaths = false   # recurse into subdirectories
   ```
 
-  `$RUSTY_AMP_PRACTICE_DIR` still overrides `path`.
+  `$HEADROOM_PRACTICE_DIR` overrides `path` (the legacy
+  `$RUSTY_AMP_PRACTICE_DIR` is still read).
 - **Dry-take recording** — `R` arms and stops a dry (pre-rig) raw take. The take
   auto-plays and lands on the timeline; its row expands to the full pane while
   recording (it returns to the previous height when you stop). Backing tracks and
@@ -210,10 +213,10 @@ so abandoned recordings are only offered back after a crash.
   are never captured into a rendered WAV.
 - **Timeline** — focus it with `3`. `Space` plays/pauses any row, `↑`/`↓`
   select a track, `←`/`→` seek, `+`/`−` pick the step
-  (0.01/0.05/0.1/0.5/1/5/10/30 s, clamped at both ends), `M`
-  mutes, `G` sets track gain, `H` moves a clip (its arrows move by the step and
-  `+`/`−` change it), `Tab` changes the selected row's height (full, then 50/50
-  with a second row, then back) and `Shift`+`Tab` cycles the waveform glyph
+  (0.01/0.05/0.1/0.5/1/5/10/30 s, clamped at both ends), `m` mutes
+  (uppercase `M` opens the metronome), `G` sets track gain, `H` moves a clip (its arrows move by the step and
+  `+`/`−` change it), `Z` changes the selected row's height (full, then 50/50
+  with a second row, then back) and `V` cycles the waveform glyph
   style (braille / sextant / quadrant / half-block), `Shift`+`A` toggles the
   waveform's vertical gain (normalized to each track's peak, or absolute),
   `Shift`+`↑`/`↓` zoom the time axis around the playhead for millisecond detail,

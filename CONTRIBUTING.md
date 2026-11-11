@@ -29,14 +29,15 @@ src/
   audio/            — cpal device selection and the real-time audio callback
   host/             — third-party plugin hosting (CLAP insert, macOS AU amp)
   dsp/              — all signal processing
-    amp/            — amp models (marshall, mesa, plexi, vox, fender, randall, hiwatt)
+    amp/            — amp models (marshall, mesa, randall, vox, hiwatt, plexi, fender, supro, tweed)
     cab/            — cabinet IR convolution and mic models
     effects/        — pedals & rack effects + their shared building blocks
       mod.rs        — OnePoleLp, ThreeBandEq, dB/param helpers (shared logic)
       compressor.rs, fuzz.rs, tube_screamer.rs, distortion.rs, metal_core.rs,
-      preamp_eq.rs, graphic_eq.rs, parametric_eq.rs, delay.rs, reverb.rs,
-      chorus.rs, flanger.rs, phaser.rs, tremolo.rs, uni_vibe.rs, wah.rs,
-      pitch.rs, noise_gate.rs
+      rat.rs, tube_driver.rs, preamp_eq.rs, graphic_eq.rs, parametric_eq.rs,
+      delay.rs, reverb.rs, spring.rs, clean_boost.rs, rotary.rs, chorus.rs,
+      flanger.rs, phaser.rs, tremolo.rs, uni_vibe.rs, wah.rs, pitch.rs,
+      noise_gate.rs
     biquad.rs       — biquad filter building block
     tonestack.rs    — passive FMV tone stack
     oversample.rs   — polyphase N× oversampling (with a `process(x, f)` clip helper)
@@ -69,7 +70,8 @@ in `src/session.rs`.
 
 ## Code style
 
-The project enforces strict Clippy lints. Before committing:
+The target lint policy lives in `Cargo.toml` under `[workspace.lints.*]`.
+Before committing, run the enforced gate:
 
 ```bash
 cargo fmt
@@ -77,8 +79,12 @@ cargo clippy --all-targets --all-features -- -D warnings
 ```
 
 Comments should only explain *why*, not *what*. Well-named identifiers carry the
-what. Clippy denies `unwrap`/`expect`/`panic`/`exit`/`mem_forget` in non-test code:
-use `?`, `unwrap_or_else`, and `anyhow` errors.
+what. The target style is: no `unwrap`/`expect`/`panic`/`exit`/`mem_forget` in
+non-test code — use `?`, `unwrap_or_else`, and `anyhow` errors. **Caveat:** the
+package does not yet opt in with `[lints] workspace = true`; enabling it today
+would fail on a large existing backlog (mostly `unwrap`/`expect` in tests and
+examples). Until that cleanup happens, CI enforces the default Clippy groups,
+not the restriction/pedantic groups.
 
 ## DSP conventions
 

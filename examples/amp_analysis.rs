@@ -77,14 +77,14 @@ impl Dut for BuiltIn {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "au"))]
 struct AuDut {
     name: String,
     au: Box<dyn headroom::dsp::StereoInsert>,
     desc: headroom::host::au::DiscoveredAu,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "au"))]
 impl Dut for AuDut {
     fn name(&self) -> String {
         format!("AU:{}", self.name)
@@ -362,7 +362,7 @@ fn analyse(dut: &mut dyn Dut) {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", feature = "au"))]
     {
         if args.iter().any(|a| a == "--list-au") {
             for au in headroom::host::au::scan() {

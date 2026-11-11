@@ -1,4 +1,4 @@
-use super::SmoothedGain;
+use super::{SmoothedGain, param_changed};
 use std::f32::consts::TAU;
 
 /// Stereo chorus: a set of LFO-swept delay taps mixed back with the dry signal.
@@ -26,6 +26,9 @@ pub struct Chorus {
     /// pedal sweeping it rewrites this every few samples.
     mix: SmoothedGain,
     sr: f32,
+    /// Cached LFO rate (Hz): the exponential knob map runs only on change.
+    last_rate: f32,
+    rate_hz: f32,
 }
 
 /// Shortest delay in the sweep. A long base delay (vs. the flanger's fraction of a
@@ -47,6 +50,8 @@ impl Chorus {
             // `DEFAULT_CH_MIX`.
             mix: SmoothedGain::new(0.5, sr),
             sr,
+            last_rate: -1.0,
+            rate_hz: 0.05,
         }
     }
 
@@ -67,9 +72,12 @@ impl Chorus {
     #[inline]
     pub fn process(&mut self, l: f32, r: f32, rate: f32, depth: f32, mix: f32) -> (f32, f32) {
         // LFO advances once per sample; exponential map spreads the slow, musical
-        // rates across most of the knob's travel.
-        let rate_hz = 0.05 * 100.0_f32.powf(rate.clamp(0.0, 1.0));
-        self.phase = (self.phase + rate_hz / self.sr).fract();
+        // rates across most of the knob's travel. Cached: a knob-rate `powf`.
+        if param_changed(rate, self.last_rate) {
+            self.rate_hz = 0.05 * 100.0_f32.powf(rate.clamp(0.0, 1.0));
+            self.last_rate = rate;
+        }
+        self.phase = (self.phase + self.rate_hz / self.sr).fract();
 
         // Right channel reads the sweep half a cycle out of phase for stereo drift.
         let span = SWEEP_MS * depth.clamp(0.0, 1.0);

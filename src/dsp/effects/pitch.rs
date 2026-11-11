@@ -113,7 +113,8 @@ impl Pitch {
             self.set_tone(tone);
         }
 
-        // Write the incoming sample first, so a zero-delay tap reads exactly `x`.
+        // Write the incoming sample first; `read_cubic` clamps its shortest tap
+        // to two samples so it never reads the slot being written this sample.
         self.buf[self.write] = x;
 
         // Map the knob to a transpose ratio: ±12 semitones around unison.

@@ -62,7 +62,7 @@ pub const KNOBS: &[AmpKnob] = &[
 ///   • 8× oversampling through all three gain stages keeps aliasing inaudible
 ///   • Asymmetric FET waveshaper adds subtle even harmonics
 ///   • A touch of dynamic bloom keeps the otherwise stiff solid-state feel responsive
-///   • Two inter-stage HPs (500 Hz and 800 Hz) tighten the solid-state response
+///   • Two inter-stage HPs (195 Hz and 285 Hz) tighten the solid-state response
 ///   • Presence knob (user-adjustable shelf at 5 kHz)
 pub struct Randall {
     sr: f32,
@@ -296,21 +296,25 @@ impl Amplifier for Randall {
         // under overtones (`fundamental_is_not_buried_under_overtones`) and
         // breaks the DS-chain level match. Re-tuning it means re-tuning the cab.
         // The master's level is in the power-amp input scale above.
-        x * MASTER_DRIVE_REF * 0.8820
+        x * MASTER_DRIVE_REF * 0.9068
     }
 }
 
 /// Asymmetric FET saturation.
 ///
 /// f(x) = x / sqrt(1 + x²) — smooth approach to ±1, softer than tanh.
-/// Negative half uses 1.08× input scale to simulate FET pinch-off asymmetry.
+/// Negative half uses a 1.08× input scale and a matching 1/1.08 output scale to
+/// simulate FET pinch-off asymmetry (lower negative rail) while keeping unity
+/// small-signal slope on both sides of zero.
 #[inline]
 fn fet_clip_asym(x: f32) -> f32 {
     if x >= 0.0 {
         x / (1.0 + x * x).sqrt()
     } else {
-        let x2 = x * 1.08;
-        x2 / (1.0 + x2 * x2).sqrt()
+        const SCALE: f32 = 1.08;
+        const RAIL: f32 = 1.0 / SCALE;
+        let x2 = x * SCALE;
+        RAIL * x2 / (1.0 + x2 * x2).sqrt()
     }
 }
 
@@ -336,5 +340,23 @@ fn rail_clip(x: f32) -> f32 {
         let excess = abs_x - lim;
         let knee = excess / (1.0 + excess * 5.0);
         x.signum() * (lim + knee * (1.0 - lim))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The FET curve must keep unity small-signal slope on both sides of zero;
+    /// the old 1.08× input scale without an output scale rectified quiet signals.
+    #[test]
+    fn fet_clip_slopes_match_at_the_origin() {
+        let h = 1e-4;
+        let slope = |x: f32| (fet_clip_asym(x + h) - fet_clip_asym(x - h)) / (2.0 * h);
+        let (positive, negative) = (slope(1e-3), slope(-1e-3));
+        assert!(
+            (positive - negative).abs() < 1e-3,
+            "slope kink at the origin: {positive} vs {negative}"
+        );
     }
 }

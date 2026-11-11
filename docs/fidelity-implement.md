@@ -2642,3 +2642,31 @@ notches are gone), and the low-band LTAS moved by up to ±3 dB. The bypass-ramp 
 1.63× (was < 1.6×), both re-blessed with their reasons in the code. **This is a
 listening change** — the audit predicted it, and the baseline was regenerated in
 the same commit.
+
+## 2026-11-10 maintenance pass
+
+A whole-tree audit fixed correctness and hygiene items without changing the
+signal topology:
+
+- **Recording.** The capture writer waits for the audio callback to quiesce
+  before draining an ended/aborted take (`producer_idle`), so an aborted tail
+  cannot leak into the next WAV. Capture overflow is now surfaced in the take
+  note/recovery metadata, and seeking/jump-to-start is refused during a take.
+- **Looper.** A new take clears the undo layer; the overdub snapshot is filled
+  one frame at a time instead of copying the whole loop in one callback.
+- **Take bus.** Skipped once it has been idle for 3 s (and no external
+  processor is loaded), with its feedback tails cleared first.
+- **I/O.** A rate mismatch between input and output now fails fast instead of
+  playing pitch-shifted audio; the inter-stream ring is prefilled 20 ms and
+  capped at 100 ms.
+- **Master bus.** Width/output are smoothed per sample; width/output no longer
+  step at a block boundary.
+- **Amp/fuzz/compressor tone fixes.** The CS-2 knee is centred on the threshold;
+  `TubeClip`, `TubeDriver` and Randall's FET curve have matching small-signal
+  slope at zero. The nine per-amp output trims were re-derived to hold the
+  0.0650 mid-band target, and the 19-preset fidelity baseline was regenerated.
+- **Fidelity gate.** `--check` rejects non-finite metrics and any rendered
+  preset missing from the baseline.
+- **UI/docs.** `M` (metronome) vs `m` (timeline mute), restored the held
+  true-peak tick, Space bypass/off-board consistency, tiny-terminal modal
+  clamping, and the stale key/chain/count documentation corrected.

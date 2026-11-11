@@ -12,7 +12,7 @@ use crate::dsp::effects::db_to_lin;
 use crate::dsp::limiter::Limiter;
 use crate::dsp::metronome::{Metronome, MetronomeVoice};
 use crate::dsp::oversample::Oversampler4;
-use crate::dsp::player::{PlayerTrack, PlayerVoice, TrackKind};
+use crate::dsp::player::{InstallError, PlayerTrack, PlayerVoice, TrackKind};
 use crate::dsp::tuner::{Tuner, TunerDetector};
 use crate::dsp::{DcBlocker, DspChain, Levels, Params, StereoInsert};
 use crate::looper::{Looper, LooperControl};
@@ -80,7 +80,9 @@ pub struct TrackAck {
     pub id: u64,
     pub generation: u64,
     pub installed: bool,
-    pub error: Option<String>,
+    /// The install failure, if any. Stored as the plain error so the audio
+    /// thread does not format/allocate a message; the UI renders it.
+    pub error: Option<InstallError>,
 }
 
 /// Largest block (in frames) the audio thread will ever process at once. Scratch
@@ -88,11 +90,19 @@ pub struct TrackAck {
 /// their maximum block size.
 pub const MAX_BLOCK: usize = 4096;
 
+/// Inter-stream ring start-up prefill. Gives the output callback a small cushion
+/// so it cannot underrun before the first input callback delivers audio.
+const RING_PREFILL_MS: f32 = 20.0;
+
+/// Maximum inter-stream queue depth before the output callback drops the oldest
+/// samples. Caps clock-drift latency at 100 ms instead of the ring's 400 ms.
+const RING_HIGH_WATER_MS: f32 = 100.0;
+
 /// Peak ceiling of the final mix (live guitar + re-amped takes/looper +
 /// backing + click) at the output stage. It matches the chain's own −1 dBFS
 /// ceiling, so the limiter is a safety: it catches a stacked take or a hot
 /// backing, not the ordinary guitar.
-const MIX_CEILING: f32 = 0.891;
+const MIX_CEILING: f32 = crate::dsp::limiter::CEILING;
 
 /// Headroom the internal mix runs at before the output limiter. Both the
 /// program and monitor buses are scaled by this, so the limiter sees a mix
@@ -694,11 +704,13 @@ fn negotiate_configs(
                         )
                     })?;
                     let fallback_sr = default.sample_rate();
-                    let msg = format!(
-                        "Audio: output does not support {in_sr} Hz; falling back to its default {fallback_sr} Hz"
-                    );
-                    log_line(&msg);
-                    default
+                    // Running the input and output streams at different rates
+                    // shifts pitch and never drains at the same speed, so refuse
+                    // rather than silently playing wrong audio.
+                    return Err(anyhow!(
+                        "output does not support {in_sr} Hz (its default is {fallback_sr} Hz); \
+                         set the interface and output to a shared rate or pick another output device"
+                    ));
                 }
             }
         }
@@ -881,6 +893,11 @@ struct InputState {
     /// Take-bus rig output for this block.
     take_l: Vec<f32>,
     take_r: Vec<f32>,
+    /// Remaining frames of effect tail after the last take/loop input. Until it
+    /// reaches zero the take rig still runs; then it is skipped and its state is
+    /// cleared so an idle session does not pay for a second full rig.
+    take_tail_frames: usize,
+    take_bus_idle: bool,
     /// Monitor bus (backing import + metronome click) for this block, kept
     /// separate from the program so a backing cannot drive the guitar's gain.
     monitor_l: Vec<f32>,
@@ -994,10 +1011,7 @@ impl InputState {
                     track,
                     gain,
                     muted,
-                } => match self
-                    .player
-                    .install(id, generation, kind, track, gain, muted)
-                {
+                } => match self.player.install(id, kind, track, gain, muted) {
                     Ok(displaced) => {
                         if let Some(old) = displaced {
                             let _ = self.track_dropped_tx.push(old);
@@ -1014,7 +1028,7 @@ impl InputState {
                             id,
                             generation,
                             installed: false,
-                            error: Some(e.to_string()),
+                            error: Some(e),
                         });
                     }
                 },
@@ -1083,7 +1097,7 @@ impl InputState {
 
         // Drain the looper's transport commands once per block; the per-frame loop
         // below feeds it the post-trim dry sample and mixes its output into the
-        // monitor path only (post-record, like the metronome and practice player).
+        // take bus (post-record), where the take rig re-amps it.
         self.looper.poll_controls(&self.looper_ctl);
 
         // Deinterleave the guitar channel into the mono input block, converting
@@ -1157,7 +1171,6 @@ impl InputState {
         }
         let mut capturing =
             capture_active && !self.capture.auto_stop.load(Relaxed) && transport.playing;
-        let mut pushed: u64 = 0;
         let mut capture_overflowed = false;
 
         for (i, &sample) in self.in_buf.iter().enumerate() {
@@ -1177,14 +1190,11 @@ impl InputState {
             if capturing {
                 if !self.capture_started {
                     self.capture.start_frame.store(cursor as u64, Relaxed);
-                    self.capture.frames.store(0, Relaxed);
                     self.capture_started = true;
                 }
                 // Dry selected-channel sample, before gate/pedals/amp/cab. A full
                 // ring is reported (never silently shortened), not blocked on.
-                if self.capture_tx.push(sample).is_ok() {
-                    pushed = pushed.saturating_add(1);
-                } else {
+                if self.capture_tx.push(sample).is_err() {
                     capture_overflowed = true;
                 }
             }
@@ -1221,21 +1231,41 @@ impl InputState {
         // at max length) to the UI without another atomic per frame.
         self.looper.publish(&self.looper_ctl);
 
-        if capture_active && self.capture_started {
-            self.capture.frames.fetch_add(pushed, Relaxed);
-            if capture_overflowed {
-                self.capture.overflowed.store(true, Relaxed);
-            }
+        if capture_active && self.capture_started && capture_overflowed {
+            self.capture.overflowed.store(true, Relaxed);
         }
+        // Tell the writer whether this callback is still pushing. The block that
+        // observes a disarm stops pushing immediately, so a worker can wait for
+        // this flag before draining an aborted/finished take.
+        self.capture.producer_idle.store(!capturing, Relaxed);
 
         // The summed raw-take bus is processed by its own rig instance, then
         // added to the live program bus. It is intentionally not part of the
-        // live chain.
-        self.take_chain.process_block(
-            &self.take_in[..frames],
-            &mut self.take_l[..frames],
-            &mut self.take_r[..frames],
-        );
+        // live chain. With no take/loop installed the rig is skipped once its
+        // tails have decayed, so an idle session does not run a second chain.
+        let take_source = self.player.track_count() > 0
+            || !self.looper_ctl.is_empty()
+            || self.take_chain.has_external_processing();
+        if take_source {
+            self.take_tail_frames = (self.capture.sample_rate.load(Relaxed) as f32 * 3.0) as usize;
+        } else {
+            self.take_tail_frames = self.take_tail_frames.saturating_sub(frames);
+        }
+        if take_source || self.take_tail_frames > 0 {
+            self.take_bus_idle = false;
+            self.take_chain.process_block(
+                &self.take_in[..frames],
+                &mut self.take_l[..frames],
+                &mut self.take_r[..frames],
+            );
+        } else {
+            if !self.take_bus_idle {
+                self.take_chain.clear_feedback_tails();
+                self.take_bus_idle = true;
+            }
+            self.take_l[..frames].fill(0.0);
+            self.take_r[..frames].fill(0.0);
+        }
 
         for i in 0..frames {
             // Trim both buses for headroom, sum them, and protect the whole mix
@@ -1320,10 +1350,24 @@ where
     T: cpal::SizedSample + FromSample<f32>,
 {
     let mut err_count = 0u64;
+    let channels = cfg.channels as usize;
+    let high_water =
+        (cfg.sample_rate as f32 * RING_HIGH_WATER_MS / 1000.0).round() as usize * channels;
     device
         .build_output_stream(
             cfg,
             move |data: &mut [T], _| {
+                // Bound the standing latency if the two devices' crystals drift
+                // (or an output callback is delayed once). Drop whole frames from
+                // the oldest end; the ring otherwise allows a 400 ms queue.
+                let slots = consumer.slots();
+                if slots > high_water {
+                    let excess = slots - high_water;
+                    let drop = excess - excess % channels.max(1);
+                    for _ in 0..drop {
+                        let _ = consumer.pop();
+                    }
+                }
                 for s in data.iter_mut() {
                     *s = T::from_sample(consumer.pop().unwrap_or(0.0));
                 }
@@ -1365,7 +1409,13 @@ fn build_engine(
     capture.sample_rate.store(sr as u32, Relaxed);
 
     let buf_samples = (sr as usize) / 5 * out_channels * 2;
-    let (producer, consumer) = RingBuffer::<f32>::new(buf_samples);
+    let (mut producer, consumer) = RingBuffer::<f32>::new(buf_samples);
+    // Prefill silence so the first output callbacks have data even if they fire
+    // before the input stream's first block.
+    let prefill = (sr * RING_PREFILL_MS / 1000.0).round() as usize * out_channels;
+    for _ in 0..prefill {
+        let _ = producer.push(0.0);
+    }
 
     // The live rig, and a second instance for the raw-take bus. They share the
     // same `Params` so every knob/tone change applies to both, but their DSP
@@ -1381,12 +1431,12 @@ fn build_engine(
     // added *after* the recording tap so it is never captured in the WAV.
     let metro_voice = MetronomeVoice::new(sr);
 
-    // Practice player: backing track + recorded take, both mixed into the monitor
-    // output only (post-record), like the metronome.
+    // Practice player: imports ride the monitor bus; recorded takes ride the take
+    // bus. Both are summed after the recording tap.
     let player = PlayerVoice::new();
 
     // Phrase looper: buffers are allocated here (before the streams start), and
-    // the loop is mixed into the monitor output only, post-record like the click.
+    // the loop rides the take bus, post-record like the click is post-tap.
     let looper_voice = Looper::new(sr, &looper);
 
     // Lock-free handoff for swapping the plugin insert in/out without touching the
@@ -1464,6 +1514,8 @@ fn build_engine(
         take_in,
         take_l,
         take_r,
+        take_tail_frames: 0,
+        take_bus_idle: true,
         monitor_l,
         monitor_r,
         tuner_dc_l: DcBlocker::new(sr),

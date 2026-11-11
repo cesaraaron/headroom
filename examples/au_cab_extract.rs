@@ -10,12 +10,12 @@
 //!
 //! AU hosting is macOS-only; this example is a no-op elsewhere.
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "au"))]
 const SR: f32 = 48_000.0;
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "au"))]
 const CAP: usize = 16_384; // ~340 ms, plenty for the room mics
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "au"))]
 fn capture(ins: &mut Box<dyn headroom::dsp::StereoInsert>, amp: f32) -> (Vec<f32>, Vec<f32>) {
     let (mut l_out, mut r_out) = (Vec::with_capacity(CAP), Vec::with_capacity(CAP));
     let mut i = 0usize;
@@ -38,7 +38,7 @@ fn capture(ins: &mut Box<dyn headroom::dsp::StereoInsert>, amp: f32) -> (Vec<f32
     (l_out, r_out)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "au"))]
 fn run() {
     let pat = std::env::args()
         .nth(1)
@@ -101,9 +101,9 @@ fn run() {
     println!("load it in headroom with <I>, A/B against the built-in cab with <X>");
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(all(target_os = "macos", feature = "au")))]
 fn run() {
-    eprintln!("au_cab_extract is macOS-only (Audio Unit hosting).");
+    eprintln!("au_cab_extract needs macOS and the `au` feature (Audio Unit hosting).");
 }
 
 fn main() {

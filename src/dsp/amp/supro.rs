@@ -219,6 +219,6 @@ impl Amplifier for Supro {
 
         // Fixed output trim (no master) — level-matches the small combo to the
         // other models so switching amps doesn't jump the volume.
-        x * 5.7286
+        x * 6.3985
     }
 }

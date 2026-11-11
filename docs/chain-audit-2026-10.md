@@ -39,7 +39,9 @@ are in `docs/fidelity-implement.md` → increment log (`chain-audit-p1` … `p3g
 
 **Remaining** (all need a live interface or a control-thread redesign):
 
-- **1.3** output-rate fallback; **1.4** inter-stream ring prefill/watermark.
+- **1.3** is fixed by refusing to start when the output cannot run at the input
+  rate (the old fallback played pitch-shifted audio); **1.4** is fixed by a
+  start-up prefill and a 100 ms high-water drop in the output callback.
 - **1.6** loop-wrap and punch-in/out crossfades (the overdub-undo bug is fixed).
 - **1.7** `TunerDetector::analyze` off the audio thread and XRUN logging off the
   stream error callback (the rate-aware window is fixed).
@@ -142,6 +144,8 @@ blind, loudness-matched A/B renders of `9e0fc1b` vs the current `main`.
 - **Root Cause:** In `negotiate_configs()`, if `output.supported_output_configs()` has no range containing `in_sr`, lines `681-689` fall back to `output.default_output_config()` at `fallback_sr`, log a warning, and still return `in_sr as f32` as the engine sample rate. The input callback pushes `in_sr * out_channels` samples/sec into the SPSC ring buffer while the output stream pops `fallback_sr * out_channels` samples/sec with no resampling.
 - **Audio Impact:** Pitch and time shift by `fallback_sr / in_sr` (e.g., ±1.47 semitones between 44.1 kHz and 48 kHz), accompanied by continuous buffer overruns (48k → 44.1k drops 3,900 frames/sec) or underruns (44.1k → 48k inserts 3,900 zero frames/sec).
 - **Recommended Fix:** If the output device does not support `in_sr`, check if the input device supports `fallback_sr` so both streams open at `fallback_sr`; if the two devices genuinely have disjoint supported rates, insert a streaming resampler on the output consumer or return a clear startup error.
+- **Status (2026-11-10):** fixed by returning a clear startup error instead of
+  opening mismatched streams.
 
 ---
 
@@ -152,6 +156,8 @@ blind, loudness-matched A/B renders of `9e0fc1b` vs the current `main`.
   - If the output callback fires before the first input callback (or runs on a slightly faster crystal), `consumer.pop().unwrap_or(0.0)` injects hard `0.0` steps.
   - If the input crystal is slightly faster (or the OS delays an output callback once), queued audio accumulates in the ring buffer up to **400 ms**, permanently inflating live monitoring latency until the buffer overflows.
 - **Recommended Fix:** Prefill 1–2 callback periods of silence on startup and enforce a high-water mark in the consumer/producer (e.g., 3–4 periods) so clock drift or a transient scheduler hiccup cannot build 400 ms of standing latency.
+- **Status (2026-11-10):** fixed with a 20 ms start-up prefill and a 100 ms
+  high-water drop in the output callback.
 
 ---
 

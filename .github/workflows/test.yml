@@ -4,9 +4,7 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-  # Backstop: push-triggered runs are currently not firing on this repo/account
-  # (manual `workflow_dispatch` works). A weekly run keeps the gates honest until
-  # the push trigger is restored in Settings -> Actions.
+  # Weekly backstop so a broken push/PR trigger cannot silently skip the gates.
   schedule:
     - cron: "0 6 * * 1"
 
@@ -83,8 +81,10 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Run tests (all features, incl. AU)
-        run: cargo test --all-features
+      - name: Run tests (release, all features, incl. AU)
+        # Linux covers the debug build; this job covers the release build the
+        # audio engine actually ships in.
+        run: cargo test --release --all-features
 
       - name: Check the fidelity baseline
         # Renders every bundled preset over the synthetic corpus and fails on any

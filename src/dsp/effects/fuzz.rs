@@ -223,9 +223,11 @@ impl Fuzz {
         };
         // The Fuzz Face's low input impedance loads the guitar, so its cleanup is
         // stronger and it thins out as the guitar volume closes. Bypassed at full
-        // volume so the pedal's default voice is unchanged.
+        // volume so the pedal's default voice is unchanged, but keep the filter
+        // running so rolling back in does not resume from a stale state.
+        let guitar_filtered = self.guitar_hp.process(x);
         let x = if voice == Voice::FuzzFace && gv < 0.999 {
-            self.guitar_hp.process(x)
+            guitar_filtered
         } else {
             x
         };

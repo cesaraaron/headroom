@@ -2,7 +2,7 @@
 //!
 //! AU hosting is macOS-only; this example is a no-op elsewhere.
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "au"))]
 fn run() {
     let pat = std::env::args()
         .nth(1)
@@ -23,9 +23,9 @@ fn run() {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(all(target_os = "macos", feature = "au")))]
 fn run() {
-    eprintln!("au_params is macOS-only (Audio Unit hosting).");
+    eprintln!("au_params needs macOS and the `au` feature (Audio Unit hosting).");
 }
 
 fn main() {

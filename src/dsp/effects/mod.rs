@@ -218,22 +218,6 @@ impl SmoothedGain {
         self.current
     }
 
-    /// The not-yet-smoothed target, for the (rare) caller that needs the
-    /// instantaneous value.
-    #[inline]
-    pub fn target(&self) -> f32 {
-        self.target
-    }
-
-    /// Jump straight to `value`, skipping the ramp. For state that is not an
-    /// audible gain (a preset load, a sample-rate change) or for a bypass
-    /// toggle, where the caller handles the transition itself.
-    #[inline]
-    pub fn reset(&mut self, value: f32) {
-        self.current = value;
-        self.target = value;
-    }
-
     /// The current smoothed value, without advancing.
     #[inline]
     pub fn value(&self) -> f32 {

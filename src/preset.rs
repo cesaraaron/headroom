@@ -144,7 +144,8 @@ pub struct FuzzSection {
     pub fuzz: f32,
     pub tone: f32,
     pub level: f32,
-    /// 0 = Big Muff, 1 = Fuzz Face. Defaults to 0 so existing presets keep the Muff.
+    /// 0 = Big Muff, 0.5 = Fuzz Face, 1 = Tone Bender MkII (thresholds at
+    /// 0.25 / 0.75). Defaults to 0 so existing presets keep the Muff.
     #[serde(default = "fuzz_type_default")]
     pub r#type: f32,
     /// Guitar volume as the fuzz sees it (1 = full). Defaults to 1 so existing
@@ -256,7 +257,8 @@ pub struct AmpSection {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CabSection {
-    /// "mesa" (default) | "marshall" | "orange" | "wem" | "vox" | "fender"
+    /// "mesa" (default) | "marshall" | "orange" | "wem" | "vox" | "fender" |
+    /// "supro" | "tweed"
     pub model: Option<String>,
     /// 0.0 = edge (off-axis, dark) … 1.0 = center (on-axis, bright). Default 0.5.
     #[serde(default = "mic_pos_default")]
@@ -310,8 +312,8 @@ pub struct DelaySection {
     pub time: f32,
     pub feedback: f32,
     pub mix: f32,
-    /// 0 = digital ping-pong, 1 = tape (Echoplex-style). Defaults to 0 so older
-    /// presets keep the digital delay.
+    /// 0 = digital ping-pong, 0.5 = Echorec drum echo, 1 = tape
+    /// (Echoplex-style). Defaults to 0 so older presets keep the digital delay.
     #[serde(default = "delay_type_default")]
     pub r#type: f32,
 }

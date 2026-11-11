@@ -26,8 +26,8 @@ use amp::{AMP_MAX, AmpBank, AmpKnob};
 use cab::{CabBank, ExternalIrCab};
 use effects::{
     Chorus, CleanBoost, Compressor, Delay, Distortion, Flanger, Fuzz, GraphicEq, MetalCore,
-    NoiseGate, ParametricEq, Phaser, Pitch, PreampEq, Rat, Reverb, Rotary, Tremolo, TubeDriver,
-    TubeScreamer, UniVibe, Wah,
+    NoiseGate, ParametricEq, Phaser, Pitch, PreampEq, Rat, Reverb, Rotary, SmoothedGain, Tremolo,
+    TubeDriver, TubeScreamer, UniVibe, Wah,
 };
 use limiter::Limiter;
 
@@ -231,12 +231,11 @@ impl CabModel {
         }
     }
 
-    #[allow(dead_code)]
     pub fn name(self) -> &'static str {
         match self {
             Self::Mesa => "Mesa 4×12 (V30)",
             Self::Marshall => "Marshall 4×12 (GB)",
-            Self::Orange => "Orange PPC412 (V30)",
+            Self::Orange => "Orange PPC412 (GB)",
             Self::Wem => "WEM 4×12 (Fane)",
             Self::Vox => "Vox 2×12 (Alnico Blue)",
             Self::Fender => "Fender 2×12 (Jensen)",
@@ -285,8 +284,8 @@ impl CabModel {
     ];
 }
 
-/// One slot in the reorderable signal chain: the 11 pre pedals (mono DSP), the
-/// amp head, the cabinet/mic, then the 8 stereo rack pedals. The amp and cab are
+/// One slot in the reorderable signal chain: the 13 pre pedals (mono DSP), the
+/// amp head, the cabinet/mic, then the 9 stereo rack pedals. The amp and cab are
 /// separate stages so they can be moved independently, but the amp must always
 /// precede its cab (see [`sanitize_chain_order`]). Effects placed *between* them
 /// model line-level processing in a virtual load box / effects loop, not a pedal
@@ -321,8 +320,7 @@ pub enum ChainStage {
     Rotary = 23,
 }
 
-/// Number of slots in [`ChainStage`]: 11 pre + amp + cab + 8 rack, plus the RAT,
-/// the Tube Driver and the rotary.
+/// Number of slots in [`ChainStage`]: 13 pre pedals + amp + cab + 9 rack pedals.
 pub const CHAIN_LEN: usize = 24;
 
 /// Bounded number of attempts the audio-thread reader makes before giving up and
@@ -1582,9 +1580,8 @@ pub struct Levels {
     /// transient stays visible for a second or so.
     ///
     /// [`output`](Self::output) is a follower with a 1 ms attack and a 300 ms
-    /// decay: it tracks the level but does not *hold* it, and it is computed
-    /// before the take bus is added. That combination is why a rig sitting at
-    /// full-scale can show a meter that never reaches the top.
+    /// decay: it tracks the level but does not *hold* it. Both are read from the
+    /// final summed program + monitor mix, after the safety limiter.
     pub output_peak: Arc<AtomicF32>,
     /// 0–1 "the final mix ceiling is engaging".
     /// Decays rather than latches, so the indicator fades instead of sticking.
@@ -1858,6 +1855,10 @@ pub struct DspChain {
     /// Master-bus lookahead limiter. Replaces the old memoryless clip so peaks
     /// are turned down cleanly instead of distorted.
     master_limiter: Limiter,
+    /// Smoothed master-bus width and output drive, so a knob move or a preset
+    /// load cannot step the whole mix at a block boundary.
+    width_smooth: SmoothedGain,
+    output_smooth: SmoothedGain,
     /// Mains-hum floor injected at the chain input (see [`HumNoise`]).
     hum: HumNoise,
     /// Per-stage bypass crossfade position, 0 = fully bypassed and 1 = fully
@@ -1928,10 +1929,19 @@ impl DspChain {
             cab_skipped: false,
             master_dc: MasterDc::new(sr),
             master_limiter: Limiter::new(sr),
+            width_smooth: SmoothedGain::with_ms(1.0, 8.0, sr),
+            output_smooth: SmoothedGain::with_ms(1.0, 8.0, sr),
             hum: HumNoise::new(sr),
             bypass_ramp,
             bypass_step: 1.0 / (BYPASS_DECLICK_SECS * sr).max(1.0),
         }
+    }
+
+    /// Whether this chain currently owns an external plugin, IR or AU. An idle
+    /// take bus with one of these must keep running so its state does not go
+    /// stale and replay when the next take starts.
+    pub fn has_external_processing(&self) -> bool {
+        self.insert.is_some() || self.ext_cab.is_some() || self.ext_amp.is_some()
     }
 
     /// Install (or clear, with `None`) the stereo plugin insert.
@@ -1961,7 +1971,19 @@ impl DspChain {
         &mut self,
         cab: Option<Box<ExternalIrCab>>,
     ) -> Option<Box<ExternalIrCab>> {
-        std::mem::replace(&mut self.ext_cab, cab)
+        let old = std::mem::replace(&mut self.ext_cab, cab);
+        // Swapping IR A for IR B leaves `cab_ext_live` true, so the on/off
+        // transition in `cab_stage` does not fire: the outgoing convolver's tail
+        // is cut and the incoming one starts from stale state. Clear the new IR
+        // and fade through zero, exactly like an on/off switch.
+        if self.params.cab_external_active.load(Relaxed) {
+            if let Some(ext) = self.ext_cab.as_mut() {
+                ext.clear();
+            }
+            self.cab.reset();
+            self.cab_declick = 0.0;
+        }
+        old
     }
 
     /// Swap the external amp, returning the displaced one (if any) for disposal off the
@@ -2465,19 +2487,27 @@ impl DspChain {
         if let Some(o) = self.params.try_chain_slots()
             && o != self.last_order
         {
-            self.reverb.clear_buffers();
-            self.delay.clear_buffers();
-            self.flanger.clear_buffers();
-            self.phaser.clear_buffers();
-            self.pitch.clear_buffers();
-            self.chorus.clear_buffers();
-            self.rotary.clear_buffers();
-            self.tremolo.clear_buffers();
-            // The Fender spring tank and every model's oversampler histories.
-            self.amp.clear_tails();
+            self.clear_feedback_tails();
             self.last_order = o;
         }
         self.last_order
+    }
+
+    /// Zero every recirculating feedback loop (reverb tanks, delay lines,
+    /// modulation combs, the amp's spring tank and oversampler histories).
+    /// Used on a reorder and when the take bus has been idle long enough that
+    /// its state must not replay into the next take.
+    pub fn clear_feedback_tails(&mut self) {
+        self.reverb.clear_buffers();
+        self.delay.clear_buffers();
+        self.flanger.clear_buffers();
+        self.phaser.clear_buffers();
+        self.pitch.clear_buffers();
+        self.chorus.clear_buffers();
+        self.rotary.clear_buffers();
+        self.tremolo.clear_buffers();
+        // The Fender spring tank and every model's oversampler histories.
+        self.amp.clear_tails();
     }
 
     /// Process one mono input sample, returning a stereo (L, R) pair.
@@ -2490,22 +2520,17 @@ impl DspChain {
     #[inline]
     pub fn process(&mut self, sample: f32) -> (f32, f32) {
         let route = self.route_for_block(false);
+        self.width_smooth.set(route.width);
+        self.output_smooth.set(route.output);
         let (l, r) = self.process_core(sample, &route);
         master_bus(
             l,
             r,
-            route.width,
-            route.output,
+            self.width_smooth.step(),
+            self.output_smooth.step(),
             &mut self.master_dc,
             &mut self.master_limiter,
         )
-    }
-
-    /// Gain reduction this chain's own master limiter has applied since the
-    /// last take, in dB. This is the chain's internal limiter, not the final
-    /// output stage's program ceiling (see [`Levels::gr_db`]).
-    pub fn take_gr_db(&mut self) -> f32 {
-        self.master_limiter.take_gr_db()
     }
 
     /// Process a block of mono input samples into stereo output buffers.
@@ -2624,13 +2649,16 @@ impl DspChain {
             insert.process_block(out_l, out_r);
         }
 
-        // Master bus, per sample (width read once per block, in the route).
+        // Master bus, per sample. Width/output are block-rate targets, smoothed
+        // per sample so a knob move or preset load cannot step the whole mix.
+        self.width_smooth.set(route.width);
+        self.output_smooth.set(route.output);
         for (l, r) in out_l.iter_mut().zip(out_r.iter_mut()) {
             let (wl, wr) = master_bus(
                 *l,
                 *r,
-                route.width,
-                route.output,
+                self.width_smooth.step(),
+                self.output_smooth.step(),
                 &mut self.master_dc,
                 &mut self.master_limiter,
             );
@@ -2654,8 +2682,8 @@ impl DspChain {
 }
 
 /// Master bus: stereo-widen, DC-block, output gain, then limit. `width` pushes
-/// the cab/reverb decorrelation out for a wider, deeper image without losing
-/// mono punch (the mid is untouched); `1.0` is the neutral reference
+/// the cab/reverb decorrelation out for a wider, deeper image while the
+/// equal-power normalisation keeps the overall level steady; `1.0` is the neutral reference
 /// (wire-transparent sides). The `output` knob is applied *before* the
 /// [`Limiter`], so it is the drive into the limiter: backing it off gives the
 /// limiter headroom, and turning it up is caught cleanly instead of re-saturating
@@ -2763,38 +2791,6 @@ impl DcBlocker {
         self.x1 = x;
         self.y1 = y;
         y
-    }
-}
-
-/// Output soft limiter: unity for |x| < `KNEE`, a gentle rational knee above,
-/// and a hard ceiling at exactly 1.0.
-///
-/// The knee is `KNEE + e / (1 + KNEE_SHAPE * e)` where `e = |x| - KNEE`. Its
-/// asymptote is `KNEE + 1 / KNEE_SHAPE`, so `KNEE_SHAPE` is what sets the
-/// ceiling — at the old value of `5.0` that was `0.95 + 0.2 = 1.15`, i.e. the
-/// "limiter" *raised* the ceiling by +1.2 dBFS. `KNEE_SHAPE = 20.0` puts the
-/// asymptote at `0.95 + 0.05 = 1.0`.
-///
-/// The curve is C1 at the knee (the derivative of `e/(1+ke)` is 1 at `e = 0`,
-/// matching the unity region below it), so there is no slope discontinuity
-/// where the knee opens. Replaces the old `x.tanh()`, which coloured the
-/// signal at normal levels.
-///
-/// **Public** so the audio engine's final output stage applies the *same*
-/// ceiling after the monitor-bus sums, where two independently-limited buses are
-/// added together (see `audio::InputState::on_input`).
-#[inline]
-pub fn soft_limit(x: f32) -> f32 {
-    const KNEE: f32 = 0.95;
-    /// Sets the ceiling: asymptote = `KNEE + 1 / KNEE_SHAPE`.
-    const KNEE_SHAPE: f32 = 20.0;
-
-    let a = x.abs();
-    if a < KNEE {
-        x
-    } else {
-        let excess = a - KNEE;
-        x.signum() * (KNEE + excess / (1.0 + excess * KNEE_SHAPE))
     }
 }
 
@@ -4016,53 +4012,6 @@ mod tests {
         }
     }
 
-    /// The limiter is a *ceiling*, not a soft clipper that happens to stop near
-    /// unity. The old knee shape (`0.95 + e/(1 + 5e)`) asymptoted to
-    /// `0.95 + 1/5 = 1.15`, so it raised the ceiling by +1.2 dBFS — and the
-    /// old test passed because it asserted `< 1.2`. This pins the true
-    /// asymptote, the unity region, the sign symmetry, and monotonicity.
-    #[test]
-    fn soft_limit_holds_a_hard_ceiling_of_unity() {
-        // Well below the knee: bit-exact passthrough (no coloration, no gain).
-        for v in [0.0, 0.1, 0.5, 0.9, 0.949_999] {
-            assert_eq!(soft_limit(v), v, "limiter moved a sub-knee sample {v}");
-            assert_eq!(
-                soft_limit(-v),
-                -v,
-                "limiter moved a negative sub-knee sample"
-            );
-        }
-
-        // Above the knee: bounded by 1.0 for any input magnitude, including the
-        // absurd. This is the assertion the previous shape failed.
-        for v in [1.0, 1.5, 2.0, 4.0, 10.0, 100.0, 1.0e4, 1.0e9] {
-            let y = soft_limit(v);
-            assert!(y <= 1.0, "ceiling exceeded at {v}: {y}");
-            assert!(y.is_finite(), "limiter blew up at {v}: {y}");
-            // Odd symmetry: the limiter must not shift the zero crossing.
-            assert_eq!(y, -soft_limit(-v), "limiter is not odd-symmetric at {v}");
-        }
-
-        // Monotonic and always compressing above the knee: more input, less
-        // or equal gain, never a gain > 1 once the knee is engaged.
-        let mut prev = 0.0;
-        for i in 0..2000 {
-            let v = 0.95 + i as f32 * 0.05; // 0.95 .. 100.9
-            let y = soft_limit(v);
-            assert!(y >= prev, "limiter is not monotonic at {v}");
-            assert!(y / v <= 1.0, "limiter amplified at {v}");
-            prev = y;
-        }
-
-        // The knee should actually do something visible: a 2.0 input has to
-        // come back meaningfully below unity, not merely touch it.
-        assert!(
-            soft_limit(2.0) < 0.999,
-            "knee is too soft to be a limiter: 2.0 -> {}",
-            soft_limit(2.0)
-        );
-    }
-
     /// A different master width changes the rendered output (the cab decorrelates
     /// L/R, so the sides carry content the widener acts on).
     #[test]
@@ -4140,10 +4089,11 @@ mod tests {
         );
     }
 
-    /// The master knob is a genuine **output gain**: it sits after the limiter, so
-    /// it scales the already-limited program and raises level by exactly the knob's
-    /// dB. The limiter, not the knob, owns the ceiling — its output is bounded at
-    /// [`limiter::CEILING`] at every knob position, and the knob scales that.
+    /// The master knob is a genuine **output gain**: it sits before the limiter, so
+    /// it is the drive into the ceiling and raises level by exactly the knob's dB
+    /// while the limiter stays transparent. The limiter, not the knob, owns the
+    /// ceiling — its output is bounded at [`limiter::CEILING`] at every knob
+    /// position.
     ///
     /// (The device ceiling of 1.0 is the final output stage's job in the audio
     /// engine; here we pin the limiter's own bound, which is what protects the rig.)

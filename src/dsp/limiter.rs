@@ -126,17 +126,9 @@ impl Limiter {
     }
 
     /// A limiter for the final mix at an explicit `ceiling`, no makeup. The
-    /// engine uses this for the mix's headroom budget; the full-scale variant is
-    /// [`output_stage`](Self::output_stage).
+    /// engine uses this for the mix's headroom budget.
     pub fn output_stage_at(sr: f32, ceiling: f32) -> Self {
         Self::with_ceiling(sr, ceiling, 1.0)
-    }
-
-    /// A limiter for the final mix at full scale, no makeup. The live engine
-    /// uses [`output_stage_at`](Self::output_stage_at) with its own ceiling;
-    /// this variant remains for callers that sum already-limited buses.
-    pub fn output_stage(sr: f32) -> Self {
-        Self::with_ceiling(sr, 1.0, 1.0)
     }
 
     /// The master-bus ceiling (−1 dBFS) with **no makeup gain**. For a bus that

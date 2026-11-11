@@ -315,7 +315,7 @@ fn render_builtin(di: &[f32]) -> Vec<f32> {
 
 /// Mean-removed RMS distance between two LTAS curves (level-independent).
 /// Only used by [`match_knobs`], which is macOS-only (AU hosting).
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "au"))]
 fn ltas_dist(a: &[(f32, f32)], b: &[(f32, f32)]) -> f32 {
     let n = a.len() as f32;
     let off = a.iter().zip(b).map(|(x, y)| x.1 - y.1).sum::<f32>() / n;
@@ -332,7 +332,7 @@ fn ltas_dist(a: &[(f32, f32)], b: &[(f32, f32)]) -> f32 {
 /// (master excluded), so the result is a tone match, not a loudness match.
 /// Only called from the `--match-knobs` mode, which needs a reference AU
 /// (macOS-only).
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "au"))]
 fn match_knobs(di: &[f32], target: &[(f32, f32)]) -> Knobs {
     let mut k = DEFAULT_KNOBS;
     let grid: Vec<f32> = (0..=8).map(|i| i as f32 / 8.0).collect();
@@ -364,7 +364,7 @@ fn match_knobs(di: &[f32], target: &[(f32, f32)]) -> Knobs {
     k
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "au"))]
 fn render_au(di: &[f32], pat: &str) -> (String, Vec<f32>) {
     let found = headroom::host::au::scan()
         .into_iter()
@@ -565,7 +565,7 @@ fn main() {
 
     // ── Knob-matching mode: find the amp+mic settings that best match the
     // reference AU's tone on this DI (`--match-knobs --au name [--from-wet …]`).
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", feature = "au"))]
     if args.iter().any(|a| a == "--match-knobs") {
         let pat = au_pat.expect("--match-knobs needs --au <name>");
         let (name, theirs) = render_au(&di, &pat);
@@ -606,13 +606,13 @@ fn main() {
     let ours = render_builtin(&di);
     // Only consumed in the `--au` comparison below, which is macOS-only (AU
     // hosting); unused elsewhere.
-    #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+    #[cfg_attr(not(all(target_os = "macos", feature = "au")), allow(unused_variables))]
     let (spec_ours, ..) = report("Marshall + Marshall cab", &ours);
 
     let out_dir = std::env::temp_dir();
     save(&out_dir.join("di_ours.wav"), &ours);
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", feature = "au"))]
     if let Some(pat) = au_pat {
         let (name, theirs) = render_au(&di, &pat);
         let (spec_au, ..) = report(&format!("AU:{name}"), &theirs);

@@ -14,9 +14,9 @@
 //! ## Session storage contract
 //!
 //! **Save.** Snapshot a *coherent* rig/transport/track list, copy the required
-//! original assets into a staging directory, write and validate the versioned
-//! manifest, then commit — without destroying the previous valid session if any
-//! copy or write fails. Asset paths resolve relative to the project folder and
+//! original assets into the project folder, write and validate the versioned
+//! manifest, then commit the manifest last — so a failure while copying leaves
+//! the previous manifest intact. Asset paths resolve relative to the project folder and
 //! paths that escape it are rejected, so a supposedly portable session never
 //! depends on absolute local imports. Originals and recovery captures are left
 //! untouched until the save completes. Re-saving in place is safe:
@@ -294,6 +294,15 @@ pub fn read_manifest(dir: &Path) -> Result<Manifest> {
             manifest.version
         );
     }
+    if manifest.project_sample_rate == 0 {
+        bail!("session has a zero project sample rate");
+    }
+    let mut ids = std::collections::HashSet::with_capacity(manifest.tracks.len());
+    for track in &manifest.tracks {
+        if !ids.insert(track.id) {
+            bail!("session has duplicate track id {}", track.id);
+        }
+    }
     Ok(manifest)
 }
 
@@ -523,12 +532,18 @@ impl Manifest {
                 other => bail!("unknown track kind '{other}'"),
             };
             let asset = match &t.asset {
-                Some(rel) => Some(AssetRef {
-                    path: resolve_asset(dir, rel)?,
-                    // Filled in once the asset is decoded.
-                    source_sample_rate: 0,
-                    source_channels: 0,
-                }),
+                Some(rel) => {
+                    let path = resolve_asset(dir, rel)?;
+                    if !path.is_file() {
+                        bail!("missing session asset {}", path.display());
+                    }
+                    Some(AssetRef {
+                        path,
+                        // Filled in once the asset is decoded.
+                        source_sample_rate: 0,
+                        source_channels: 0,
+                    })
+                }
                 None => None,
             };
             tracks.push(Track {
@@ -948,6 +963,68 @@ mod tests {
         let au = external.au.expect("au spec");
         assert!(au.amp_only);
         assert_eq!(au.params, vec![(11, 0.25), (42, 0.75)]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The manifest contract says version, project rate, IDs and asset existence
+    /// are validated on load; a corrupt folder must fail loudly instead of
+    /// producing a session with a nonsense time base or missing audio.
+    #[test]
+    fn load_validation_rejects_bad_rate_duplicate_ids_and_missing_assets() {
+        let params = crate::dsp::Params::new();
+        let rig = || Preset::from_params("rig".into(), None, &params);
+        let track = |id, asset: Option<&str>| TrackSection {
+            id,
+            kind: "import".into(),
+            name: format!("track {id}"),
+            asset: asset.map(str::to_owned),
+            start_ticks: 0,
+            length_ticks: 0,
+            gain: 1.0,
+            muted: false,
+            input_trim_db: None,
+            calibration_ref: None,
+        };
+        let manifest = |rate, tracks| {
+            build_manifest(
+                "validation".into(),
+                rate,
+                TransportSection::default(),
+                MetronomeSection::default(),
+                rig(),
+                None,
+                false,
+                None,
+                None,
+                tracks,
+            )
+            .expect("build manifest")
+        };
+
+        // Zero rate.
+        let dir = tmp_dir("validate-rate");
+        let mut m = manifest(48_000, vec![]);
+        m.project_sample_rate = 0;
+        write_session(&dir, &m, &[], &[]).expect("write");
+        assert!(read_manifest(&dir).is_err(), "zero rate was accepted");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // Duplicate track IDs.
+        let dir = tmp_dir("validate-dup");
+        let m = manifest(48_000, vec![track(1, None), track(1, None)]);
+        write_session(&dir, &m, &[], &[]).expect("write");
+        assert!(read_manifest(&dir).is_err(), "duplicate id was accepted");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // Existing manifest, missing asset file.
+        let dir = tmp_dir("validate-missing");
+        let m = manifest(48_000, vec![track(7, Some("audio/missing.wav"))]);
+        write_session(&dir, &m, &[], &[]).expect("write");
+        let read = read_manifest(&dir).expect("manifest is structurally valid");
+        assert!(
+            read.into_session(&dir).is_err(),
+            "missing asset was accepted"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

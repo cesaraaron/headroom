@@ -416,6 +416,24 @@ fn check_baseline(path: &Path, reports: &[RenderReport], sr: f32) -> Result<()> 
             violations += 1;
             continue;
         };
+        // NaN compares false against every tolerance below, so a non-finite
+        // render would otherwise pass the whole gate silently.
+        let finite = [
+            got.lufs_i,
+            got.crest_db,
+            got.correlation,
+            got.centroid_hz,
+            got.sample_peak,
+            got.dc_ratio,
+        ]
+        .iter()
+        .all(|v| v.is_finite())
+            && got.ltas.iter().all(|band| band.db.is_finite());
+        if !finite {
+            println!("  {}: non-finite render metrics", want.preset);
+            violations += 1;
+            continue;
+        }
         if (got.lufs_i - want.lufs_i).abs() > 0.1 {
             println!(
                 "  {}: lufs_i {:.3} vs {:.3} (±0.1)",
@@ -447,9 +465,9 @@ fn check_baseline(path: &Path, reports: &[RenderReport], sr: f32) -> Result<()> 
             violations += 1;
         }
         // The output ceiling is a **guarantee, not a measurement**, so this is a
-        // hard bound rather than a drift tolerance: `soft_limit` asymptotes to
-        // exactly 1.0 and the audio engine's final output stage re-applies it
-        // after the take-bus sum, so nothing above that can reach the converter.
+        // hard bound rather than a drift tolerance: the engine's final mix
+        // limiter bounds the summed output, so nothing above 1.0 can reach the
+        // converter.
         //
         // This gate is the reason finding A1 survived so long: `sample_peak` was
         // *recorded* and never checked, so a limiter that raised its own ceiling
@@ -480,6 +498,17 @@ fn check_baseline(path: &Path, reports: &[RenderReport], sr: f32) -> Result<()> 
                 );
                 violations += 1;
             }
+        }
+    }
+    // A rendered preset that is absent from the baseline was never checked. Fail
+    // so adding a preset cannot silently escape the voicing gate.
+    for got in reports.iter().filter(|r| r.di == baseline.phrase) {
+        if !baseline.renders.iter().any(|w| w.preset == got.preset) {
+            println!(
+                "  UNTRACKED {} / {} (regenerate the baseline)",
+                got.preset, baseline.phrase
+            );
+            violations += 1;
         }
     }
     if violations > 0 {

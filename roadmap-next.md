@@ -40,12 +40,12 @@ and the working conventions.
 All **5 CRITICAL** and **14 HIGH** findings are fixed. Phase 3 is fixed for
 everything offline-verifiable: 1.5, 2.7–2.10, 3.6–3.9, 4.6–4.8, 5.6, 5.7.
 
-Still open, and why: **1.3** (output-rate fallback), **1.4** (ring
-prefill/watermark), **1.6** (loop-wrap/punch crossfades; undo is fixed), **1.7**
+Still open, and why: **1.6** (loop-wrap/punch crossfades; undo is fixed), **1.7**
 (tuner analysis/XRUN off the audio thread; the window is fixed), **5.4** (frozen
 smoothers while bypassed, 6 ms dry/wet comb; ramp init is fixed), **5.5** (AU
 switch mid-block mute/`comp_delay`). Each needs a live interface or a
-control-thread redesign. The fidelity baseline is re-blessed with each tone
+control-thread redesign. **1.3** is fixed by failing fast when the output cannot
+run at the input rate; **1.4** now prefills the ring and caps its queue depth. The fidelity baseline is re-blessed with each tone
 change; the blind A/B listening pack lives in `target/listening/` (gitignored).
 
 Key findings to not re-derive: sweeping-notch stages keep exact
@@ -53,7 +53,7 @@ per-sample coefficients (control-rate interpolation moves LTAS bins —
 see `uni_vibe.rs::last_rate` note); `sagged_rail` cancels supply exactly
 in the linear zone (clean power stages can't imprint ripple); 120 Hz
 sidebands need f0=200/WIN=24000 bins (never integer-cycle at 225/30720);
-fidelity `--check` is NaN-blind (needs an `is_finite` guard, Track-4).
+fidelity `--check` now rejects non-finite render metrics instead of silently passing them.
 
 ### Remaining
 
@@ -61,9 +61,9 @@ fidelity `--check` is NaN-blind (needs an `is_finite` guard, Track-4).
   re-amp + mic captures — do not start.
 - **If wanted:** theme #2+ (infrastructure in place — data entry +
   eyeball); Vox power-drive re-voice (×9 trim leaves the power stage
-  clean — no grind/ghosts; new project, re-blesses); `is_finite` harness
-  guard; the deferred minors listed in each batch's ledger (now in git
-  history — `git log` for `Ruling:`/`minor (deferred)` lines).
+  clean — no grind/ghosts; new project, re-blesses); the deferred minors
+  listed in each batch's ledger (now in git history — `git log` for
+  `Ruling:`/`minor (deferred)` lines).
 - **Owed by the human:** palette manual checklist (F3 toast, restart
   restore, modal tour, narrow terminal); amp listening pass (Randall hot,
   Vox cranked, mother_solo/stairway A/B from F1).
@@ -77,6 +77,11 @@ file new work as it earns it.
 captures — do not start.
 
 ### Known deferred minors (recorded; no user-facing defect)
+
+- `Cargo.toml` defines a strict `[workspace.lints.*]` policy but the package does
+  not opt in (`[lints] workspace = true`). Enabling it today produces ~258
+  errors (mostly `unwrap`/`expect`, plus `panic`) and ~1,123 warnings; that is a
+  dedicated cleanup, not a drive-by change.
 
 - `TimelineAxis::col_at` is `#[cfg(test)]`-only (`src/ui/hit.rs`).
 - The mouse overlay-guard test (`src/ui/mod.rs` tests) exercises a synthetic bool
@@ -234,7 +239,7 @@ as-built D5, resolving the old timeline limitation #10.
 
 ### 3.1 Preset browser: search, tags, favorites, A/B compare
 
-**Why.** 17 bundled presets already fill the modal; users will have many more.
+**Why.** 19 bundled presets already fill the modal; users will have many more.
 Finding and comparing tones should not be scrolling.
 
 **Scope.** Fuzzy search over name/description; tag and favorite fields
@@ -244,9 +249,9 @@ selected presets without leaving the modal.
 **Status — favorites + search + tags done.** `F` stars the selected preset (a `★`
 column), persisted by name in `~/.config/headroom/favorites.txt`.
 **Type-to-filter** matches name/description/**tags** (printable keys filter,
-`Backspace` deletes, `Esc` clears then closes; commands are the upper-case
-letters). The `tags = [...]` preset field is defaulted and shown in the list; the
-17 bundled presets are tagged (artist/role). **A/B compare** is in: `X` in the
+`Backspace` deletes, `Esc` clears then closes; outside search mode the single
+letter keys are commands). The `tags = [...]` preset field is defaulted and shown in the list; the
+19 bundled presets are tagged (artist/role). **A/B compare** is in: `X` in the
 browser flips between the two most recently applied presets, keeping the modal
 open. **Track 3.1 is complete.**
 

@@ -1,6 +1,6 @@
 //! Multitrack practice playback: mixes a bounded set of decoded stereo/mono
-//! tracks into two monitor buses along a shared timeline cursor, with a loop
-//! region.
+//! tracks into the import (monitor) and take (program) buses along a shared
+//! timeline cursor, with a loop region.
 //!
 //! Two kinds of row share the transport:
 //! - [`TrackKind::Import`] — imported backing/reference audio. Stereo, summed
@@ -71,7 +71,6 @@ impl PlayerTrack {
 #[derive(Debug)]
 pub struct TrackSlot {
     pub id: TrackId,
-    pub generation: Generation,
     pub kind: TrackKind,
     pub track: PlayerTrack,
     pub gain: f32,
@@ -144,7 +143,6 @@ impl PlayerVoice {
     pub fn install(
         &mut self,
         id: TrackId,
-        generation: Generation,
         kind: TrackKind,
         track: PlayerTrack,
         gain: f32,
@@ -152,7 +150,6 @@ impl PlayerVoice {
     ) -> Result<Option<PlayerTrack>, InstallError> {
         let slot = TrackSlot {
             id,
-            generation,
             kind,
             track,
             gain,
@@ -311,11 +308,11 @@ mod tests {
     }
 
     fn install_import(v: &mut PlayerVoice, id: TrackId, t: PlayerTrack) {
-        let _ = v.install(id, 0, TrackKind::Import, t, 1.0, false);
+        let _ = v.install(id, TrackKind::Import, t, 1.0, false);
     }
 
     fn install_take(v: &mut PlayerVoice, id: TrackId, t: PlayerTrack) {
-        let _ = v.install(id, 0, TrackKind::RawTake, t, 1.0, false);
+        let _ = v.install(id, TrackKind::RawTake, t, 1.0, false);
     }
 
     /// A mono take: both channels identical, so the take-bus sum is the signal.
@@ -454,10 +451,10 @@ mod tests {
     fn displaced_track_is_returned_for_off_thread_drop() {
         let mut v = PlayerVoice::new();
         assert!(
-            v.install(1, 0, TrackKind::Import, track(1, 0), 1.0, false)
+            v.install(1, TrackKind::Import, track(1, 0), 1.0, false)
                 .is_ok_and(|d| d.is_none())
         );
-        let old = v.install(1, 1, TrackKind::Import, track(1, 0), 1.0, false);
+        let old = v.install(1, TrackKind::Import, track(1, 0), 1.0, false);
         assert!(
             old.is_ok_and(|d| d.is_some()),
             "the displaced track must be handed back"
@@ -521,11 +518,11 @@ mod tests {
         let mut v = PlayerVoice::new();
         for id in 0..MAX_TRACKS as TrackId {
             assert!(
-                v.install(id, 0, TrackKind::Import, track(1, 0), 1.0, false)
+                v.install(id, TrackKind::Import, track(1, 0), 1.0, false)
                     .is_ok()
             );
         }
-        let err = v.install(999, 0, TrackKind::Import, track(1, 0), 1.0, false);
+        let err = v.install(999, TrackKind::Import, track(1, 0), 1.0, false);
         assert!(matches!(err, Err(InstallError::Full)));
     }
 }

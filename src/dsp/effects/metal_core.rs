@@ -47,9 +47,9 @@ pub struct MetalCore {
     // Fixed pre-clip mid-scoop — the ML-2's scooped metal voice.
     mid_scoop: Biquad,
     os: Oversampler8,
-    // Pre-clip HP at 8× rate — tightens the low end before the cascaded gain.
+    // Pre-clip HP at base rate — tightens the low end before the cascaded gain.
     pre_clip_hp: Biquad,
-    // Pre-clip LP at 8× rate — rounds the top off the wave *before* the clipper so
+    // Pre-clip LP at base rate — rounds the top off the wave *before* the clipper so
     // the cascade generates a shorter harmonic ladder: much of the fizzy top-octave
     // buzz and high-order intermod is never created in the first place, the
     // studio-console way to keep high gain smooth rather than brittle.

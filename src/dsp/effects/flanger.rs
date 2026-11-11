@@ -1,6 +1,6 @@
 use std::f32::consts::TAU;
 
-use super::SmoothedGain;
+use super::{SmoothedGain, param_changed};
 /// Stereo flanger: a short LFO-swept delay mixed back with the dry signal, the
 /// moving comb-filter notches producing the classic "jet plane" sweep. Feedback
 /// (regeneration) sharpens the notches into a resonant, metallic voice.
@@ -23,6 +23,9 @@ pub struct Flanger {
     /// Wet/dry, smoothed. `flanger_mix` is a MIDI CC target.
     mix: SmoothedGain,
     sr: f32,
+    /// Cached LFO rate (Hz): the exponential knob map runs only on change.
+    last_rate: f32,
+    rate_hz: f32,
 }
 
 /// Shortest delay in the sweep — a small floor keeps the interpolation reading
@@ -47,6 +50,8 @@ impl Flanger {
             // `DEFAULT_FL_MIX`.
             mix: SmoothedGain::new(0.50, sr),
             sr,
+            last_rate: -1.0,
+            rate_hz: 0.05,
         }
     }
 
@@ -83,9 +88,12 @@ impl Flanger {
         let mistress = kind >= 0.5;
 
         // LFO advances once per sample; exponential map spreads the slow, musical
-        // rates across most of the knob's travel.
-        let rate_hz = 0.05 * 100.0_f32.powf(rate.clamp(0.0, 1.0));
-        self.phase = (self.phase + rate_hz / self.sr).fract();
+        // rates across most of the knob's travel. Cached: a knob-rate `powf`.
+        if param_changed(rate, self.last_rate) {
+            self.rate_hz = 0.05 * 100.0_f32.powf(rate.clamp(0.0, 1.0));
+            self.last_rate = rate;
+        }
+        self.phase = (self.phase + self.rate_hz / self.sr).fract();
 
         let depth = depth.clamp(0.0, 1.0);
         let (min_ms, sweep_ms) = if mistress {

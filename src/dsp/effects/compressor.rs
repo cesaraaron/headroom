@@ -144,27 +144,7 @@ impl Compressor {
         let det_coeff = if a > self.env { self.atk } else { self.rel };
         self.env = det_coeff * self.env + (1.0 - det_coeff) * a;
 
-        // Gain computer. The Dyna path is the shipped hard-knee formula. The
-        // CS-2 widens the knee to ±3 dB and blends across it with a smoothstep,
-        // so the onset of compression is gradual instead of a corner.
-        let target = if self.env > self.thresh_lin {
-            if self.cs2 {
-                let r = self.env / self.thresh_lin;
-                if r <= KNEE_R_LO {
-                    1.0
-                } else if r >= KNEE_R_HI {
-                    (self.thresh_lin / self.env).powf(self.knee_k)
-                } else {
-                    let t = (r - KNEE_R_LO) / (KNEE_R_HI - KNEE_R_LO);
-                    let s = t * t * (3.0 - 2.0 * t);
-                    1.0 + (self.knee_at_hi - 1.0) * s
-                }
-            } else {
-                (self.thresh_lin / self.env).powf(self.knee_k)
-            }
-        } else {
-            1.0
-        };
+        let target = self.target_gain();
 
         // Smooth the applied gain: pull down fast (attack), recover slow (release).
         let g_coeff = if target < self.gain {
@@ -180,6 +160,32 @@ impl Compressor {
             self.cs2_tone.process(y)
         } else {
             y
+        }
+    }
+
+    /// Gain-computer target for the current envelope.
+    ///
+    /// The Dyna path is the shipped hard-knee formula. The CS-2 widens the knee
+    /// to ±3 dB around the threshold and blends across it with a smoothstep, so
+    /// the onset of compression is gradual instead of a corner — the knee's
+    /// *lower* half is below the threshold and must not be gated off.
+    #[inline]
+    fn target_gain(&self) -> f32 {
+        if self.cs2 {
+            let r = self.env / self.thresh_lin;
+            if r <= KNEE_R_LO {
+                1.0
+            } else if r >= KNEE_R_HI {
+                (self.thresh_lin / self.env).powf(self.knee_k)
+            } else {
+                let t = (r - KNEE_R_LO) / (KNEE_R_HI - KNEE_R_LO);
+                let s = t * t * (3.0 - 2.0 * t);
+                1.0 + (self.knee_at_hi - 1.0) * s
+            }
+        } else if self.env > self.thresh_lin {
+            (self.thresh_lin / self.env).powf(self.knee_k)
+        } else {
+            1.0
         }
     }
 }
@@ -410,6 +416,38 @@ mod tests {
             (t_below - 1.0).abs() < 1e-4 && (t_above - 1.0).abs() < 1e-4,
             "knee discontinuity: {t_below} vs {t_above}"
         );
+    }
+
+    /// The CS-2 knee is ±3 dB around the threshold, so its lower half sits below
+    /// the threshold. Gating the whole soft-knee branch on `env > thresh_lin`
+    /// made that half unreachable and put a step at the corner; the Dyna voice
+    /// stays a hard knee.
+    #[test]
+    fn cs2_knee_straddles_the_threshold_and_is_continuous() {
+        let mut c = Compressor::new(48_000.0);
+        c.set_sustain(0.6);
+        c.set_voice(1.0);
+        // Inside the knee, below the threshold: already compressing.
+        c.env = c.thresh_lin * 0.8;
+        let inside = c.target_gain();
+        assert!(
+            inside < 1.0 && inside > c.knee_at_hi,
+            "CS-2 knee is not active below the threshold: {inside}"
+        );
+        // Continuous across the threshold.
+        let eps = c.thresh_lin * 1e-4;
+        c.env = c.thresh_lin - eps;
+        let below = c.target_gain();
+        c.env = c.thresh_lin + eps;
+        let above = c.target_gain();
+        assert!(
+            (below - above).abs() < 2e-3,
+            "CS-2 knee steps at the threshold: {below} vs {above}"
+        );
+        // The Dyna voice keeps its hard knee (unity below the threshold).
+        c.set_voice(0.0);
+        c.env = c.thresh_lin * 0.8;
+        assert_eq!(c.target_gain(), 1.0);
     }
 
     /// Voice 0 is the Dyna Comp (today's circuit); voice 1 is the darker,

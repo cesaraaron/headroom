@@ -580,8 +580,11 @@ impl TubeClip {
         if x >= 0.0 {
             FRAC_2_PI * x.atan()
         } else {
-            // Negative half saturates faster; still asymptotically approaches -1.
-            FRAC_2_PI * (x * self.asymmetry).atan()
+            // Negative half saturates sooner and lands on a lower rail. The
+            // `1/asymmetry` output scale matches the positive half's slope at
+            // the origin: without it a quiet signal is rectified at every zero
+            // crossing, adding scale-invariant even harmonics.
+            (FRAC_2_PI / self.asymmetry) * (x * self.asymmetry).atan()
         }
     }
 
@@ -1159,7 +1162,12 @@ impl AmpBank {
         } else {
             next
         };
-        self.prev_knobs = *knobs;
+        // While a fade is running, `prev_knobs` is the *outgoing* model's control
+        // snapshot. Overwriting it here would drive that model with the incoming
+        // model's bank on every sample after the first.
+        if self.fading.is_none() {
+            self.prev_knobs = *knobs;
+        }
         out
     }
 }
@@ -2687,6 +2695,29 @@ mod tests {
         );
     }
 
+    /// Every tube curve must have the same small-signal slope on both sides of
+    /// zero. A slope kink half-wave-rectifies quiet signals at any amplitude.
+    #[test]
+    fn tube_clip_slopes_match_at_the_origin() {
+        let h = 1e-4f32;
+        for clip in [
+            TubeClip::PUSH_PULL,
+            TubeClip::AX7,
+            TubeClip::EL84,
+            TubeClip::V6,
+            TubeClip::V6_PREAMP,
+        ] {
+            let slope = |x: f32| (clip.shape(x + h) - clip.shape(x - h)) / (2.0 * h);
+            let positive = slope(1e-3);
+            let negative = slope(-1e-3);
+            assert!(
+                (positive - negative).abs() < 1e-3,
+                "slope kink at the origin (asymmetry {}): {positive} vs {negative}",
+                clip.asymmetry
+            );
+        }
+    }
+
     /// A model switch must start from the outgoing model's output, not cut
     /// straight to the incoming one; the first sample of the fade is all old.
     #[test]
@@ -2712,6 +2743,17 @@ mod tests {
         assert!(
             (y - r).abs() < 1e-5,
             "switch cut to the new model instead of fading: {y} vs {r}"
+        );
+        assert_eq!(
+            bank.prev_knobs, a,
+            "the outgoing model was driven with the incoming model's knobs"
+        );
+        // The second sample keeps fading from the old model with its own knobs.
+        let x = (2.0 * PI * 220.0 * 2_001.0 / sr).sin() * 0.4;
+        let _ = bank.process(AmpModel::Fender, x, &b, load);
+        assert_eq!(
+            bank.prev_knobs, a,
+            "the outgoing model's knob snapshot changed mid-fade"
         );
     }
 

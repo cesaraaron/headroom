@@ -29,6 +29,8 @@ pub struct CleanBoost {
     gain: SmoothedGain,
     last_treble: f32,
     last_bass: f32,
+    /// Last `gain` knob value; the exponential dB map runs only on change.
+    last_gain: f32,
 }
 
 impl CleanBoost {
@@ -41,6 +43,7 @@ impl CleanBoost {
             gain: SmoothedGain::new(1.0, sr),
             last_treble: -1.0,
             last_bass: -1.0,
+            last_gain: -1.0,
         };
         b.set_tone(0.5, 0.5);
         b
@@ -61,7 +64,10 @@ impl CleanBoost {
         if param_changed(treble, self.last_treble) || param_changed(bass, self.last_bass) {
             self.set_tone(treble, bass);
         }
-        self.gain.set(db_to_lin(gain.clamp(0.0, 1.0) * MAX_GAIN_DB));
+        if param_changed(gain, self.last_gain) {
+            self.gain.set(db_to_lin(gain.clamp(0.0, 1.0) * MAX_GAIN_DB));
+            self.last_gain = gain;
+        }
         self.treble.process(self.bass.process(x)) * self.gain.step()
     }
 }

@@ -46,7 +46,7 @@ use super::hit::hit_test;
 use super::hit::{HitMap, HitTarget, TimelineAxis};
 
 /// Default track-row height, in terminal lines. Tall enough to read the
-/// waveform envelope; `Tab` zooms a row beyond this.
+/// waveform envelope; `Z` zooms a row beyond this.
 const ROW_HEIGHT: usize = 3;
 
 /// Fixed left gutter width shared by the ruler and every track row, so the
@@ -97,7 +97,7 @@ enum Selection {
     Track(TrackId),
 }
 
-/// Track-list row heights, cycled with `Tab` on a focused row.
+/// Track-list row heights, cycled with `Z` on a focused row.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum RowZoom {
     /// Every visible row at the default height.
@@ -108,7 +108,7 @@ enum RowZoom {
     Split(TrackId, TrackId),
 }
 
-/// Waveform glyph family, cycled with `Shift+Tab`. Each cell is subdivided into
+/// Waveform glyph family, cycled with `V`. Each cell is subdivided into
 /// `cols × rows` block sub-cells.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum WaveGlyphs {
@@ -263,11 +263,11 @@ pub(super) struct PracticeUi {
     /// Canonical project state.
     pub(super) session: Session,
     selection: Selection,
-    /// Track-list row-height zoom (cycled with `Tab`).
+    /// Track-list row-height zoom (cycled with `Z`).
     row_zoom: RowZoom,
     /// Horizontal time-zoom window in seconds; `None` fits the whole timeline.
     view_secs: Option<f64>,
-    /// Waveform glyph family (cycled with `Shift+Tab`).
+    /// Waveform glyph family (cycled with `V`).
     wave_glyphs: WaveGlyphs,
     /// Waveform amplitude mapping (cycled with `Shift+A`).
     wave_gain: WaveGain,
@@ -335,7 +335,7 @@ impl PracticeUi {
 
     /// Adopt the running engine's rate and (re)attach the capture writer. Called
     /// once per engine start; keeps the session across device changes.
-    pub(super) fn attach(&mut self, engine: &mut AudioEngine) {
+    pub(super) fn attach(&mut self, engine: &mut AudioEngine, capture: &Arc<CaptureState>) {
         self.sample_rate = engine.sample_rate();
         // Adopt the project time base once; later device changes keep it.
         if !self.rate_adopted {
@@ -344,7 +344,7 @@ impl PracticeUi {
             self.rate_adopted = true;
         }
         if let Some(consumer) = engine.take_capture_consumer() {
-            self.capture_cmd = Some(spawn_capture_worker(consumer));
+            self.capture_cmd = Some(spawn_capture_worker(consumer, Arc::clone(capture)));
         }
         // Any decode that was in flight was resampled for the *old* rate; reissue
         // it at the new rate rather than installing a mismatched buffer.
@@ -615,7 +615,7 @@ impl PracticeUi {
             if !ack.installed
                 && let Some(err) = ack.error
             {
-                self.set_error(ack.id, err);
+                self.set_error(ack.id, err.to_string());
                 touched = true;
             }
         }
@@ -654,6 +654,9 @@ impl PracticeUi {
             return touched;
         };
         let frames = player_track.frames();
+        // The writer cannot see the audio thread's ring-full flag; read the
+        // shared latch (reset by `arm`).
+        let overflowed = capture.overflowed.load(Relaxed);
         // The audio thread records the exact project frame of the first captured
         // sample; fall back to the arm-time playhead only if that latch is unset.
         let start_frame = capture.start_frame.load(Relaxed) as usize;
@@ -710,13 +713,13 @@ impl PracticeUi {
             project_sample_rate: self.session.project_sample_rate(),
             source_sample_rate: self.sample_rate as u32,
             frames: frames as u64,
-            overflowed: result.overflowed,
+            overflowed,
         };
         let meta_note = match project::write_recovery_meta(&take_path, &meta) {
             Ok(()) => "",
             Err(_) => " (recovery metadata failed)",
         };
-        let note = if result.overflowed {
+        let note = if overflowed {
             " (incomplete: capture overflowed)"
         } else {
             ""
@@ -775,9 +778,9 @@ impl PracticeUi {
         };
     }
 
-    /// `Tab` on the timeline: cycle the focused row's zoom state.
-    /// `Normal → Expanded(focused)`; from `Expanded(A)`, `Tab` on `B` gives
-    /// `Split(A, B)`; `Tab` on an already zoomed row collapses to `Normal`.
+    /// `Z` on the timeline: cycle the focused row's zoom state.
+    /// `Normal → Expanded(focused)`; from `Expanded(A)`, `Z` on `B` gives
+    /// `Split(A, B)`; `Z` on an already zoomed row collapses to `Normal`.
     pub(super) fn tab_zoom(&mut self) {
         let Selection::Track(id) = self.selection else {
             return;
@@ -803,7 +806,11 @@ impl PracticeUi {
         }
     }
 
-    pub(super) fn seek_by(&self, practice: &Practice, direction: i32) {
+    pub(super) fn seek_by(&mut self, practice: &Practice, direction: i32) {
+        if self.recording_id.is_some() {
+            self.note("Stop recording to move the playhead".to_owned());
+            return;
+        }
         let step = f64::from(self.session.seek_seconds());
         let delta = (step * f64::from(self.sample_rate)) as i64;
         let cur = practice.position() as i64;
@@ -824,7 +831,11 @@ impl PracticeUi {
 
     /// Click-to-seek: latch the playhead to an absolute frame, the same path the
     /// `←`/`→` keys use, clamped into the visible span.
-    pub(super) fn seek_frame(&self, frame: usize, practice: &Practice) {
+    pub(super) fn seek_frame(&mut self, frame: usize, practice: &Practice) {
+        if self.recording_id.is_some() {
+            self.note("Stop recording to move the playhead".to_owned());
+            return;
+        }
         let span = self.span_frames(practice);
         practice.request_seek(frame.min(span.saturating_sub(1)));
     }
@@ -893,7 +904,7 @@ impl PracticeUi {
         }
     }
 
-    /// `Shift+Tab`: cycle the waveform glyph family.
+    /// `V`: cycle the waveform glyph family.
     pub(super) fn cycle_glyphs(&mut self) {
         self.wave_glyphs = self.wave_glyphs.next();
         self.note(format!("Waveform: {}", self.wave_glyphs.label()));
@@ -994,7 +1005,11 @@ impl PracticeUi {
 
     /// Jump to the loop in-point when a valid loop is enabled, otherwise to the
     /// root of the timeline (frame 0).
-    pub(super) fn go_to_start(&self, practice: &Practice) {
+    pub(super) fn go_to_start(&mut self, practice: &Practice) {
+        if self.recording_id.is_some() {
+            self.note("Stop recording to move the playhead".to_owned());
+            return;
+        }
         let a = practice.loop_start.load(Relaxed) as usize;
         let b = practice.loop_end.load(Relaxed) as usize;
         let looping = practice.loop_enabled.load(Relaxed) && b > a;
@@ -2492,7 +2507,7 @@ impl PracticeUi {
                 Span::styled("H", Style::default().fg(theme().amber)),
                 Span::styled(" move  ", Style::default().fg(theme().dim)),
                 Span::styled("z", Style::default().fg(theme().amber)),
-                Span::styled(" zoom  ", Style::default().fg(theme().dim)),
+                Span::styled(" row  ", Style::default().fg(theme().dim)),
                 Span::styled("[ ] L", Style::default().fg(theme().amber)),
                 Span::styled(" loop  ", Style::default().fg(theme().dim)),
                 Span::styled("Del", Style::default().fg(theme().amber)),
@@ -3593,7 +3608,7 @@ mod tests {
 
     #[test]
     fn go_to_start_uses_loop_in_point_when_enabled() {
-        let ui = PracticeUi::new();
+        let mut ui = PracticeUi::new();
         let practice = Practice::new();
         practice.loop_enabled.store(true, Relaxed);
         practice.loop_start.store(4_800, Relaxed);
@@ -3604,7 +3619,7 @@ mod tests {
 
     #[test]
     fn go_to_start_falls_back_to_zero() {
-        let ui = PracticeUi::new();
+        let mut ui = PracticeUi::new();
         let practice = Practice::new();
         // No loop region.
         ui.go_to_start(&practice);
@@ -3629,7 +3644,7 @@ mod tests {
 
     #[test]
     fn seek_moves_on_an_empty_timeline() {
-        let ui = PracticeUi::new();
+        let mut ui = PracticeUi::new();
         let practice = Practice::new();
         // No tracks: extent is zero, but stepping must still move the playhead
         // so the first import can be placed.
@@ -3658,15 +3673,15 @@ mod tests {
         ui.selection = Selection::Track(1);
         ui.tab_zoom();
         assert_eq!(ui.row_zoom, RowZoom::Expanded(1));
-        // Tab on a different row splits the pane 50/50.
+        // Z on a different row splits the pane 50/50.
         ui.selection = Selection::Track(2);
         ui.tab_zoom();
         assert_eq!(ui.row_zoom, RowZoom::Split(1, 2));
-        // Tab again collapses back to normal.
+        // Z again collapses back to normal.
         ui.tab_zoom();
         assert_eq!(ui.row_zoom, RowZoom::Normal);
 
-        // Tab on an already expanded row collapses it.
+        // Z on an already expanded row collapses it.
         ui.selection = Selection::Track(1);
         ui.tab_zoom();
         assert_eq!(ui.row_zoom, RowZoom::Expanded(1));
@@ -3699,11 +3714,31 @@ mod tests {
 
     #[test]
     fn seek_frame_moves_the_playhead() {
-        let ui = PracticeUi::new();
+        let mut ui = PracticeUi::new();
         let practice = Practice::new();
         // The same latch the ←/→ keys drive: an absolute seek, not a step.
         ui.seek_frame(9_600, &practice);
         assert_eq!(practice.snapshot().seek, Some(9_600));
+    }
+
+    /// A seek mid-take splices post-seek audio onto the take without moving the
+    /// recorded start, so the row would be misplaced. The transport must stay put
+    /// until the take is stopped.
+    #[test]
+    fn seeking_is_ignored_while_recording() {
+        let mut ui = PracticeUi::new();
+        let practice = Practice::new();
+        ui.recording_id = Some(1);
+        ui.seek_by(&practice, 1);
+        assert_eq!(practice.snapshot().seek, None, "step seek must be refused");
+        ui.seek_frame(9_600, &practice);
+        assert_eq!(practice.snapshot().seek, None, "click seek must be refused");
+        ui.go_to_start(&practice);
+        assert_eq!(
+            practice.snapshot().seek,
+            None,
+            "jump-to-start must be refused"
+        );
     }
 
     #[test]

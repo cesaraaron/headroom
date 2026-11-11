@@ -96,16 +96,27 @@ impl GraphicEq {
         level: f32,
     ) -> (f32, f32) {
         let bands = [b1, b2, b3, b4, b5, b6, b7];
+        // Retune only the bands that moved. The level is a separate gain, so a
+        // level-only move must not run 14 `set_peak_eq` calls (each with trig).
+        let bands_changed = bands
+            .iter()
+            .zip(&self.last_bands)
+            .any(|(&n, &o)| param_changed(n, o));
+        if bands_changed {
+            for i in 0..BANDS {
+                let db = band_db(bands[i]);
+                self.left[i].set_peak_eq(self.sr, FREQS[i], Q, db);
+                self.right[i].set_peak_eq(self.sr, FREQS[i], Q, db);
+            }
+            self.last_bands = bands;
+        }
         // `param_changed` for the level too: it was an exact `!=` while the
         // bands used the epsilon, so any float jitter in `level` was enough to
         // retrigger the whole bank.
-        if param_changed(level, self.last_level)
-            || bands
-                .iter()
-                .zip(&self.last_bands)
-                .any(|(&n, &o)| param_changed(n, o))
-        {
-            self.rebuild(&bands, level);
+        if param_changed(level, self.last_level) {
+            // Output level: 0.5 = unity, ends are ±15 dB of make-up/trim.
+            self.level_lin.set(db_to_lin((level - 0.5) * 30.0));
+            self.last_level = level;
         }
 
         let mut lo = l;

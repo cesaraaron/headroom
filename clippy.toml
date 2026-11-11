@@ -39,13 +39,6 @@ too-many-arguments-threshold = 7
 max-fn-params-bools = 3
 
 # ------------------------------------------------------------------------------
-# ASYNC/AWAIT
-# ------------------------------------------------------------------------------
-# Ensure proper async patterns in tokio-based code
-# (Most async lints are enabled by default in pedantic/restriction groups)
-future-size-threshold = 16384
-
-# ------------------------------------------------------------------------------
 # SAFETY
 # ------------------------------------------------------------------------------
 # Maximum strictness on unsafe code (should never be used per guidelines)

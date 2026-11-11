@@ -1,9 +1,9 @@
-//! Monitor-only phrase looper.
+//! Phrase looper.
 //!
 //! The looper records the post-trim dry guitar into a preallocated buffer and
-//! plays it back into the monitor path only — the loop bus is mixed in *after*
-//! the recording tap in `audio::mod`, exactly like the metronome and the practice
-//! player, so a loop never lands in a rendered WAV.
+//! plays it back on the **take bus** — the loop bus is mixed in *after* the
+//! recording tap in `audio::mod` and re-amped by the take rig, so a loop never
+//! lands in a rendered dry WAV.
 //!
 //! The audio thread owns a [`Looper`] (its buffers are allocated once, before the
 //! streams start, and never resized in `process`). The UI owns the shared
@@ -157,6 +157,11 @@ pub struct Looper {
     have_prev: bool,
     /// Whether the current playback pass has already snapshotted into `prev`.
     snapshotted: bool,
+    /// Where the current lazy snapshot began and how many frames it has saved.
+    /// The snapshot is filled one frame at a time as the playhead overwrites the
+    /// buffer, so an overdub never copies the whole loop inside one callback.
+    snapshot_start: usize,
+    snapshot_count: usize,
 }
 
 impl Looper {
@@ -175,6 +180,8 @@ impl Looper {
             overdub: false,
             have_prev: false,
             snapshotted: false,
+            snapshot_start: 0,
+            snapshot_count: 0,
         }
     }
 
@@ -199,6 +206,8 @@ impl Looper {
             // flag is otherwise only cleared on transport changes, so a second
             // pass reused the first pass's snapshot and Undo wiped both layers.
             self.snapshotted = false;
+            self.snapshot_start = self.cursor;
+            self.snapshot_count = 0;
         }
         self.overdub = now_overdub;
         self.publish(ctl);
@@ -234,10 +243,19 @@ impl Looper {
                 }
                 let mut out = self.buf[self.cursor];
                 if self.overdub {
+                    // Lazy snapshot: save this frame just before overwriting it.
+                    // One copy per sample instead of a whole-loop memcpy in the
+                    // callback; a partial undo restores exactly what was written.
                     if !self.snapshotted {
-                        self.prev[..self.len].copy_from_slice(&self.buf[..self.len]);
+                        if self.snapshot_count == 0 {
+                            self.snapshot_start = self.cursor;
+                        }
+                        self.prev[self.cursor] = out;
                         self.have_prev = true;
-                        self.snapshotted = true;
+                        self.snapshot_count += 1;
+                        if self.snapshot_count >= self.len {
+                            self.snapshotted = true;
+                        }
                     }
                     out = (out + input).clamp(-1.0, 1.0);
                     self.buf[self.cursor] = out;
@@ -282,12 +300,17 @@ impl Looper {
         }
     }
 
-    /// Arm a new take, discarding the previous length.
+    /// Arm a new take, discarding the previous length and any undo layer. A new
+    /// take is a new base, so `.` must not overwrite it with audio captured
+    /// before the take began.
     fn start_recording(&mut self) {
         self.state = LoopState::Recording;
         self.len = 0;
         self.cursor = 0;
         self.snapshotted = false;
+        self.have_prev = false;
+        self.snapshot_start = 0;
+        self.snapshot_count = 0;
     }
 
     /// Stop recording: an empty take returns to idle, otherwise the loop plays
@@ -311,16 +334,28 @@ impl Looper {
         self.state = LoopState::Idle;
         self.have_prev = false;
         self.snapshotted = false;
+        self.snapshot_start = 0;
+        self.snapshot_count = 0;
     }
 
-    /// Restore the layer captured when the first overdub began.
+    /// Restore the layer captured when the first overdub began. A complete
+    /// snapshot restores the whole loop; a partial one (undo pressed mid-pass)
+    /// restores only the frames the playhead has already overwritten.
     fn undo(&mut self) {
         if !self.have_prev {
             return;
         }
-        self.buf[..self.len].copy_from_slice(&self.prev[..self.len]);
+        if self.snapshotted {
+            self.buf[..self.len].copy_from_slice(&self.prev[..self.len]);
+        } else {
+            for k in 0..self.snapshot_count {
+                let i = (self.snapshot_start + k) % self.len.max(1);
+                self.buf[i] = self.prev[i];
+            }
+        }
         self.have_prev = false;
         self.snapshotted = false;
+        self.snapshot_count = 0;
     }
 }
 
@@ -431,6 +466,64 @@ mod tests {
         // A second undo with nothing captured is a no-op.
         l.undo();
         assert!(l.buf[..4].iter().all(|&x| (x - 0.5).abs() < 1e-6));
+    }
+
+    /// The overdub snapshot is filled one frame per process call; a mid-pass
+    /// undo restores exactly the frames the playhead has overwritten so far.
+    #[test]
+    fn overdub_snapshot_is_incremental() {
+        let (_ctl, mut l) = looper();
+        l.start_recording();
+        for _ in 0..4 {
+            l.process(0.5);
+        }
+        l.finish_recording();
+
+        l.overdub = true;
+        assert_eq!(l.process(0.25), 0.75);
+        assert_eq!(l.snapshot_count, 1, "snapshot must advance one frame");
+        assert!(l.have_prev);
+        l.undo();
+        assert!(
+            l.buf[..4].iter().all(|&x| (x - 0.5).abs() < 1e-6),
+            "partial undo did not restore the overwritten frame: {:?}",
+            &l.buf[..4]
+        );
+    }
+
+    /// A fresh take after an overdub is a new base, not an overdub of the old
+    /// loop: Undo must not replace it with the pre-overdub snapshot.
+    #[test]
+    fn a_new_take_discards_the_previous_undo_layer() {
+        let (_ctl, mut l) = looper();
+        l.start_recording();
+        for _ in 0..4 {
+            l.process(0.5);
+        }
+        l.finish_recording();
+
+        l.overdub = true;
+        for _ in 0..4 {
+            l.process(0.25);
+        }
+        assert!(
+            l.have_prev,
+            "the overdub should have captured an undo layer"
+        );
+
+        // Start a new take from scratch; it must not be undoable back to 0.5.
+        l.start_recording();
+        for _ in 0..4 {
+            l.process(0.1);
+        }
+        l.finish_recording();
+
+        l.undo();
+        assert!(
+            l.buf[..4].iter().all(|&x| (x - 0.1).abs() < 1e-6),
+            "undo overwrote the new take with the old layer: {:?}",
+            &l.buf[..4]
+        );
     }
 
     /// Toggling overdub off to listen and back on for a second pass must take a

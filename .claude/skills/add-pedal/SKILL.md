@@ -12,7 +12,7 @@ A pedal is a self-contained DSP effect wired into the fixed signal chain, the TU
 ## Before you start
 
 - Decide **where in the chain** the pedal sits. The shipped order is:
-  `Gate → Whammy → Wah → Comp → Fuzz → TS-808 → DS-1 → Metal → Pre-EQ → Uni-Vibe → Amp → Cab → Graphic EQ → Parametric EQ → Flanger → Chorus → Phaser → Tremolo → Delay → Reverb`.
+  `Gate → Whammy → Wah → Comp → Fuzz → TS-808 → DS-1 → Metal → RAT → Tube Driver → Pre-EQ → Uni-Vibe → Boost → Amp → Cab → Rotary → Graphic EQ → Parametric EQ → Flanger → Chorus → Phaser → Tremolo → Delay → Reverb`.
   Its position defines its character (pre-amp shapes what the gain stage clips; post-cab colours the final mix). Insert it at the right point in every ordered list below.
 - Pick a **livery colour** and a short `<id>` (used for the `PEDAL_<NAME>` colour and the UI tile).
 - Reuse the shared building blocks in `src/dsp/effects/mod.rs` (`OnePoleLp`, `ThreeBandEq`, `db_to_lin`/`lin_to_db`, `param_changed`) and `Oversampler::process(x, f)` in `oversample.rs` rather than re-implementing tone LPs, EQ trios, dirty-checks, or oversample loops. Study an existing effect (`src/dsp/effects/tube_screamer.rs` or `distortion.rs`) as a template.

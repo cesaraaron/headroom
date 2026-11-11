@@ -244,7 +244,6 @@ fn render_with_chain(
     mut chain: DspChain,
 ) -> Result<PathBuf> {
     let sr = job.sample_rate as f32;
-    let rate = f64::from(job.project_sample_rate);
 
     let mut decoded: Vec<DecodedClip> = Vec::with_capacity(job.clips.len());
     for clip in &job.clips {
@@ -255,11 +254,7 @@ fn render_with_chain(
         let n = l.len().min(r.len());
         // Raw takes are mono (duplicated to stereo on install); sum back to mono.
         let mono: Vec<f32> = (0..n).map(|i| 0.5 * (l[i] + r[i])).collect();
-        let start = if rate > 0.0 {
-            (clip.start_ticks as f64 * f64::from(sr) / rate).round() as usize
-        } else {
-            clip.start_ticks as usize
-        };
+        let start = crate::session::ticks_to_frames(clip.start_ticks, job.project_sample_rate, sr);
         decoded.push(DecodedClip {
             start,
             mono,
@@ -283,8 +278,8 @@ fn render_with_chain(
             if end_ticks <= start_ticks {
                 bail!("the export range is empty");
             }
-            let start = (start_ticks as f64 * f64::from(sr) / rate).round() as usize;
-            let end = (end_ticks as f64 * f64::from(sr) / rate).round() as usize;
+            let start = crate::session::ticks_to_frames(start_ticks, job.project_sample_rate, sr);
+            let end = crate::session::ticks_to_frames(end_ticks, job.project_sample_rate, sr);
             if end <= start {
                 bail!("the export range is too short to render");
             }
@@ -369,8 +364,8 @@ fn render_with_chain(
 
         // Write only the frames inside the window. Clamp to ±1: the file is 32-bit
         // float, so out-of-range samples are legal but hard-clip on any 16-bit
-        // bounce. The chain limiter normally keeps the render under 1.0, but the
-        // master output knob can lift it past full scale.
+        // bounce. The chain limiter normally keeps the render under 1.0; the clamp
+        // is the final guarantee for a malformed/NaN-producing state.
         let lo = written.max(win_start);
         let hi = (written + n).min(win_end);
         for i in lo..hi {
