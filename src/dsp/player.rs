@@ -30,10 +30,6 @@
 /// `u64` so this module has no dependency on the session model.
 pub type TrackId = u64;
 
-/// A generation counter paired with a track id so a delayed worker install can
-/// be rejected if the row has since been replaced.
-pub type Generation = u64;
-
 /// How many concurrent tracks the audio thread can hold.
 pub const MAX_TRACKS: usize = 16;
 

@@ -156,6 +156,9 @@ pub struct Looper {
     state: LoopState,
     /// Whether input is layered while playing (mirrors the control).
     overdub: bool,
+    /// Smoothed punch-in/out gain for the overdub input (0 = not layering).
+    overdub_gain: f32,
+    overdub_step: f32,
     /// Whether `prev` currently holds a recoverable layer.
     have_prev: bool,
     /// Whether the current playback pass has already snapshotted into `prev`.
@@ -181,6 +184,8 @@ impl Looper {
             cursor: 0,
             state: LoopState::Idle,
             overdub: false,
+            overdub_gain: 0.0,
+            overdub_step: 1.0 / (0.005 * sample_rate).max(1.0),
             have_prev: false,
             snapshotted: false,
             snapshot_start: 0,
@@ -245,22 +250,30 @@ impl Looper {
                     return 0.0;
                 }
                 let mut out = self.buf[self.cursor];
-                if self.overdub {
+                // Punch-in/out: ramp the input contribution instead of adding it
+                // in one sample, which is a step in the buffer.
+                let target = if self.overdub { 1.0 } else { 0.0 };
+                if self.overdub_gain < target {
+                    self.overdub_gain = (self.overdub_gain + self.overdub_step).min(target);
+                } else if self.overdub_gain > target {
+                    self.overdub_gain = (self.overdub_gain - self.overdub_step).max(target);
+                }
+                if self.overdub && !self.snapshotted {
                     // Lazy snapshot: save this frame just before overwriting it.
                     // One copy per sample instead of a whole-loop memcpy in the
                     // callback; a partial undo restores exactly what was written.
-                    if !self.snapshotted {
-                        if self.snapshot_count == 0 {
-                            self.snapshot_start = self.cursor;
-                        }
-                        self.prev[self.cursor] = out;
-                        self.have_prev = true;
-                        self.snapshot_count += 1;
-                        if self.snapshot_count >= self.len {
-                            self.snapshotted = true;
-                        }
+                    if self.snapshot_count == 0 {
+                        self.snapshot_start = self.cursor;
                     }
-                    out = (out + input).clamp(-1.0, 1.0);
+                    self.prev[self.cursor] = out;
+                    self.have_prev = true;
+                    self.snapshot_count += 1;
+                    if self.snapshot_count >= self.len {
+                        self.snapshotted = true;
+                    }
+                }
+                if self.overdub_gain > 0.0 {
+                    out = (out + input * self.overdub_gain).clamp(-1.0, 1.0);
                     self.buf[self.cursor] = out;
                 }
                 // Short fade-out/fade-in at the wrap. Applied to the *output*
@@ -325,6 +338,7 @@ impl Looper {
         self.state = LoopState::Recording;
         self.len = 0;
         self.cursor = 0;
+        self.overdub_gain = 0.0;
         self.snapshotted = false;
         self.have_prev = false;
         self.snapshot_start = 0;
@@ -340,6 +354,7 @@ impl Looper {
             self.len = self.cursor;
             self.state = LoopState::Playing;
             self.cursor = 0;
+            self.overdub_gain = 0.0;
             self.snapshotted = false;
         }
     }
@@ -350,6 +365,7 @@ impl Looper {
         self.len = 0;
         self.cursor = 0;
         self.state = LoopState::Idle;
+        self.overdub_gain = 0.0;
         self.have_prev = false;
         self.snapshotted = false;
         self.snapshot_start = 0;

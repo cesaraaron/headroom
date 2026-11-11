@@ -2574,6 +2574,9 @@ impl DspChain {
         let amp_loaded = self.ext_amp.is_some();
         // One bounded, coherent routing snapshot for the entire block.
         let mut route = self.route_for_block(true);
+        // A fade-out is stretched to the whole block, so it reaches zero at the
+        // block boundary instead of muting the remainder and leaving dead air.
+        let mut block_declick_step = self.declick_step;
         if amp_loaded {
             // Built-in↔AU declick. Rather than switch the path instantly (a step
             // discontinuity = click), fade the output through zero on the current
@@ -2584,13 +2587,20 @@ impl DspChain {
             let amp_only = self.params.amp_external_amp_only.load(Relaxed);
             let want = route.use_ext_amp;
             // Completing a switch whose fade-out finished on the previous block.
-            if self.declick_gain <= 0.0 && self.applied_ext_amp != want {
+            if self.declick_gain <= 1e-6 && self.applied_ext_amp != want {
                 self.applied_ext_amp = want;
+                self.declick_gain = 0.0;
                 self.declick_target = 1.0;
             }
-            // A fresh request starts (or keeps) a fade-out.
-            if self.applied_ext_amp != want && self.declick_target > 0.0 {
+            // A fresh request starts (or keeps) a fade-out. Spread the fade over
+            // this whole block so it cannot hit zero half-way through and mute
+            // the rest of the callback. If the request reverses mid-fade, fade
+            // back up instead of continuing to silence.
+            if self.applied_ext_amp != want {
                 self.declick_target = 0.0;
+                block_declick_step = self.declick_gain / n.max(1) as f32;
+            } else if self.declick_target <= 0.0 {
+                self.declick_target = 1.0;
             }
             // Sound the currently applied path until the fade-out completes.
             route.use_ext_amp = self.applied_ext_amp;
@@ -2676,12 +2686,14 @@ impl DspChain {
             );
             if amp_loaded {
                 // Advance the built-in↔AU declick ramp (identity when steady).
+                // `block_declick_step` stretches only the fade-out; the fade-in
+                // uses the normal 6 ms step.
                 if self.declick_gain < self.declick_target {
                     self.declick_gain =
                         (self.declick_gain + self.declick_step).min(self.declick_target);
                 } else if self.declick_gain > self.declick_target {
                     self.declick_gain =
-                        (self.declick_gain - self.declick_step).max(self.declick_target);
+                        (self.declick_gain - block_declick_step).max(self.declick_target);
                 }
                 *l = wl * self.declick_gain;
                 *r = wr * self.declick_gain;

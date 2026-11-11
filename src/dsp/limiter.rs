@@ -131,12 +131,6 @@ impl Limiter {
         Self::with_ceiling(sr, ceiling, 1.0)
     }
 
-    /// The master-bus ceiling (−1 dBFS) with **no makeup gain**. For a bus that
-    /// is already gain-staged and only needs the ceiling applied.
-    pub fn safety(sr: f32) -> Self {
-        Self::with_ceiling(sr, CEILING, 1.0)
-    }
-
     fn with_ceiling(sr: f32, ceiling: f32, makeup: f32) -> Self {
         let look = ((sr * LOOKAHEAD_MS / 1000.0).round() as usize).max(1);
         let sr = sr.max(1.0);
@@ -325,7 +319,7 @@ mod tests {
     /// master-bus limiter it applies no makeup, so a quiet mix is not lifted.
     #[test]
     fn safety_limiter_passes_at_unity() {
-        let mut lim = Limiter::safety(48_000.0);
+        let mut lim = Limiter::output_stage_at(48_000.0, CEILING);
         let n = lim.latency() + 64;
         for _ in 0..n {
             lim.process(0.1, -0.1);

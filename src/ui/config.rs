@@ -758,12 +758,6 @@ impl Panels {
     }
 }
 
-impl Default for Panels {
-    fn default() -> Self {
-        Self::all_visible()
-    }
-}
-
 /// Index into `PEDALS` owning the given knob, or `None` for amp/mic knobs.
 pub(super) fn pedal_of(knob: usize) -> Option<usize> {
     PEDALS.iter().position(|p| (p.start..p.end).contains(&knob))
