@@ -64,6 +64,11 @@ pub struct Preset {
     /// `"delay"`…). Absent in older presets → the shipped default order. Legacy
     /// `"ampcab"` entries migrate to `"amp"`, `"cab"`.
     pub chain: Option<ChainSection>,
+    /// Pedals physically on the board, as stage names. Absent in older presets →
+    /// membership follows the enabled flags. Keeping this separate from
+    /// `enabled` lets a preset/session store a bypassed pedal on the board.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub board: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -691,6 +696,18 @@ impl Preset {
                     .map(|s| s.name().to_owned())
                     .collect(),
             }),
+            board: Some(
+                ChainStage::default_order()
+                    .iter()
+                    .filter_map(|&id| ChainStage::from_u8(id))
+                    .filter(|stage| {
+                        stage
+                            .pedal_index()
+                            .is_some_and(|pedal| params.pedal_on_board(pedal))
+                    })
+                    .map(|stage| stage.name().to_owned())
+                    .collect(),
+            ),
         }
     }
 
@@ -1056,6 +1073,22 @@ impl Preset {
         } else {
             // Older presets predate chain order: fall back to the shipped order.
             params.set_chain_order(&ChainStage::default_order());
+        }
+
+        // Membership is independent of bypass. Old presets without `board` keep
+        // the historical behavior (enabled pedals are on the board).
+        if let Some(board) = &self.board {
+            let mut mask = 0u32;
+            for name in board {
+                if let Some(stage) = ChainStage::from_name(name)
+                    && let Some(pedal) = stage.pedal_index()
+                {
+                    mask |= 1 << pedal;
+                }
+            }
+            params.set_board_mask(mask);
+        } else {
+            params.refresh_board_from_enabled();
         }
     }
 }
@@ -1813,6 +1846,47 @@ mod tests {
             expand_tilde(Path::new("/abs/x.toml")),
             PathBuf::from("/abs/x.toml")
         );
+    }
+
+    /// Board membership is separate from bypass: a preset saved with the comp
+    /// bypassed but on the board must restore both, including through TOML.
+    #[test]
+    fn board_membership_is_independent_of_bypass() {
+        let params = Params::new();
+        params.set_pedal_on_board(3, true);
+        params.cmp_enabled.store(false, Relaxed);
+        let preset = Preset::from_params("Board".to_string(), None, &params);
+        assert!(
+            preset
+                .board
+                .as_ref()
+                .is_some_and(|b| b.iter().any(|n| n == "comp")),
+            "the board list must include the bypassed comp"
+        );
+
+        let fresh = Params::new();
+        preset.apply(&fresh);
+        assert!(fresh.pedal_on_board(3), "comp must stay on the board");
+        assert!(!fresh.cmp_enabled.load(Relaxed), "comp must stay bypassed");
+
+        let text = toml::to_string_pretty(&preset).unwrap();
+        let back: Preset = toml::from_str(&text).unwrap();
+        let round = Params::new();
+        back.apply(&round);
+        assert!(round.pedal_on_board(3));
+        assert!(!round.cmp_enabled.load(Relaxed));
+
+        // Old presets have no `board`: membership follows the enabled flag.
+        let mut legacy = Preset::from_params("Legacy".to_string(), None, &params);
+        legacy.board = None;
+        legacy.compressor.as_mut().unwrap().enabled = Some(true);
+        let old_on = Params::new();
+        legacy.apply(&old_on);
+        assert!(old_on.pedal_on_board(3));
+        legacy.compressor.as_mut().unwrap().enabled = Some(false);
+        let old_off = Params::new();
+        legacy.apply(&old_off);
+        assert!(!old_off.pedal_on_board(3));
     }
 
     /// A preset carrying a custom chain order applies it; the order round-trips

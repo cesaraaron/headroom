@@ -41,7 +41,7 @@ cargo run --release -- --opaque
 | `P` | Preset browser |
 | `←` / `→` | Select a knob, stage, or panel cell |
 | `↑` / `↓` or `+` / `-` | Adjust the selected value |
-| `Space` | Bypass the focused pedal (play/pause on the timeline) |
+| `Space` | Bypass the focused pedal, keeping its tile (play/pause on the timeline) |
 | `[` / `]` | Move the selected stage earlier or later |
 | `1`–`4` | Focus the chain, amp, timeline, or pedals |
 | `Shift+1`–`4` | Solo a panel: close the others, keep just that one |

@@ -28,7 +28,7 @@ Signal-path code must be **allocation-free, lock-free, and panic-free** at runti
 5. **`src/ui/config.rs`** — add the `<FX>_START` / `<FX>_END` knob-range constants and the `KNOBS` entries (in top-to-bottom on-screen order — `←`/`→` walks the array linearly), then a `PEDALS` entry (name, livery colour accessor, knob range, `enabled`-flag accessor). The tile grid, detail editor, `+ ADD` picker, and `D`-to-remove all derive from this table.
 6. **`src/ui/styles.rs`** — add the `PEDAL_<NAME>` colour used by the `PEDALS` entry.
 7. **`src/ui/input.rs`** — add the pedal's `enabled` flag to the `toggle_pedal` match so `Space` can bypass it on the board.
-8. **`src/preset.rs`** — add the preset section/fields (including the on/off state, so a preset can place the pedal on the board — `sync_board` reads the enabled flags after load). Mirror an existing optional section like `FuzzSection`.
+8. **`src/preset.rs`** — add the preset section/fields (including the on/off state). Mirror an existing optional section like `FuzzSection`. Board membership is separate: the top-level `board` list carries it, and old presets without it fall back to the enabled flags.
 9. **Tests** — a `#[cfg(test)]` module in the effect file: finite/bounded output, and that each knob moves the band/level it should.
 10. **UI tests** — your `config.rs` edit deliberately trips the UI table tests; update them in the same commit:
     - `src/ui/config.rs` → `table_sizes_are_stable`: bump the `PEDALS.len()` and `KNOBS.len()` expected counts. This tripwire exists so a table change is always a conscious edit — the contiguity/`pedal_of` invariant tests will confirm your new knob range tiles correctly.

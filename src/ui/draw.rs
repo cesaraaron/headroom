@@ -1655,7 +1655,10 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         ),
         head("Play & edit"),
         row("  ↑/↓  +/−", "  knob / adjust value"),
-        row("  D", "  remove pedal from the board"),
+        row(
+            "  D",
+            "  remove pedal from the board (Space only bypasses it)",
+        ),
         row(
             "  A",
             "  amp model browser (on the pedalboard: add a pedal)",

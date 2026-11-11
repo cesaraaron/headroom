@@ -15,7 +15,7 @@ expression: text
 │▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚║  click  focus a panel / knob / tile / row · waveform seeks · Shift+drag selects           ║▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚│
 ╰─────────────────────────────────────║Play & edit                                                                                ║──────────────────────────────────────╯
 ╭ GUITAR RIG ─────────────────────────║  ↑/↓  +/−  knob / adjust value                                                            ║──────────────────────────────────────╮
-│╭ + ADD ─────────────────────────────║  D  remove pedal from the board                                                           ║─────────────────────────────────────╮│
+│╭ + ADD ─────────────────────────────║  D  remove pedal from the board (Space only bypasses it)                                  ║─────────────────────────────────────╮│
 ││                                    ║  A  amp model browser (on the pedalboard: add a pedal)                                    ║                                     ││
 │╰────────────────────────────────────║  C  cabinet model browser                                                                 ║─────────────────────────────────────╯│
 │╭────────────────────────────────────║  I / X  IR browser / IR bypass                                                            ║─────────────────────────────────────╮│

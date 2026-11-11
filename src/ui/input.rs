@@ -545,14 +545,14 @@ pub(super) fn move_selected_stage(
 
 /// Bypass/un-bypass the cursor's pedal on the ribbon. The amp and cab stages and
 /// off-board stages are a no-op. Returns true when a flag flipped.
-pub(super) fn toggle_stage(params: &Params, board: &mut [bool], cursor: ChainStage) -> bool {
+pub(super) fn toggle_stage(params: &Params, board: &[bool], cursor: ChainStage) -> bool {
     let Some(pi) = cursor.pedal_index() else {
         return false;
     };
     if !board.get(pi).copied().unwrap_or(false) {
         return false;
     }
-    toggle_pedal(params, board, PEDALS[pi].start);
+    toggle_pedal(params, PEDALS[pi].start);
     true
 }
 
@@ -624,30 +624,25 @@ pub(super) fn init_cab_cursor(params: &Params) -> usize {
     }
 }
 
-pub(super) fn toggle_pedal(params: &Params, board: &mut [bool], knob_idx: usize) {
+pub(super) fn toggle_pedal(params: &Params, knob_idx: usize) {
     // Amp and mic sections have no on/off toggle, so `pedal_of` returns `None`.
     if let Some(p) = pedal_of(knob_idx) {
         let flag = (PEDALS[p].enabled)(params);
-        let on = !flag.load(Relaxed);
-        flag.store(on, Relaxed);
-        // Board membership is the same flag (an off-board pedal is bypassed in
-        // the DSP), so keep the cache in step immediately instead of waiting
-        // for the next preset/session resync.
-        if let Some(slot) = board.get_mut(p) {
-            *slot = on;
-        }
+        flag.store(!flag.load(Relaxed), Relaxed);
     }
 }
 
 /// Put a pedal on the board and engage it (LED on).
 pub(super) fn add_pedal(params: &Params, board: &mut [bool], pedal: usize) {
     board[pedal] = true;
+    params.set_pedal_on_board(pedal, true);
     (PEDALS[pedal].enabled)(params).store(true, Relaxed);
 }
 
 /// Take a pedal off the board and bypass it in the DSP chain.
 pub(super) fn remove_pedal(params: &Params, board: &mut [bool], pedal: usize) {
     board[pedal] = false;
+    params.set_pedal_on_board(pedal, false);
     (PEDALS[pedal].enabled)(params).store(false, Relaxed);
 }
 
@@ -1245,6 +1240,7 @@ mod tests {
 
         add_pedal(&p, &mut b, 5);
         assert!(b[5], "add_pedal must put the pedal on the board");
+        assert!(p.pedal_on_board(5));
         assert!(
             (PEDALS[5].enabled)(&p).load(Relaxed),
             "add_pedal must engage the LED"
@@ -1252,6 +1248,7 @@ mod tests {
 
         remove_pedal(&p, &mut b, 5);
         assert!(!b[5], "remove_pedal must take it off the board");
+        assert!(!p.pedal_on_board(5));
         assert!(
             !(PEDALS[5].enabled)(&p).load(Relaxed),
             "remove_pedal must bypass it"
@@ -1261,14 +1258,18 @@ mod tests {
     #[test]
     fn toggle_pedal_flips_the_enabled_flag_for_a_pedal_knob() {
         let p = Params::new();
+        p.set_pedal_on_board(0, true);
         let flag = (PEDALS[0].enabled)(&p);
         let before = flag.load(Relaxed);
-        let mut b = board(true);
-        toggle_pedal(&p, &mut b, PEDALS[0].start);
+        toggle_pedal(&p, PEDALS[0].start);
         assert_eq!(flag.load(Relaxed), !before);
-        assert!(b[0], "toggling on must put the pedal on the board");
-        toggle_pedal(&p, &mut b, PEDALS[0].start);
-        assert!(!b[0], "toggling off must take it off the board");
+        assert!(
+            p.pedal_on_board(0),
+            "Space must leave the pedal on the board"
+        );
+        toggle_pedal(&p, PEDALS[0].start);
+        assert_eq!(flag.load(Relaxed), before);
+        assert!(p.pedal_on_board(0));
     }
 
     #[test]
@@ -1279,9 +1280,8 @@ mod tests {
             .iter()
             .map(|pd| (pd.enabled)(&p).load(Relaxed))
             .collect();
-        let mut b = board(true);
-        toggle_pedal(&p, &mut b, AMP_START);
-        toggle_pedal(&p, &mut b, MIC_START);
+        toggle_pedal(&p, AMP_START);
+        toggle_pedal(&p, MIC_START);
         let flags_after: Vec<bool> = PEDALS
             .iter()
             .map(|pd| (pd.enabled)(&p).load(Relaxed))
@@ -1571,17 +1571,18 @@ mod tests {
         let mut b = board(true);
         let flag = (PEDALS[3].enabled)(&p);
         let before = flag.load(Relaxed);
-        assert!(toggle_stage(&p, &mut b, ChainStage::Comp));
+        assert!(toggle_stage(&p, &b, ChainStage::Comp));
         assert_eq!(flag.load(Relaxed), !before);
-        assert_eq!(b[3], !before, "the board cache must follow the flag");
-        // Toggling it off again bypasses it and removes it from the board.
-        assert!(toggle_stage(&p, &mut b, ChainStage::Comp));
+        assert!(b[3], "bypass must leave the pedal on the board");
+        // Toggling it back on is a second bypass flip, not a board change.
+        assert!(toggle_stage(&p, &b, ChainStage::Comp));
         assert_eq!(flag.load(Relaxed), before);
-        assert!(!b[3]);
+        assert!(b[3], "the board bit must stay set");
         // The amp and cab are no-ops, and so is an off-board pedal.
-        assert!(!toggle_stage(&p, &mut b, ChainStage::Amp));
-        assert!(!toggle_stage(&p, &mut b, ChainStage::Cab));
-        assert!(!toggle_stage(&p, &mut b, ChainStage::Comp));
+        assert!(!toggle_stage(&p, &b, ChainStage::Amp));
+        assert!(!toggle_stage(&p, &b, ChainStage::Cab));
+        b[3] = false;
+        assert!(!toggle_stage(&p, &b, ChainStage::Comp));
         assert_eq!(flag.load(Relaxed), before);
     }
 

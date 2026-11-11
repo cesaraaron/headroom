@@ -60,11 +60,11 @@ use presets::{
 };
 use sessions::{Action as SessionAction, SessionBrowser};
 
-/// Board membership derived from the live enabled flags (one entry per pedal).
+/// Board membership (one entry per pedal). This is its own mask, not the
+/// `enabled` bypass flag, so a bypassed pedal keeps its tile and chain slot.
 fn sync_board(params: &Params) -> Vec<bool> {
-    PEDALS
-        .iter()
-        .map(|p| (p.enabled)(params).load(std::sync::atomic::Ordering::Relaxed))
+    (0..PEDALS.len())
+        .map(|pedal| params.pedal_on_board(pedal))
         .collect()
 }
 
@@ -466,9 +466,10 @@ pub fn run(
     // Last-focused knob per amp/mic/pedal group, so the global panel walk
     // returns to where you left off.
     let mut panel_mem = PanelMemory::new();
-    // Board membership: a pedal is on the board iff it is enabled. Off-board
-    // pedals are bypassed in the DSP and hidden from the rig. Rebuilt with
-    // `sync_board` whenever a preset rewrites the enabled flags.
+    // Board membership is its own mask (`Params::pedal_board`), separate from
+    // each pedal's enabled/bypass flag. Space flips the bypass flag only, so the
+    // tile and chain slot stay put; `D`/`A` change membership. `sync_board`
+    // mirrors the mask after a preset/session rewrite.
     let mut board: Vec<bool> = sync_board(&params);
     let mut add_open = false;
     let mut add_cursor = 0usize;
@@ -2387,13 +2388,7 @@ pub fn run(
                                     std::time::Instant::now(),
                                 ));
                             } else {
-                                toggle_stage(&params, &mut board, chain_cursor);
-                                ensure_chain_cursor_visible(
-                                    &params,
-                                    &board,
-                                    &mut chain_cursor,
-                                    &mut header_on_master,
-                                );
+                                toggle_stage(&params, &board, chain_cursor);
                             }
                         }
                         KeyCode::Char(' ') if focus == Some(CHAIN_TILE) => {
@@ -2410,12 +2405,7 @@ pub fn run(
                                 add_cursor = 0;
                             }
                             Some(PRACTICE_TILE) => {}
-                            Some(i) => {
-                                toggle_pedal(&params, &mut board, i);
-                                if pedal_of(i).is_some_and(|pi| !board[pi]) {
-                                    focus = Some(ADD_TILE);
-                                }
-                            }
+                            Some(i) => toggle_pedal(&params, i),
                             None => {}
                         },
                         _ => {}
@@ -2563,24 +2553,32 @@ mod tests {
     /// A rig change must rebuild the board cache and repair focus -- this is the
     /// fix for loading a session whose pedals did not appear in the UI.
     #[test]
-    fn resync_board_reflects_enabled_flags_and_repairs_focus() {
+    fn resync_board_reflects_membership_and_repairs_focus() {
         let params = Params::new();
         // Start from a stale, all-off board with focus on the pedal that comes on.
         let mut board = vec![false; PEDALS.len()];
         let mut focus = Some(PEDALS[3].start);
         let panels = Panels::all_visible();
 
+        params.set_pedal_on_board(3, true);
         params.cmp_enabled.store(true, Relaxed);
         resync_board_after_rig_change(&params, &mut board, &mut focus, &panels);
-        assert!(board[3], "the board must reflect the rig's enabled flags");
+        assert!(board[3], "the board must reflect the membership mask");
         assert_eq!(
             focus,
             Some(PEDALS[3].start),
             "focus on a still-present pedal must not move"
         );
 
-        // Turning the pedal off moves focus off the removed tile.
-        params.cmp_enabled.store(false, Relaxed);
+        // Bypassing the pedal (Space) must not remove its tile.
+        toggle_pedal(&params, PEDALS[3].start);
+        assert!(!params.cmp_enabled.load(Relaxed));
+        resync_board_after_rig_change(&params, &mut board, &mut focus, &panels);
+        assert!(board[3], "a bypassed pedal must stay on the board");
+        assert_eq!(focus, Some(PEDALS[3].start));
+
+        // Removing it from the board moves focus off the tile.
+        params.set_pedal_on_board(3, false);
         resync_board_after_rig_change(&params, &mut board, &mut focus, &panels);
         assert!(!board[3]);
         assert_eq!(

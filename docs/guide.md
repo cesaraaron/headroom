@@ -34,9 +34,10 @@ open (otherwise the chain ribbon):
 | `4` | Pedals |
 
 `Tab` / `Shift-Tab` cycle focus through the visible panels (1–4), `←`/`→` move
-within the focused panel, and `Space` bypasses a pedal — which also takes it off
-the board; add it back with `A` on the pedalboard (or plays/pauses the transport
-when the timeline is focused). Amp and cab have no bypass. On the pedalboard, `A` opens the **add-pedal** picker
+within the focused panel, and `Space` bypasses a pedal while leaving it on the
+board, so the same key turns it back on (or plays/pauses the transport when the
+timeline is focused). `D` removes a pedal from the board and `A` adds one. Amp
+and cab have no bypass. On the pedalboard, `A` opens the **add-pedal** picker
 (`D` removes the focused pedal); elsewhere `A` opens the amp model browser.
 
 The mouse is a second way to move focus, never a way to edit a value: click a

@@ -18,7 +18,7 @@ pub use tuner::Tuner;
 use atomic_float::AtomicF32;
 use std::sync::Arc;
 use std::sync::atomic::{
-    AtomicBool, AtomicU8, AtomicU64, AtomicUsize,
+    AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize,
     Ordering::{Relaxed, SeqCst},
 };
 
@@ -1058,6 +1058,10 @@ pub struct Params {
     // only.
     pub chain_order: Arc<[AtomicU8; CHAIN_LEN]>,
     pub chain_seq: Arc<AtomicU64>,
+    /// Which pedals are physically on the board (bit `pedal_index`). Separate
+    /// from each pedal's `enabled` bypass flag, so Space can leave the tile in
+    /// place while turning the effect off.
+    pub pedal_board: Arc<AtomicU32>,
     /// Serializes *writers* of the chain order so the seqlock stays single-writer.
     /// Only [`Params::set_chain_order`] takes it; the audio thread never touches it.
     chain_write: std::sync::Mutex<()>,
@@ -1099,7 +1103,7 @@ impl Params {
                 Arc::new(AtomicBool::new($v))
             };
         }
-        Self {
+        let params = Self {
             amp_model: Arc::new(AtomicU8::new(DEFAULT_AMP_MODEL)),
             cab_model: Arc::new(AtomicU8::new(DEFAULT_CAB_MODEL)),
             mic_pos: p!(DEFAULT_MIC_POS),
@@ -1259,8 +1263,51 @@ impl Params {
 
             chain_order: Arc::new(ChainStage::default_order().map(AtomicU8::new)),
             chain_seq: Arc::new(AtomicU64::new(0)),
+            pedal_board: Arc::new(AtomicU32::new(0)),
             chain_write: std::sync::Mutex::new(()),
+        };
+        params.refresh_board_from_enabled();
+        params
+    }
+
+    /// Board membership, one bit per pedal (`ChainStage::pedal_index`).
+    pub fn board_mask(&self) -> u32 {
+        self.pedal_board.load(Relaxed)
+    }
+
+    pub fn set_board_mask(&self, mask: u32) {
+        self.pedal_board.store(mask, Relaxed);
+    }
+
+    pub fn pedal_on_board(&self, pedal: usize) -> bool {
+        pedal < u32::BITS as usize && self.board_mask() & (1 << pedal) != 0
+    }
+
+    pub fn set_pedal_on_board(&self, pedal: usize, on: bool) {
+        if pedal >= u32::BITS as usize {
+            return;
         }
+        let bit = 1u32 << pedal;
+        let mask = self.board_mask();
+        self.pedal_board
+            .store(if on { mask | bit } else { mask & !bit }, Relaxed);
+    }
+
+    /// Set membership from the current enabled flags (preset/session load and
+    /// factory reset). Space bypass does **not** call this.
+    pub fn refresh_board_from_enabled(&self) {
+        let mut mask = 0u32;
+        for id in ChainStage::default_order() {
+            let Some(stage) = ChainStage::from_u8(id) else {
+                continue;
+            };
+            if let Some(pedal) = stage.pedal_index()
+                && self.stage_enabled(stage)
+            {
+                mask |= 1 << pedal;
+            }
+        }
+        self.pedal_board.store(mask, Relaxed);
     }
 
     pub fn reset_to_defaults(&self) {
@@ -1422,6 +1469,7 @@ impl Params {
         }
 
         self.set_chain_order(&ChainStage::default_order());
+        self.refresh_board_from_enabled();
     }
 
     pub fn amp_model(&self) -> AmpModel {
