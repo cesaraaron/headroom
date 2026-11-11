@@ -2667,6 +2667,13 @@ signal topology:
   0.0650 mid-band target, and the 19-preset fidelity baseline was regenerated.
 - **Fidelity gate.** `--check` rejects non-finite metrics and any rendered
   preset missing from the baseline.
+- **Playback.** The practice timeline and phrase looper crossfade their loop
+  boundaries (the looper's is output-only so overdubs keep full level).
+- **Tuner / XRUN.** Pitch and spectrum analysis runs on a dedicated worker fed
+  by an 8k ring; stream error callbacks only bump atomics, and the UI logs the
+  counts.
+- **AU transitions.** The compensation delay is reset on AU install/clear and
+  `replace_ext_amp` resets the applied state when clearing.
 - **UI/docs.** `M` (metronome) vs `m` (timeline mute), restored the held
   true-peak tick, Space bypass/off-board consistency, tiny-terminal modal
   clamping, and the stale key/chain/count documentation corrected.

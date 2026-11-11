@@ -13,6 +13,9 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering::Relaxed};
 
+/// Output-only fade length at a loop wrap (~5 ms at 48 kHz). Short loops skip it.
+const LOOP_WRAP_FADE_FRAMES: usize = 240;
+
 /// Longest loop the buffer can hold, in seconds. At 48 kHz that is 1.44 M frames
 /// (~5.8 MB) for the loop plus the same again for the undo layer.
 pub const MAX_LOOP_SECS: f32 = 30.0;
@@ -260,11 +263,26 @@ impl Looper {
                     out = (out + input).clamp(-1.0, 1.0);
                     self.buf[self.cursor] = out;
                 }
+                // Short fade-out/fade-in at the wrap. Applied to the *output*
+                // only, so an overdub still writes full-level audio. Very short
+                // loops (tests, stutter effects) keep their exact samples.
+                let fade = if self.len >= 64 {
+                    LOOP_WRAP_FADE_FRAMES.min(self.len / 4)
+                } else {
+                    0
+                };
+                let gain = if fade > 0 && self.cursor + fade >= self.len {
+                    (self.len - self.cursor - 1) as f32 / fade as f32
+                } else if fade > 0 && self.cursor < fade {
+                    self.cursor as f32 / fade as f32
+                } else {
+                    1.0
+                };
                 self.cursor += 1;
                 if self.cursor >= self.len {
                     self.cursor = 0;
                 }
-                out
+                out * gain
             }
         }
     }
@@ -466,6 +484,22 @@ mod tests {
         // A second undo with nothing captured is a no-op.
         l.undo();
         assert!(l.buf[..4].iter().all(|&x| (x - 0.5).abs() < 1e-6));
+    }
+
+    /// A long loop fades its output at both sides of the wrap, so an arbitrary
+    /// boundary cannot click. Very short loops keep their exact samples.
+    #[test]
+    fn long_loop_wrap_fades_to_zero() {
+        let (_ctl, mut l) = looper();
+        l.start_recording();
+        for _ in 0..1000 {
+            l.process(0.5);
+        }
+        l.finish_recording();
+        l.cursor = 0;
+        assert_eq!(l.process(0.0), 0.0, "first frame must fade in from zero");
+        l.cursor = l.len - 1;
+        assert_eq!(l.process(0.0), 0.0, "last frame must fade out to zero");
     }
 
     /// The overdub snapshot is filled one frame per process call; a mid-pass

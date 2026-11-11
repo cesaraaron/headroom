@@ -2,8 +2,9 @@
 //!
 //! When the tuner is engaged the audio thread bypasses the whole rig (pedals,
 //! amp, cab, effects) and feeds the dry guitar straight through, so the player
-//! hears a clean signal while tuning. The same dry block is handed to a
-//! [`TunerDetector`], which estimates the played pitch with the McLeod normalised
+//! hears a clean signal while tuning. The same dry samples are handed to an
+//! off-thread [`TunerDetector`] (the analysis is too heavy for the callback),
+//! which estimates the played pitch with the McLeod normalised
 //! square-difference function (NSDF) and renders a log-spaced magnitude spectrum
 //! with a bank of Goertzel filters. Both results are published to the shared
 //! [`Tuner`] state for the UI to read.

@@ -40,12 +40,13 @@ and the working conventions.
 All **5 CRITICAL** and **14 HIGH** findings are fixed. Phase 3 is fixed for
 everything offline-verifiable: 1.5, 2.7–2.10, 3.6–3.9, 4.6–4.8, 5.6, 5.7.
 
-Still open, and why: **1.6** (loop-wrap/punch crossfades; undo is fixed), **1.7**
-(tuner analysis/XRUN off the audio thread; the window is fixed), **5.4** (frozen
-smoothers while bypassed, 6 ms dry/wet comb; ramp init is fixed), **5.5** (AU
-switch mid-block mute/`comp_delay`). Each needs a live interface or a
-control-thread redesign. **1.3** is fixed by failing fast when the output cannot
-run at the input rate; **1.4** now prefills the ring and caps its queue depth. The fidelity baseline is re-blessed with each tone
+Still open, and why: **1.6** (punch-in/out crossfade; the loop-wrap fade and undo
+are fixed), **5.4** (frozen smoothers while bypassed, 6 ms dry/wet comb; ramp
+init is fixed), **5.5** (AU switch mid-block mute; stale `comp_delay` and
+`replace_ext_amp` sync are fixed). Each needs a live interface or a
+control-thread redesign. Fixed: **1.3** fails fast on a rate mismatch, **1.4**
+prefills/caps the ring, **1.7** moved tuner analysis and XRUN logging off the
+callback. The fidelity baseline is re-blessed with each tone
 change; the blind A/B listening pack lives in `target/listening/` (gitignored).
 
 Key findings to not re-derive: sweeping-notch stages keep exact

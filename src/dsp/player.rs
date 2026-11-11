@@ -259,16 +259,35 @@ impl PlayerVoice {
         if !t.playing {
             return Frame::default();
         }
-        // Loop wrap: only meaningful for a well-formed region.
-        if t.loop_enabled && t.loop_end > t.loop_start && self.cursor >= t.loop_end {
-            self.cursor = t.loop_start;
+        let loop_len = t.loop_end.saturating_sub(t.loop_start);
+        let fade = if t.loop_enabled && loop_len > 0 {
+            LOOP_FADE_FRAMES.min(loop_len / 4)
+        } else {
+            0
+        };
+        // Loop wrap: only meaningful for a well-formed region. The head was
+        // already blended in during the last `fade` frames, so resume after it.
+        if t.loop_enabled && loop_len > 0 && self.cursor >= t.loop_end {
+            self.cursor = (t.loop_start + fade).min(t.loop_end.saturating_sub(1));
         }
+        // Linear crossfade over the last `fade` frames: mix the tail with the
+        // head so an arbitrary loop boundary does not click.
+        let blend = (fade > 0 && self.cursor + fade >= t.loop_end && self.cursor < t.loop_end)
+            .then(|| {
+                let k = self.cursor + fade - t.loop_end;
+                (t.loop_start + k, (k + 1) as f32 / fade as f32)
+            });
         let mut out = Frame::default();
         for slot in self.slots.iter().flatten() {
             if slot.muted {
                 continue;
             }
-            let (l, r) = track_frame(&slot.track, self.cursor, slot.gain);
+            let (mut l, mut r) = track_frame(&slot.track, self.cursor, slot.gain);
+            if let Some((head_cursor, w)) = blend {
+                let (hl, hr) = track_frame(&slot.track, head_cursor, slot.gain);
+                l = l * (1.0 - w) + hl * w;
+                r = r * (1.0 - w) + hr * w;
+            }
             match slot.kind {
                 TrackKind::RawTake => out.take += 0.5 * (l + r),
                 TrackKind::Import => {
@@ -281,6 +300,10 @@ impl PlayerVoice {
         out
     }
 }
+
+/// Loop-boundary crossfade length, in frames (~5 ms at 48 kHz). Capped at a
+/// quarter of the loop length so short loops still work.
+const LOOP_FADE_FRAMES: usize = 240;
 
 /// Read one timeline frame from `track` (accounting for its start offset), or
 /// silence when out of range / absent. Gain is applied by the caller.
@@ -402,6 +425,31 @@ mod tests {
             "cursor must wrap to loop_start"
         );
         assert_eq!(v.next_frame(&t).import_l, 5.0);
+    }
+
+    /// The loop wrap mixes the tail into the head over the last frames, so an
+    /// arbitrary region boundary does not step. The head frames used by the fade
+    /// are skipped on the wrap.
+    #[test]
+    fn loop_wrap_crossfades_the_boundary() {
+        let mut v = PlayerVoice::new();
+        install_import(&mut v, 1, track(300, 0));
+        let t = Transport {
+            playing: true,
+            loop_enabled: true,
+            loop_start: 100,
+            loop_end: 200,
+            ..Transport::default()
+        };
+        v.begin(&Transport {
+            seek: Some(199),
+            ..t
+        });
+        // Last fade frame is fully the head sample at loop_start + fade - 1.
+        let fade = LOOP_FADE_FRAMES.min(100 / 4);
+        assert_eq!(v.next_frame(&t).import_l, (100 + fade - 1) as f32);
+        // Wrap resumes at loop_start + fade, continuing the head sequence.
+        assert_eq!(v.next_frame(&t).import_l, (100 + fade) as f32);
     }
 
     #[test]

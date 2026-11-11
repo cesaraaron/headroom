@@ -660,6 +660,16 @@ pub fn run(
         let mut pending_action: Option<UnsavedAction> = None;
         loop {
             tick = tick.wrapping_add(1);
+            // Stream error callbacks only bump atomics; log from here (roughly
+            // every five seconds) so no stream thread touches the filesystem.
+            if tick.is_multiple_of(300) {
+                let (input, output) = engine.take_stream_errors();
+                if input > 0 || output > 0 {
+                    crate::audio::log_line(&format!(
+                        "audio stream errors since last report: input {input}, output {output}"
+                    ));
+                }
+            }
             let blink = (tick / 15).is_multiple_of(2);
             let rec_active = practice_ui.is_recording();
 

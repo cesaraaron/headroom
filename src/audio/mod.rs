@@ -5,7 +5,9 @@ use cpal::{
 };
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::Arc;
-use std::sync::atomic::Ordering::Relaxed;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
+use std::thread::JoinHandle;
+use std::time::Duration;
 
 use crate::dsp::cab::ExternalIrCab;
 use crate::dsp::effects::db_to_lin;
@@ -215,12 +217,37 @@ pub struct AudioEngine {
     cal_stats_rx: Consumer<WindowStat>,
     /// Identity of the running input, for calibration persistence.
     identity: InputIdentity,
+    /// Stream-error counters. The device error callbacks only bump these; the UI
+    /// logs them from the control thread instead of doing file I/O on a stream
+    /// thread.
+    input_errors: Arc<AtomicU64>,
+    output_errors: Arc<AtomicU64>,
+    /// Stops the off-thread tuner analyser when the engine is dropped.
+    tuner_stop: Arc<AtomicBool>,
+    tuner_thread: Option<JoinHandle<()>>,
+}
+
+impl Drop for AudioEngine {
+    fn drop(&mut self) {
+        self.tuner_stop.store(true, Relaxed);
+        if let Some(thread) = self.tuner_thread.take() {
+            let _ = thread.join();
+        }
+    }
 }
 
 impl AudioEngine {
     /// The sample rate (Hz) the engine negotiated and is running at.
     pub fn sample_rate(&self) -> f32 {
         self.sample_rate
+    }
+
+    /// Drain the stream-error counters for logging on the control thread.
+    pub fn take_stream_errors(&self) -> (u64, u64) {
+        (
+            self.input_errors.swap(0, Relaxed),
+            self.output_errors.swap(0, Relaxed),
+        )
     }
 
     /// Identity of the input the engine is running with (device, channels,
@@ -869,7 +896,8 @@ struct InputState {
     /// [`Params`] (so knob changes apply to both), but owns independent DSP
     /// state, so its reverb/delay/sag cannot leak into the live signal.
     take_chain: DspChain,
-    tuner_detector: TunerDetector,
+    /// Dry samples handed to the off-thread tuner analyser.
+    tuner_tx: Producer<f32>,
     metro_voice: MetronomeVoice,
     player: PlayerVoice,
     attack: f32,
@@ -1131,11 +1159,13 @@ impl InputState {
         }
 
         if self.tuner.active.load(Relaxed) {
-            // Bypass the whole rig: clean dry guitar to both channels, and
-            // analyse the same signal for pitch and spectrum. The DC blocker
-            // matches what the master bus would have done, since this path
-            // never reaches it.
-            self.tuner_detector.process(&self.in_buf, &self.tuner);
+            // Bypass the whole rig: clean dry guitar to both channels, and hand
+            // the same signal to the off-thread analyser. The DC blocker matches
+            // what the master bus would have done, since this path never reaches
+            // it. A full tuner ring drops samples (display lag), never blocks.
+            for &x in &self.in_buf {
+                let _ = self.tuner_tx.push(x);
+            }
             for ((dst_l, dst_r), &x) in self
                 .out_l
                 .iter_mut()
@@ -1311,29 +1341,50 @@ impl InputState {
 }
 
 /// Build the input stream for a concrete device sample type.
+/// Loop that drains the audio thread's dry tuner samples and runs the heavy
+/// pitch/spectrum analysis off the callback.
+fn spawn_tuner_worker(
+    mut consumer: Consumer<f32>,
+    tuner: Arc<Tuner>,
+    sr: f32,
+    stop: Arc<AtomicBool>,
+) -> JoinHandle<()> {
+    std::thread::spawn(move || {
+        let mut detector = TunerDetector::new(sr);
+        let mut scratch = vec![0.0f32; 1024];
+        while !stop.load(Relaxed) {
+            let n = consumer.slots().min(scratch.len());
+            if n == 0 {
+                std::thread::sleep(Duration::from_millis(2));
+                continue;
+            }
+            for sample in &mut scratch[..n] {
+                *sample = consumer.pop().unwrap_or(0.0);
+            }
+            detector.process(&scratch[..n], &tuner);
+        }
+    })
+}
+
 fn build_input_stream<T>(
     device: &Device,
     cfg: StreamConfig,
     mut state: InputState,
+    errors: Arc<AtomicU64>,
 ) -> Result<Stream>
 where
     T: cpal::SizedSample,
     f32: FromSample<T>,
 {
-    let mut err_count = 0u64;
     device
         .build_input_stream(
             cfg,
             move |data: &[T], _| state.on_input(data),
-            move |e| {
-                // An XRUN is transient and cpal recovers; logging every one floods
-                // the log (and does file I/O on the audio thread) during a bad
-                // patch, so report the first and then only occasionally.
-                err_count += 1;
-                if err_count == 1 || err_count.is_multiple_of(200) {
-                    let msg = format!("input error: {e} (occurrence {err_count})");
-                    log_line(&msg);
-                }
+            move |_e| {
+                // An XRUN is transient and cpal recovers. Count it here; the UI
+                // logs the count from the control thread, so the stream callback
+                // never touches the filesystem.
+                errors.fetch_add(1, Relaxed);
             },
             None,
         )
@@ -1345,11 +1396,11 @@ fn build_output_stream<T>(
     device: &Device,
     cfg: StreamConfig,
     mut consumer: Consumer<f32>,
+    errors: Arc<AtomicU64>,
 ) -> Result<Stream>
 where
     T: cpal::SizedSample + FromSample<f32>,
 {
-    let mut err_count = 0u64;
     let channels = cfg.channels as usize;
     let high_water =
         (cfg.sample_rate as f32 * RING_HIGH_WATER_MS / 1000.0).round() as usize * channels;
@@ -1372,12 +1423,8 @@ where
                     *s = T::from_sample(consumer.pop().unwrap_or(0.0));
                 }
             },
-            move |e| {
-                err_count += 1;
-                if err_count == 1 || err_count.is_multiple_of(200) {
-                    let msg = format!("output error: {e} (occurrence {err_count})");
-                    log_line(&msg);
-                }
+            move |_e| {
+                errors.fetch_add(1, Relaxed);
             },
             None,
         )
@@ -1424,8 +1471,11 @@ fn build_engine(
     let take_chain = DspChain::new(sr, Arc::clone(&params));
 
     // Tuner: when engaged, the rig is bypassed and the dry guitar feeds both the
-    // output (a clean signal to tune against) and the pitch/spectrum detector.
-    let tuner_detector = TunerDetector::new(sr);
+    // output (a clean signal to tune against) and an off-thread analyser. The
+    // analysis is heavy (NSDF + 64 Goertzel filters), so it must not run in the
+    // audio callback.
+    let (tuner_tx, tuner_rx) = RingBuffer::<f32>::new(8192);
+    let tuner_stop = Arc::new(AtomicBool::new(false));
 
     // Metronome: when engaged, a click is mixed into the monitor output only —
     // added *after* the recording tap so it is never captured in the WAV.
@@ -1495,7 +1545,7 @@ fn build_engine(
     let state = InputState {
         chain,
         take_chain,
-        tuner_detector,
+        tuner_tx,
         metro_voice,
         player,
         attack,
@@ -1542,7 +1592,7 @@ fn build_engine(
         producer,
         levels,
         capture,
-        tuner,
+        tuner: Arc::clone(&tuner),
         metronome,
         practice,
         looper: looper_voice,
@@ -1554,6 +1604,9 @@ fn build_engine(
         win_len,
     };
 
+    let input_errors = Arc::new(AtomicU64::new(0));
+    let output_errors = Arc::new(AtomicU64::new(0));
+
     // Build each stream in the sample format the device actually supports. ALSA
     // exposes the Scarlett's capture as S32_LE, so an f32 stream would fail to
     // open; `on_input`/`build_output_stream` convert to and from the engine's f32
@@ -1561,7 +1614,7 @@ fn build_engine(
     // mis-configured.
     macro_rules! build_in {
         ($t:ty) => {
-            build_input_stream::<$t>(input_device, input_cfg, state)?
+            build_input_stream::<$t>(input_device, input_cfg, state, Arc::clone(&input_errors))?
         };
     }
     let input_stream = match in_fmt {
@@ -1580,7 +1633,12 @@ fn build_engine(
 
     macro_rules! build_out {
         ($t:ty) => {
-            build_output_stream::<$t>(output_device, output_cfg, consumer)?
+            build_output_stream::<$t>(
+                output_device,
+                output_cfg,
+                consumer,
+                Arc::clone(&output_errors),
+            )?
         };
     }
     let output_stream = match out_fmt {
@@ -1600,9 +1658,18 @@ fn build_engine(
     input_stream.play()?;
     output_stream.play()?;
 
+    // Start the analyser only after both streams opened, so a failed build does
+    // not leave a worker with no producer to stop it.
+    let tuner_thread =
+        spawn_tuner_worker(tuner_rx, Arc::clone(&tuner), sr, Arc::clone(&tuner_stop));
+
     Ok(AudioEngine {
         _input_stream: input_stream,
         _output_stream: output_stream,
+        input_errors,
+        output_errors,
+        tuner_stop,
+        tuner_thread: Some(tuner_thread),
         sample_rate: sr,
         insert_tx,
         dropped_rx,

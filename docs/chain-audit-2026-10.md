@@ -42,12 +42,16 @@ are in `docs/fidelity-implement.md` → increment log (`chain-audit-p1` … `p3g
 - **1.3** is fixed by refusing to start when the output cannot run at the input
   rate (the old fallback played pitch-shifted audio); **1.4** is fixed by a
   start-up prefill and a 100 ms high-water drop in the output callback.
-- **1.6** loop-wrap and punch-in/out crossfades (the overdub-undo bug is fixed).
-- **1.7** `TunerDetector::analyze` off the audio thread and XRUN logging off the
-  stream error callback (the rate-aware window is fixed).
+- **1.6** punch-in/out crossfade (the loop-wrap fade and the overdub-undo bug are
+  fixed).
 - **5.4** frozen `SmoothedGain` values while a stage is bypassed, and the 6 ms
   dry/wet comb during the bypass fade (the boot ramp state is fixed).
-- **5.5** AU switch mid-block mute, stale `comp_delay`, `replace_ext_amp` sync.
+- **5.5** AU switch mid-block mute (stale `comp_delay` and `replace_ext_amp`
+  state sync are fixed).
+
+**Fixed since the original status block:** 1.3 (fail-fast rate mismatch), 1.4
+(ring prefill/watermark), 1.7 (off-thread tuner analysis and atomic XRUN
+counters).
 
 A listening pack for the whole audit is under `target/listening/` (gitignored):
 blind, loudness-matched A/B renders of `9e0fc1b` vs the current `main`.
@@ -189,6 +193,8 @@ blind, loudness-matched A/B renders of `9e0fc1b` vs the current `main`.
 - **Location:** `src/looper.rs:196, 229-236`
 - **Root Cause:** `self.snapshotted` is only reset on transport state transitions (`finish_recording`, `start_recording`, `clear`, `undo`), not when `self.overdub` transitions from `false → true` in `poll_controls` (`self.overdub = ctl.overdub.load(Relaxed);`). If a user records overdub pass 1, toggles overdub off to listen, and toggles overdub back on to record pass 2, `prev` is not snapshotted before pass 2 overwrites `buf` — so pressing Undo wipes out **both** pass 2 and pass 1. Additionally, loop wrap (`cursor: len - 1 → 0`), stop, and overdub punch-in/out have no short crossfade.
 - **Recommended Fix:** Reset `self.snapshotted = false` in `poll_controls` whenever `!was_overdub && now_overdub`, and apply a short (2–4 ms) linear crossfade at loop boundaries and punch-in/out.
+- **Status (2026-11-10):** the snapshot reset and a 5 ms output-only wrap fade
+  are implemented; punch-in/out still has no fade.
 
 ---
 
@@ -199,6 +205,9 @@ blind, loudness-matched A/B renders of `9e0fc1b` vs the current `main`.
   2. Every `HOP = 1024` samples, `analyze()` runs synchronously inside the real-time audio callback (~$1.34 \times 10^6$ autocorrelation iterations + 64 Goertzel filters ≈ 6M FLOPs in a single callback).
   3. `build_input_stream` / `build_output_stream` error callbacks call `log_line()`, which performs blocking `fs::create_dir_all`, `OpenOptions::open`, and `writeln!` on the real-time stream thread during an XRUN.
 - **Recommended Fix:** Decimate input by 2× (or scale `WINDOW` with `sr` and move `analyze()` to the control thread via a small ring buffer), and route XRUN counts through an atomic counter logged by the UI thread.
+- **Status (2026-11-10):** the window already scales with `sr`; the analyser now
+  runs on a dedicated worker fed by an 8k-sample ring, and stream errors are
+  atomic counters logged by the UI.
 
 ---
 
@@ -595,6 +604,9 @@ blind, loudness-matched A/B renders of `9e0fc1b` vs the current `main`.
   1. `replace_ext_amp` (called on the audio thread) replaces `self.ext_amp` without syncing `self.applied_ext_amp` or `self.declick_gain`.
   2. `self.applied_ext_amp` only flips at a block boundary (`if self.declick_gain <= 0.0 && self.applied_ext_amp != want`), so on a 1024-frame ALSA block, `declick_gain` hits `0.0` at frame 192 and outputs 832 frames of dead silence before switching on the next callback.
   3. `comp_delay` is not clocked while `use_ext_amp == true`, replaying frozen pre-AU samples when switching back to the built-in amp.
+- **Status (2026-11-10):** `comp_delay` is reset on AU install/clear and
+  `replace_ext_amp` now syncs the applied state on clear. The mid-block mute is
+  still open.
 
 ---
 

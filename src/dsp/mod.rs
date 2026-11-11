@@ -1960,6 +1960,7 @@ impl DspChain {
             self.ext_amp.is_some() && self.params.amp_external_active.load(Relaxed);
         self.declick_gain = 1.0;
         self.declick_target = 1.0;
+        self.comp_delay.reset();
     }
 
     /// Swap the external-IR cab, returning the displaced one (if any) for disposal
@@ -1995,7 +1996,18 @@ impl DspChain {
         &mut self,
         amp: Option<Box<dyn StereoInsert>>,
     ) -> Option<Box<dyn StereoInsert>> {
-        std::mem::replace(&mut self.ext_amp, amp)
+        let old = std::mem::replace(&mut self.ext_amp, amp);
+        // Clearing an AU must drop the applied flag, or a later load inherits a
+        // stale "already active" state. Loading one leaves the flag alone so the
+        // block path's fade-through-zero runs when the active bit is set. The old
+        // AU's latency line must not replay into the next one.
+        if self.ext_amp.is_none() {
+            self.applied_ext_amp = false;
+            self.declick_gain = 1.0;
+            self.declick_target = 1.0;
+        }
+        self.comp_delay.reset();
+        old
     }
 
     /// Swap the stereo plugin insert, returning the displaced one (if any).
@@ -2812,6 +2824,13 @@ impl CompDelay {
             buf_r: vec![0.0; cap],
             pos: 0,
         }
+    }
+
+    /// Drop any buffered latency line (an AU swap must not replay stale audio).
+    fn reset(&mut self) {
+        self.buf_l.fill(0.0);
+        self.buf_r.fill(0.0);
+        self.pos = 0;
     }
 
     /// Push `(l, r)` and return the pair from `delay` samples ago (clamped to capacity).
