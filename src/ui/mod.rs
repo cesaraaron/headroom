@@ -456,8 +456,7 @@ pub fn run(
     let mut terminal = ratatui::Terminal::new(backend)?;
 
     // ── Session state (persists across a device change) ───────────────────────
-    // Focus starts on the practice timeline (the app opens with only that panel
-    // and the ever-visible chain ribbon shown).
+    // Focus starts on the practice timeline; every panel is visible at startup.
     let mut focus: Option<usize> = Some(PRACTICE_TILE);
     // Selected stage within the ribbon; follows its stage through moves.
     let mut chain_cursor: ChainStage = ChainStage::Amp;
@@ -513,9 +512,9 @@ pub fn run(
     // Scroll offset for the (tall) `K` reference, so a short terminal can reach
     // the whole thing. Clamped inside the renderer.
     let mut help_scroll: u16 = 0;
-    // Which top-level panels are shown (session-only; toggled with 1/2/3). The
-    // app opens with only the timeline (plus the always-visible ribbon).
-    let mut panels = Panels::timeline_only();
+    // Which top-level panels are shown (session-only; toggled with 1–4). The app
+    // opens with every panel visible.
+    let mut panels = Panels::all_visible();
     // Open on the factory rig.
     apply_factory_defaults(&params, &mut board, &mut focus, &panels);
     // Canonical timeline project, owned by the UI and preserved across device
@@ -535,8 +534,10 @@ pub fn run(
     // Autosave bookkeeping: the revision captured as the saved baseline, the
     // time of the most recent unsaved edit, and a flag set by a save/load/new
     // so the next tick re-baselines. Kept outside the session loop so a device
-    // change (`O`) cannot silently re-baseline unsaved edits as clean.
-    let mut saved_revision = session_revision(&params, &practice_ui, &practice, &metronome);
+    // change (`O`) cannot silently re-baseline unsaved edits as clean. It is
+    // filled only after the first engine attaches: startup adopts the engine's
+    // sample rate into the project, which would otherwise look like an edit.
+    let mut saved_revision: Option<u64> = None;
 
     // ── Session loop: (re)select devices, start the engine, run the UI ─────────
     // The `O` key drops the engine and loops back here so the picker runs again —
@@ -635,6 +636,17 @@ pub fn run(
         // ── Timeline: reset the transport, keep the session, re-install tracks ─────
         practice.reset();
         practice_ui.attach(&mut engine, &capture);
+        // First engine only: the project has now adopted its real sample rate, so
+        // this is the true "nothing edited yet" baseline. Later device changes
+        // keep the existing baseline, dirty state and all.
+        if saved_revision.is_none() {
+            saved_revision = Some(session_revision(
+                &params,
+                &practice_ui,
+                &practice,
+                &metronome,
+            ));
+        }
 
         // Offer recovery of abandoned dry takes once, after the first engine start.
         if !recovery_prompted {
@@ -788,10 +800,10 @@ pub fn run(
             // decide whether to prompt before quitting or changing session.
             let revision = session_revision(&params, &practice_ui, &practice, &metronome);
             if sync_revision {
-                saved_revision = revision;
+                saved_revision = Some(revision);
                 sync_revision = false;
             }
-            let session_dirty = revision != saved_revision;
+            let session_dirty = saved_revision != Some(revision);
 
             // The footer's left cell: the session name, with `*` while unsaved.
             let session_label = format!(

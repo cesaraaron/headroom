@@ -747,8 +747,9 @@ impl Panels {
         }
     }
 
-    /// Startup layout: only the practice timeline is open. The chain ribbon is
+    /// Test-only layout: only the practice timeline is open. The chain ribbon is
     /// always visible and is not part of `Panels`.
+    #[cfg(test)]
     pub(super) const fn timeline_only() -> Self {
         Self {
             amp: false,

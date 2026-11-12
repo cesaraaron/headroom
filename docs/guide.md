@@ -21,10 +21,10 @@ device**. The processed signal is written to all output channels.
 ## Panels
 
 The UI is split into panels you focus with the number keys; pressing the same
-number again hides the panel. The app opens with only the **practice timeline**
-(and the always-visible chain ribbon) shown — press `2`/`4` for the amp/pedal
-panels. When a panel closes, focus returns to the **practice timeline** if it is
-open (otherwise the chain ribbon):
+number again hides the panel. The app opens with every panel visible; `1`–`4`
+focus the chain, amp, timeline, or pedalboard, and pressing the focused number
+again hides it. When a panel closes, focus returns to the **practice timeline**
+if it is open (otherwise the chain ribbon):
 
 | Key | Panel |
 | --- | --- |

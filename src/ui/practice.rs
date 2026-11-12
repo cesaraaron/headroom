@@ -2490,39 +2490,42 @@ impl PracticeUi {
     }
 
     fn render_hint(&self, f: &mut Frame, area: Rect, focused: bool) {
+        // Terminal fonts cannot be resized by the app, so the hint is rendered
+        // entirely in the dim colour: same wording, much less visual weight.
+        let dim = Style::default().fg(theme().dim);
         let hint = if focused {
             Line::from(vec![
-                Span::styled("Space", Style::default().fg(theme().amber)),
-                Span::styled(" play/pause  ", Style::default().fg(theme().dim)),
-                Span::styled("M", Style::default().fg(theme().amber)),
-                Span::styled(" mute  ", Style::default().fg(theme().dim)),
-                Span::styled("Enter", Style::default().fg(theme().amber)),
-                Span::styled(" start  ", Style::default().fg(theme().dim)),
-                Span::styled("←/→", Style::default().fg(theme().amber)),
-                Span::styled(" seek  ", Style::default().fg(theme().dim)),
-                Span::styled("+/-", Style::default().fg(theme().amber)),
-                Span::styled(" step  ", Style::default().fg(theme().dim)),
-                Span::styled("G", Style::default().fg(theme().amber)),
-                Span::styled(" gain  ", Style::default().fg(theme().dim)),
-                Span::styled("H", Style::default().fg(theme().amber)),
-                Span::styled(" move  ", Style::default().fg(theme().dim)),
-                Span::styled("z", Style::default().fg(theme().amber)),
-                Span::styled(" row  ", Style::default().fg(theme().dim)),
-                Span::styled("[ ] L", Style::default().fg(theme().amber)),
-                Span::styled(" loop  ", Style::default().fg(theme().dim)),
-                Span::styled("Del", Style::default().fg(theme().amber)),
-                Span::styled(" remove  ", Style::default().fg(theme().dim)),
-                Span::styled("R", Style::default().fg(theme().amber)),
-                Span::styled(" rec", Style::default().fg(theme().dim)),
+                Span::styled("Space", dim),
+                Span::styled(" play/pause  ", dim),
+                Span::styled("M", dim),
+                Span::styled(" mute  ", dim),
+                Span::styled("Enter", dim),
+                Span::styled(" start  ", dim),
+                Span::styled("←/→", dim),
+                Span::styled(" seek  ", dim),
+                Span::styled("+/-", dim),
+                Span::styled(" step  ", dim),
+                Span::styled("G", dim),
+                Span::styled(" gain  ", dim),
+                Span::styled("H", dim),
+                Span::styled(" move  ", dim),
+                Span::styled("z", dim),
+                Span::styled(" row  ", dim),
+                Span::styled("[ ] L", dim),
+                Span::styled(" loop  ", dim),
+                Span::styled("Del", dim),
+                Span::styled(" remove  ", dim),
+                Span::styled("R", dim),
+                Span::styled(" rec", dim),
             ])
         } else {
             Line::from(vec![
-                Span::styled("3", Style::default().fg(theme().amber)),
-                Span::styled(" focus the timeline  ·  ", Style::default().fg(theme().dim)),
-                Span::styled("B", Style::default().fg(theme().amber)),
-                Span::styled(" import  ·  ", Style::default().fg(theme().dim)),
-                Span::styled("R", Style::default().fg(theme().amber)),
-                Span::styled(" record", Style::default().fg(theme().dim)),
+                Span::styled("3", dim),
+                Span::styled(" focus the timeline  ·  ", dim),
+                Span::styled("B", dim),
+                Span::styled(" import  ·  ", dim),
+                Span::styled("R", dim),
+                Span::styled(" record", dim),
             ])
         };
         f.render_widget(Paragraph::new(hint).alignment(Alignment::Left), area);
