@@ -2490,41 +2490,42 @@ impl PracticeUi {
     }
 
     fn render_hint(&self, f: &mut Frame, area: Rect, focused: bool) {
-        // Terminal fonts cannot be resized by the app, so the hint is rendered
-        // entirely in the dim colour: same wording, much less visual weight.
+        // Keys in amber, descriptions dim: the original hierarchy, but compact
+        // enough that the strip stays visually light.
+        let key = Style::default().fg(theme().amber);
         let dim = Style::default().fg(theme().dim);
         let hint = if focused {
             Line::from(vec![
-                Span::styled("Space", dim),
+                Span::styled("Space", key),
                 Span::styled(" play/pause  ", dim),
-                Span::styled("M", dim),
+                Span::styled("M", key),
                 Span::styled(" mute  ", dim),
-                Span::styled("Enter", dim),
+                Span::styled("Enter", key),
                 Span::styled(" start  ", dim),
-                Span::styled("←/→", dim),
+                Span::styled("←/→", key),
                 Span::styled(" seek  ", dim),
-                Span::styled("+/-", dim),
+                Span::styled("+/-", key),
                 Span::styled(" step  ", dim),
-                Span::styled("G", dim),
+                Span::styled("G", key),
                 Span::styled(" gain  ", dim),
-                Span::styled("H", dim),
+                Span::styled("H", key),
                 Span::styled(" move  ", dim),
-                Span::styled("z", dim),
+                Span::styled("z", key),
                 Span::styled(" row  ", dim),
-                Span::styled("[ ] L", dim),
+                Span::styled("[ ] L", key),
                 Span::styled(" loop  ", dim),
-                Span::styled("Del", dim),
+                Span::styled("Del", key),
                 Span::styled(" remove  ", dim),
-                Span::styled("R", dim),
+                Span::styled("R", key),
                 Span::styled(" rec", dim),
             ])
         } else {
             Line::from(vec![
-                Span::styled("3", dim),
+                Span::styled("3", key),
                 Span::styled(" focus the timeline  ·  ", dim),
-                Span::styled("B", dim),
+                Span::styled("B", key),
                 Span::styled(" import  ·  ", dim),
-                Span::styled("R", dim),
+                Span::styled("R", key),
                 Span::styled(" record", dim),
             ])
         };
