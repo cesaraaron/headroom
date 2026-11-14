@@ -2678,3 +2678,13 @@ signal topology:
   true-peak tick, Space bypass now leaves the pedal on the board (membership is
   a separate mask persisted in presets/sessions), tiny-terminal modal clamping,
   and the stale key/chain/count documentation corrected.
+- **Presets.** Restored AC/DC — Back in Black from the retired set and re-voiced
+  it for the current Plexi/Greenback models (tighter lows, more upper-mid bite,
+  dry cab).
+- **2026-11-11:** retired the five `_alt_` chain-order experiment presets
+  (`comfortably_numb_solo_1_alt_{comp_after_fuzz,muff_td,rotary}`,
+  `time_solo_alt_{boost_first,vibe_after_delay}`).
+- **2026-11-12:** curated the bundled set to five (`acdc_back_in_black`,
+  `eagles_hotel_california_solo`, `led_zeppelin_stairway_solo`,
+  `pink_floyd_comfortably_numb_solo_2`, `pink_floyd_time_solo`). The fidelity
+  baseline covers all five.

@@ -1430,14 +1430,6 @@ mod tests {
     const KNOWN_ANACHRONISMS: &[(&str, &str)] = &[
         ("led_zeppelin_stairway_solo", "tube_screamer"),
         ("eagles_hotel_california_solo", "tube_screamer"),
-        ("eagles_hotel_california_clean", "tube_screamer"),
-        // Deliberate chain-order experiment, not a session claim: the 1979 Numb
-        // preset with a Tube Driver after the Muff, mirroring the documented
-        // 2006 Gdansk chain. The preset description says "experiment".
-        (
-            "pink_floyd_comfortably_numb_solo_1_alt_muff_td",
-            "tube_driver",
-        ),
     ];
 
     /// A bundled preset must not enable a device that did not exist when the tone
@@ -1694,12 +1686,16 @@ mod tests {
         // bundled presets chosen to span the effect types the bundles actually
         // enable; the fingerprint test above covers the full set cheaply.
         const RENDER_SUBSET: &[&str] = &[
-            // comp, fuzz, TS, DS-1, pre-EQ, Uni-Vibe, EQ, chorus, flanger, delay, reverb
+            // TS, Plexi, Greenback
+            "acdc_back_in_black.toml",
+            // Tweed, delay, reverb
+            "eagles_hotel_california_solo.toml",
+            // comp, TS, EQ, delay, reverb, Supro
+            "led_zeppelin_stairway_solo.toml",
+            // comp, TS, fuzz, chorus, delay, reverb
+            "pink_floyd_comfortably_numb_solo_2.toml",
+            // comp, fuzz, vibe, delay, reverb
             "pink_floyd_time_solo.toml",
-            // comp, fuzz, pre-EQ, EQ, delay, reverb
-            "pink_floyd_mother_solo.toml",
-            // comp, EQ, chorus, delay, reverb
-            "eagles_hotel_california_clean.toml",
         ];
 
         let sr = 48_000.0;

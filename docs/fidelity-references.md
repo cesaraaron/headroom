@@ -94,30 +94,18 @@ gate and cabinet are always explicit (deterministic loading); every bundled
 preset sets `master` `width = 1.0`.
 
 > Twelve presets were retired on 2026-09-29 because the tone models changed
-> under them. Their rows are gone from this table; the full inventory and the
-> git-recovery recipe are in [`retired-presets.md`](retired-presets.md).
+> under them; the five chain-order `_alt_` experiments and the remaining
+> non-curated presets were retired later. Their rows are gone from this table;
+> the git-recovery recipe is in [`retired-presets.md`](retired-presets.md).
+> The curated bundled set is five presets (2026-11-12).
 
 | Preset | Amp | Cab | Enabled effects (in signal order) | Delay | Fuzz |
 | ------ | --- | --- | --------------------------------- | ----- | ---- |
-| `eagles_hotel_california_clean` | fender | fender | gate, comp, eq, chorus, delay, reverb | digital, 0.42 | off |
+| `acdc_back_in_black` | plexi | marshall | gate, ts | off | off |
 | `eagles_hotel_california_solo` | tweed | tweed | gate, delay, reverb | digital, 0.40 | off |
 | `led_zeppelin_stairway_solo` | supro | supro | gate, comp, ts, preeq, eq, delay, reverb | digital (default), 0.26 | off |
-| `pink_floyd_comfortably_numb_solo_1` | hiwatt | wem | gate, comp, ts, fuzz, preeq, chorus, delay, reverb (`[chain]`: ts → fuzz) | digital, 0.88 | Big Muff |
 | `pink_floyd_comfortably_numb_solo_2` | hiwatt | wem | gate, comp, ts, fuzz, preeq, chorus, delay, reverb (`[chain]`: ts → fuzz) | digital, 0.90 | Big Muff |
-| `pink_floyd_mother_solo` | hiwatt | wem | gate, comp, delay, reverb | tape, 0.55 | off |
-| `pink_floyd_time_chorus` | hiwatt | wem | gate, vibe, delay, reverb | Echorec, 0.75 | off |
 | `pink_floyd_time_solo` | hiwatt | wem | gate, comp, fuzz, vibe, delay, reverb | Echorec, 0.62 | Fuzz Face |
-| `pink_floyd_shine_on_pulse` | hiwatt | wem | gate, comp, tube_driver, preeq, chorus, rotary, delay, reverb | digital, 0.74 | off |
-| `pink_floyd_sorrow_1994` | hiwatt | wem | gate, comp, fuzz, tube_driver, preeq, chorus, delay, reverb | digital, 0.98 | Sovtek |
-| `pink_floyd_run_like_hell_1994` | hiwatt | wem | gate, comp, chorus, rotary, delay, reverb | digital, 0.76 | off |
-| `pink_floyd_dogs_animals` | hiwatt | wem | gate, comp, fuzz, boost, preeq, rotary, delay, reverb (`[chain]`: fuzz → boost) | digital, 0.88 | Ram's Head |
-| `pink_floyd_echoes_seagull` | hiwatt | wem | gate, wah, delay, reverb | digital, 0.90 | off |
-| `pink_floyd_marooned` | hiwatt | wem | gate, comp, pitch, tube_driver, preeq, chorus, delay, reverb | digital, 0.72 | off |
-| `…numb_solo_1_alt_muff_td` | hiwatt | wem | gate, comp, ts, fuzz, tube_driver, preeq, chorus, delay, reverb (`[chain]`: ts → fuzz → tube_driver) | digital, 0.88 | Ram's Head |
-| `…numb_solo_1_alt_comp_after_fuzz` | hiwatt | wem | gate, comp, ts, fuzz, preeq, chorus, delay, reverb (`[chain]`: ts → fuzz → comp) | digital, 0.88 | Ram's Head |
-| `…numb_solo_1_alt_rotary` | hiwatt | wem | gate, comp, ts, fuzz, preeq, rotary, delay, reverb (`[chain]`: ts → fuzz) | digital, 0.88 | Ram's Head |
-| `…time_solo_alt_boost_first` | hiwatt | wem | gate, comp, boost, fuzz, vibe, delay, reverb (`[chain]`: boost → fuzz) | Echorec, 0.62 | Fuzz Face |
-| `…time_solo_alt_vibe_after_delay` | hiwatt | wem | gate, comp, fuzz, delay, vibe, reverb (`[chain]`: delay → vibe) | Echorec, 0.62 | Fuzz Face |
 
 ### Description-vs-path flags
 
@@ -150,7 +138,7 @@ both reproduced so the flag is auditable.
 > deliberately, because restoring one should not mean redoing the research. Only
 > the table in §1 describes the presets that actually ship.
 
-### `acdc_back_in_black.toml` / `acdc_highway_to_hell.toml` *(retired)*
+### `acdc_back_in_black.toml` *(restored 2026-11-11)* / `acdc_highway_to_hell.toml` *(retired)*
 
 - *Back in Black* (1980): recorded Apr–May 1980 at Compass Point (Nassau), mixed
   at Electric Lady (NYC); produced by Mutt Lange; Angus Young lead / Malcolm
@@ -162,6 +150,9 @@ both reproduced so the flag is auditable.
   source found in this pass. · Supports: `unknown` · Source: _TBD_
 - **Contradiction:** both presets say "no pedals" yet enable pre-EQ + parametric
   EQ + reverb — decide studio/mix processing vs model compensation. (Phase 5)
+- **2026-11-11 restore:** Back in Black was restored and re-voiced for the current
+  Plexi/Greenback models. It uses a low-drive TS-808 approximation, labelled in
+  the preset description; the record's gear remains `unknown`.
 
 ### `eagles_hotel_california_clean.toml` / `_solo.toml`
 

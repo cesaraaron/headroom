@@ -77,10 +77,10 @@ fn every_bundled_preset_parses_renders_and_is_deterministic() {
     let paths = bundled_paths();
     assert_eq!(
         paths.len(),
-        19,
+        5,
         "bundled preset count changed; update the expectation if intentional \
-         (12 were retired on 2026-09-29 — see docs/retired-presets.md; 11 \
-         Gilmour tier-1 presets/variants were added on 2026-11-02)"
+         (the curated set is AC/DC Back in Black, Eagles solo, Stairway, \
+         Comfortably Numb outro solo, and Time solo)"
     );
 
     let failures: Vec<String> = std::thread::scope(|scope| {

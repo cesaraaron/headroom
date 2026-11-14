@@ -1,0 +1,58 @@
+name        = "AC/DC — Back in Black"
+description = "Inspired by Angus Young's rhythm crunch (Back in Black, 1980): a cranked Plexi and Greenbacks with a low-drive TS-style bite — tight, mid-forward and dry. The record is reported to be guitar straight into a Marshall; the TS is a deliberate approximation. Not a verified session rig."
+tags        = ["ac/dc", "rhythm", "hard rock"]
+year        = 1980
+
+# ── Noise Gate ────────────────────────────────────────────────────────────────
+# Light and slow — the tone is dry, but the stops between chords must ring rather
+# than being chopped by a fast gate.
+[noise_gate]
+enabled   = true
+threshold = 0.08
+release   = 0.45
+
+# ── TS-808 ────────────────────────────────────────────────────────────────────
+# A low-drive, low-level TS as a mid-forward bite boost into the Plexi. Kept
+# subtle so the power-amp grind still leads; the record is a guitar-into-Marshall
+# tone (the evidence is unverified), so this is the labelled approximation.
+[tube_screamer]
+enabled = true
+drive   = 0.12
+tone    = 0.58
+level   = 0.55
+
+# ── Amp ───────────────────────────────────────────────────────────────────────
+# Marshall Super Lead "Plexi": VOL II (Bright) up, VOL I off, power-amp
+# compression and grind rather than cascaded preamp gain. Slightly tighter and
+# brighter than the pre-rework voicing: less low-mid bloom, more upper-mid bite.
+[amp]
+model    = "plexi"
+gain     = 0.66
+bass     = 0.38
+mid      = 0.64
+treble   = 0.60
+presence = 0.52
+
+# ── Cabinet ───────────────────────────────────────────────────────────────────
+# Greenbacks near on-axis with very little room — dry and immediate, as on the
+# record.
+[cabinet]
+model     = "marshall"
+mic_pos   = 0.54
+mic_blend = 0.20
+mic_room  = 0.10
+
+# ── Reverb ────────────────────────────────────────────────────────────────────
+# Off: the record's rhythm is dry; the room comes from the cab mic.
+[reverb]
+enabled = false
+room    = 0.30
+damp    = 0.58
+mix     = 0.0
+
+# ── Master ────────────────────────────────────────────────────────────────────
+# Unity width (mono-ish rhythm) and a small output lift to match the bundled
+# presets' level after the gain trim.
+[master]
+width  = 1.0
+output = 0.55

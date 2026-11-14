@@ -2,7 +2,19 @@
 
 Twelve bundled presets were removed from `presets/` on 2026-09-29. **They are not
 lost** — every one is recoverable from git history with a single command (below),
-and this page is the index.
+and this page is the index. Eleven remain retired; **AC/DC — Back in Black was
+restored and re-voiced for the current models on 2026-11-11**.
+
+On 2026-11-12 the bundled set was curated down to five presets:
+
+- `acdc_back_in_black`
+- `eagles_hotel_california_solo`
+- `led_zeppelin_stairway_solo`
+- `pink_floyd_comfortably_numb_solo_2`
+- `pink_floyd_time_solo`
+
+Everything else that had been added or kept since 2026-09-29 is recoverable from
+git history with the recipe below.
 
 ## Why they were retired
 
@@ -28,7 +40,11 @@ re-voicing, not a finished tone**. The knob values were tuned against models tha
 no longer exist. Expect to re-listen and re-dial, especially gain, presence and
 master.
 
-## The eight that remain
+## The eight original survivors (historical)
+
+Four of these eight remain in the curated set (`eagles_hotel_california_solo`,
+`led_zeppelin_stairway_solo`, `pink_floyd_comfortably_numb_solo_2`,
+`pink_floyd_time_solo`); the other four are recoverable from git.
 
 | Preset | Rig |
 | --- | --- |
@@ -51,7 +67,8 @@ bundled preset**.
 Those models are still covered by their own unit tests (`src/dsp/amp/mod.rs`,
 `src/dsp/cab/mod.rs`) and by the rig matrix in `src/dsp/mod.rs`'s tone tests, but
 they are no longer exercised **end-to-end through a preset** by the fidelity
-harness. This is the weakest point in the current test setup and the thing to
+harness. (Update 2026-11-11: the restored Back in Black covers Plexi + Marshall
+again; the rest of the gap below still stands.) This is the weakest point in the current test setup and the thing to
 remember when a Phase C change shows drift the harness cannot explain.
 
 ## Recovering one
@@ -79,11 +96,10 @@ cargo run --release --example fidelity_render -- --presets all \
     --write-baseline docs/fidelity/baseline-synth-48k.toml
 ```
 
-## The retired twelve
+## The retired eleven
 
 | File | Name | Year | Rig | Last touched |
 | --- | --- | --- | --- | --- |
-| `acdc_back_in_black.toml` | AC/DC — Back in Black | 1980 | Plexi / Greenback | `2527c61` |
 | `acdc_highway_to_hell.toml` | AC/DC — Highway to Hell | 1979 | Plexi / Greenback | `2527c61` |
 | `guns_n_roses_november_rain_solo.toml` | Guns N' Roses — November Rain (Solo) | 1991 | JCM800 / Greenback | `bfd6631` |
 | `led_zeppelin_whole_lotta_love.toml` | Led Zeppelin — Whole Lotta Love | 1969 | Plexi / Greenback | `2527c61` |
@@ -102,7 +118,8 @@ that existed to give the JCM800, the Dual Rectifier and the AC30 a bundled
 presence. Their loss is the direct cause of the coverage gap above.
 
 > **Decision (2026-09-29, maintainer): do not bring them back.** The coverage gap
-> is accepted deliberately. The eight surviving artist presets are the point of
+> is accepted deliberately. (Exception: Back in Black was restored at maintainer
+> request on 2026-11-11 and re-voiced.) The eight surviving artist presets are the point of
 > the set; re-adding non-artist rig showcases to give internal models a bundled
 > presence is not wanted. Those five amp models and four cabs remain covered by
 > their own unit tests in `src/dsp/amp` and `src/dsp/cab` — what they lose is
