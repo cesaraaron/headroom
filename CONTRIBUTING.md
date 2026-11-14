@@ -132,12 +132,12 @@ To add one:
 6. Register the pedal in the `PEDALS` table (also `src/ui/config.rs`): one entry
    with its name, livery colour (add a `PEDAL_<NAME>` colour to `src/ui/styles.rs`),
    knob range, and `enabled`-flag accessor. The rig tile grid, the detail editor,
-   the `+ ADD` picker, and `D`-to-remove all derive from this table — no `draw.rs`
-   layout code is needed. Membership is the separate `Params::pedal_board` mask;
-   `Space` flips only the enabled flag.
+   the `+ ADD` picker, and `Del`-to-remove all derive from this table — no
+   `draw.rs` layout code is needed. Membership is the separate `Params::pedal_board`
+   mask; `D` flips only the enabled flag.
 7. Update the chain of effects in the header in `src/ui/draw.rs` — `render_header`.
 8. Add the pedal's `enabled` flag to the `toggle_pedal` match in `src/ui/input.rs`
-   so `Space` can bypass it while it's on the board.
+   so `D` can bypass it while it's on the board.
 9. Add preset fields in `src/preset.rs` (including the on/off state). Board
    membership is separate: `Preset::from_params`/`apply` carry the `board` list,
    and old presets without it fall back to the enabled flags. `sync_board` reads

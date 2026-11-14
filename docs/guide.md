@@ -34,11 +34,15 @@ if it is open (otherwise the chain ribbon):
 | `4` | Pedals |
 
 `Tab` / `Shift-Tab` cycle focus through the visible panels (1–4), `←`/`→` move
-within the focused panel, and `Space` bypasses a pedal while leaving it on the
-board, so the same key turns it back on (or plays/pauses the transport when the
-timeline is focused). `D` removes a pedal from the board and `A` adds one. Amp
-and cab have no bypass. On the pedalboard, `A` opens the **add-pedal** picker
-(`D` removes the focused pedal); elsewhere `A` opens the amp model browser.
+within the focused panel, and `D` bypasses a pedal while leaving it on the board,
+so the same key turns it back on. `Del` removes a pedal from the board and
+`A` adds one. Amp and cab have no bypass. On the pedalboard, `A` opens the
+**add-pedal** picker; elsewhere `A` opens the amp model browser.
+
+`Space` and `Enter` are the practice transport from **any** panel, without
+moving focus: `Space` plays/pauses and `Enter` jumps to the start (the loop
+in-point when looping). If the timeline is hidden, either key reveals it so the
+playhead is visible; the cursor stays on the panel you were using.
 
 The mouse is a second way to move focus, never a way to edit a value: click a
 panel to focus it (a hidden panel is shown), click a knob or tile to focus it,
@@ -88,7 +92,7 @@ external IR browser and `X` bypasses the IR.
 
 The **MASTER** cell sits at the end of the chain header (panel 1), just before the
 `OUTPUT` label: it is the rig's output level, `-6` to `+6 dB` with `0.0` (unity)
-at centre. Select it with `←`/`→` in panel 1 and adjust it with `↑`/`↓`; `Space`
+at centre. Select it with `←`/`→` in panel 1 and adjust it with `↑`/`↓`; `D`
 resets it to unity. Unlike the stages it cannot be reordered. When the board is
 too long for the header, the row scrolls to keep the selected stage visible and
 marks the clipped end with `…`. It is a level control, not a tone control: unlike
@@ -212,7 +216,10 @@ so abandoned recordings are only offered back after a crash.
   recording (it returns to the previous height when you stop). Backing tracks and
   recorded takes are summed into the output **after** the recording tap, so they
   are never captured into a rendered WAV.
-- **Timeline** — focus it with `3`. `Space` plays/pauses any row, `↑`/`↓`
+- **Timeline** — focus it with `3`, or use the global transport at any time:
+  `Space` plays/pauses and `Enter` jumps to the start (the loop in-point when
+  looping), both without moving focus and both revealing the pane if it was
+  hidden. `↑`/`↓`
   select a track, `←`/`→` seek, `+`/`−` pick the step
   (0.01/0.05/0.1/0.5/1/5/10/30 s, clamped at both ends), `m` mutes
   (uppercase `M` opens the metronome), `G` sets track gain, `H` moves a clip (its arrows move by the step and

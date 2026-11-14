@@ -2675,7 +2675,7 @@ signal topology:
 - **AU transitions.** The compensation delay is reset on AU install/clear and
   `replace_ext_amp` resets the applied state when clearing.
 - **UI/docs.** `M` (metronome) vs `m` (timeline mute), restored the held
-  true-peak tick, Space bypass now leaves the pedal on the board (membership is
+  true-peak tick, `D` bypass now leaves the pedal on the board (membership is
   a separate mask persisted in presets/sessions), tiny-terminal modal clamping,
   and the stale key/chain/count documentation corrected.
 - **Presets.** Restored AC/DC — Back in Black from the retired set and re-voiced

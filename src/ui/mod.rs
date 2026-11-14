@@ -161,7 +161,7 @@ fn resync_board_after_rig_change(
 }
 
 /// Keep the ribbon cursor on a stage the ribbon still renders after a preset
-/// rewrote the board. Otherwise `Space` and `[`/`]` silently no-op because the
+/// rewrote the board. Otherwise `D` and `[`/`]` silently no-op because the
 /// cursor points at a disabled pedal, until an arrow re-anchors it.
 fn ensure_chain_cursor_visible(
     params: &Params,
@@ -466,8 +466,9 @@ pub fn run(
     // returns to where you left off.
     let mut panel_mem = PanelMemory::new();
     // Board membership is its own mask (`Params::pedal_board`), separate from
-    // each pedal's enabled/bypass flag. Space flips the bypass flag only, so the
-    // tile and chain slot stay put; `D`/`A` change membership. `sync_board`
+    // each pedal's enabled/bypass flag. `Space` drives the transport from any
+    // panel, so `D` flips the bypass flag only; the tile and chain slot stay put.
+    // `Del`/`A` change membership. `sync_board`
     // mirrors the mask after a preset/session rewrite.
     let mut board: Vec<bool> = sync_board(&params);
     let mut add_open = false;
@@ -1901,17 +1902,24 @@ pub fn run(
                     }
                 } else {
                     match key.code {
-                        // ── Timeline (when the pane owns focus) ────────────────────
-                        KeyCode::Char(' ') if focus == Some(PRACTICE_TILE) => {
+                        // ── Transport (from any panel) ─────────────────────────────
+                        // Space and Enter drive the practice transport wherever
+                        // focus is, without moving it: the pane is revealed if it
+                        // was hidden so the playhead is visible, but the cursor
+                        // stays on the panel you were using. Space used to bypass
+                        // pedals panel-locally; that action now lives on `d`.
+                        KeyCode::Char(' ') => {
+                            panels.timeline = true;
                             practice_ui.toggle_play(&practice);
+                        }
+                        KeyCode::Enter => {
+                            panels.timeline = true;
+                            practice_ui.go_to_start(&practice);
                         }
                         // Lowercase `m` mutes on the timeline; uppercase `M`
                         // deliberately falls through to the metronome arm below.
                         KeyCode::Char('m') if focus == Some(PRACTICE_TILE) => {
                             practice_ui.toggle_selected_mute(&mut engine);
-                        }
-                        KeyCode::Enter if focus == Some(PRACTICE_TILE) => {
-                            practice_ui.go_to_start(&practice);
                         }
                         // Shift+↑/↓ zoom the time axis around the playhead. (No
                         // Ctrl bindings: Kitty resizes fonts on Ctrl+ +/-, and
@@ -2359,14 +2367,46 @@ pub fn run(
                             Some(ADD_TILE | PRACTICE_TILE | CHAIN_TILE) | None => {}
                             Some(i) => nudge(&params, i, -0.05),
                         },
-                        KeyCode::Enter if focus == Some(ADD_TILE) => {
-                            add_open = true;
-                            add_cursor = 0;
-                        }
-                        KeyCode::Char('d') | KeyCode::Char('D') => {
-                            if let Some(i) = focus
-                                && let Some(pi) = pedal_of(i)
-                            {
+                        // Lowercase `d` disables (bypasses) the focused pedal in
+                        // place, or the selected ribbon stage; on the master cell
+                        // it resets the rig output to unity. `Del` takes a pedal
+                        // off the board.
+                        KeyCode::Char('d') => match focus {
+                            Some(CHAIN_TILE) if header_on_master => {
+                                params.master_output.store(
+                                    crate::dsp::DEFAULT_MASTER_OUTPUT,
+                                    std::sync::atomic::Ordering::Relaxed,
+                                );
+                                save_msg = Some((
+                                    "Master: +0.0 dB".to_string(),
+                                    std::time::Instant::now(),
+                                ));
+                            }
+                            Some(CHAIN_TILE) => {
+                                if chain_cursor.pedal_index().is_none() {
+                                    save_msg = Some((
+                                        "Amp and cab cannot be bypassed".to_owned(),
+                                        std::time::Instant::now(),
+                                    ));
+                                } else {
+                                    toggle_stage(&params, &board, chain_cursor);
+                                }
+                            }
+                            Some(ADD_TILE | PRACTICE_TILE) | None => {}
+                            Some(i) => toggle_pedal(&params, i),
+                        },
+                        // `Del` removes membership, not just the bypass flag: the
+                        // focused pedal on the pedalboard, or the selected stage on
+                        // the ribbon. `Backspace` is the same key on keyboards
+                        // without a dedicated delete. The timeline's own `Del`
+                        // arm above claims the key while it owns focus.
+                        KeyCode::Delete | KeyCode::Backspace => {
+                            let pedal = match focus {
+                                Some(CHAIN_TILE) if !header_on_master => chain_cursor.pedal_index(),
+                                Some(i) => pedal_of(i),
+                                None => None,
+                            };
+                            if let Some(pi) = pedal {
                                 remove_pedal(&params, &mut board, pi);
                                 focus = Some(ADD_TILE);
                             }
@@ -2391,35 +2431,6 @@ pub fn run(
                                 save_msg = Some((w, std::time::Instant::now()));
                             }
                         }
-                        // Space bypasses the selected stage; on the master cell it
-                        // resets the rig output to unity, the one neutral value.
-                        KeyCode::Char(' ') if focus == Some(CHAIN_TILE) && !header_on_master => {
-                            if chain_cursor.pedal_index().is_none() {
-                                save_msg = Some((
-                                    "Amp and cab cannot be bypassed".to_owned(),
-                                    std::time::Instant::now(),
-                                ));
-                            } else {
-                                toggle_stage(&params, &board, chain_cursor);
-                            }
-                        }
-                        KeyCode::Char(' ') if focus == Some(CHAIN_TILE) => {
-                            params.master_output.store(
-                                crate::dsp::DEFAULT_MASTER_OUTPUT,
-                                std::sync::atomic::Ordering::Relaxed,
-                            );
-                            save_msg =
-                                Some(("Master: +0.0 dB".to_string(), std::time::Instant::now()));
-                        }
-                        KeyCode::Char(' ') => match focus {
-                            Some(ADD_TILE) => {
-                                add_open = true;
-                                add_cursor = 0;
-                            }
-                            Some(PRACTICE_TILE) => {}
-                            Some(i) => toggle_pedal(&params, i),
-                            None => {}
-                        },
                         _ => {}
                     }
                 }
@@ -2582,7 +2593,7 @@ mod tests {
             "focus on a still-present pedal must not move"
         );
 
-        // Bypassing the pedal (Space) must not remove its tile.
+        // Bypassing the pedal (`D`) must not remove its tile.
         toggle_pedal(&params, PEDALS[3].start);
         assert!(!params.cmp_enabled.load(Relaxed));
         resync_board_after_rig_change(&params, &mut board, &mut focus, &panels);

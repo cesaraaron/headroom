@@ -41,7 +41,10 @@ cargo run --release -- --opaque
 | `P` | Preset browser |
 | `←` / `→` | Select a knob, stage, or panel cell |
 | `↑` / `↓` or `+` / `-` | Adjust the selected value |
-| `Space` | Bypass the focused pedal, keeping its tile (play/pause on the timeline) |
+| `Space` | Play / pause the timeline — works from any panel, reveals it without moving focus |
+| `Enter` | Jump to the timeline start (loop in-point if looped), from any panel |
+| `D` | Bypass the focused pedal or ribbon stage, keeping its tile |
+| `Del` | Remove the focused pedal (or selected ribbon stage) from the board |
 | `[` / `]` | Move the selected stage earlier or later |
 | `1`–`4` | Focus the chain, amp, timeline, or pedals |
 | `Shift+1`–`4` | Solo a panel: close the others, keep just that one |

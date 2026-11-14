@@ -1059,7 +1059,7 @@ pub struct Params {
     pub chain_order: Arc<[AtomicU8; CHAIN_LEN]>,
     pub chain_seq: Arc<AtomicU64>,
     /// Which pedals are physically on the board (bit `pedal_index`). Separate
-    /// from each pedal's `enabled` bypass flag, so Space can leave the tile in
+    /// from each pedal's `enabled` bypass flag, so `D` can leave the tile in
     /// place while turning the effect off.
     pub pedal_board: Arc<AtomicU32>,
     /// Serializes *writers* of the chain order so the seqlock stays single-writer.
@@ -1294,7 +1294,7 @@ impl Params {
     }
 
     /// Set membership from the current enabled flags (preset/session load and
-    /// factory reset). Space bypass does **not** call this.
+    /// factory reset). `D` bypass does **not** call this.
     pub fn refresh_board_from_enabled(&self) {
         let mut mask = 0u32;
         for id in ChainStage::default_order() {
@@ -1733,7 +1733,7 @@ impl Sig {
 ///
 /// **What this does *not* freeze.** Stage *bypass* is deliberately per sample:
 /// `run_ordered_stage` reads `stage_enabled` every sample and crossfades over
-/// [`BYPASS_DECLICK_SECS`], so a `Space` press lands on the next sample. That is
+/// [`BYPASS_DECLICK_SECS`], so a `D` press lands on the next sample. That is
 /// the intended behaviour — a bypass that could not take effect until the next
 /// block would feel laggy — but it means the "once per block" guarantee holds for
 /// the *topology* (amp, cab, `skip_cab`, `order`) and **not** for bypass. Every

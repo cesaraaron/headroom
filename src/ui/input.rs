@@ -1263,10 +1263,7 @@ mod tests {
         let before = flag.load(Relaxed);
         toggle_pedal(&p, PEDALS[0].start);
         assert_eq!(flag.load(Relaxed), !before);
-        assert!(
-            p.pedal_on_board(0),
-            "Space must leave the pedal on the board"
-        );
+        assert!(p.pedal_on_board(0), "D must leave the pedal on the board");
         toggle_pedal(&p, PEDALS[0].start);
         assert_eq!(flag.load(Relaxed), before);
         assert!(p.pedal_on_board(0));

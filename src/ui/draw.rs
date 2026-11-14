@@ -968,7 +968,7 @@ fn render_add_tile(f: &mut Frame, area: Rect, focused: bool) {
                     .add_modifier(dim),
             ),
             Span::styled(
-                if focused { "  Enter" } else { "" },
+                if focused { "  A" } else { "" },
                 Style::default().fg(theme().dim).add_modifier(dim),
             ),
         ]))
@@ -1103,10 +1103,7 @@ fn render_pedal_detail(
     let Some(pedal) = pedal else {
         // No pedal under focus: one-line state label, hint beneath it.
         let (label, hint) = if adding {
-            (
-                "ADD A PEDAL — Enter",
-                "Press Enter to add a pedal to the board.",
-            )
+            ("ADD A PEDAL — A", "Press A to add a pedal to the board.")
         } else {
             (
                 "SELECT A PEDAL — ←→",
@@ -1644,10 +1641,6 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
             "  note",
             "  between AMP and CAB = line-level; a full-rig AU is post-mic",
         ),
-        row(
-            "  Space",
-            "  bypass pedal / play transport under focus (amp/cab cannot be bypassed)",
-        ),
         head("Mouse"),
         row(
             "  click",
@@ -1657,8 +1650,9 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         row("  ↑/↓  +/−", "  knob / adjust value"),
         row(
             "  D",
-            "  remove pedal from the board (Space only bypasses it)",
+            "  bypass the focused pedal / ribbon stage (amp/cab cannot be bypassed)",
         ),
+        row("  Del", "  remove pedal from the board"),
         row(
             "  A",
             "  amp model browser (on the pedalboard: add a pedal)",
@@ -1670,7 +1664,7 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         row("  F4 / Ctrl+G", "  mains-hum floor: on / off (live A/B)"),
         row(
             "",
-            "  panel 1 master cell: ←/→ select it, ↑/↓ set the rig output",
+            "  panel 1 master cell: ←/→ select it, ↑/↓ set the rig output, D resets",
         ),
         row("  ;", "  tap tempo: set the delay time by tapping"),
     ];
@@ -1722,10 +1716,17 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         row("  x", "  A/B: swap the last two applied presets"),
         row("  d", "  delete (user presets only)"),
         row("  p", "  close the browser"),
+        head("Timeline (any panel)"),
+        row(
+            "  Space",
+            "  play / pause (shows the timeline, keeps focus)",
+        ),
+        row(
+            "  Enter",
+            "  jump to start (loop in-point if looped; shows the timeline, keeps focus)",
+        ),
         head("Timeline (focused)"),
-        row("  Space", "  play / pause (any row)"),
         row("  m / M", "  mute the selected track / open the metronome"),
-        row("  Enter", "  jump to start (loop in-point if looped)"),
         row("  ↑/↓  ←/→", "  select row / seek by the step"),
         row(
             "  +/−",

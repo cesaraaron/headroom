@@ -10,19 +10,19 @@ expression: text
 │         ···                ···      ║  ←/→  move within the panel · Shift+←/→ jumps amp↔cab / pedal-to-pedal                    ║            ···              ···      │
 │        · ● ◇              · ● ·     ║  [ / ]  move the ribbon's stage earlier / later                                           ║           · ● ·            · ● ·     │
 │         · ·                ◇ ·      ║  note  between AMP and CAB = line-level; a full-rig AU is post-mic                        ║            ◇ ·              ◇ ·      │
-│     VOL II 7.5          VOL I 0.0   ║  Space  bypass pedal / play transport under focus (amp/cab cannot be bypassed)            ║0        BLEND 0.0        ROOM 0.0    │
-│                                     ║Mouse                                                                                      ║                                      │
-│▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚║  click  focus a panel / knob / tile / row · waveform seeks · Shift+drag selects           ║▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚│
-╰─────────────────────────────────────║Play & edit                                                                                ║──────────────────────────────────────╯
-╭ GUITAR RIG ─────────────────────────║  ↑/↓  +/−  knob / adjust value                                                            ║──────────────────────────────────────╮
-│╭ + ADD ─────────────────────────────║  D  remove pedal from the board (Space only bypasses it)                                  ║─────────────────────────────────────╮│
+│     VOL II 7.5          VOL I 0.0   ║Mouse                                                                                      ║0        BLEND 0.0        ROOM 0.0    │
+│                                     ║  click  focus a panel / knob / tile / row · waveform seeks · Shift+drag selects           ║                                      │
+│▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚║Play & edit                                                                                ║▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚│
+╰─────────────────────────────────────║  ↑/↓  +/−  knob / adjust value                                                            ║──────────────────────────────────────╯
+╭ GUITAR RIG ─────────────────────────║  D  bypass the focused pedal / ribbon stage (amp/cab cannot be bypassed)                  ║──────────────────────────────────────╮
+│╭ + ADD ─────────────────────────────║  Del  remove pedal from the board                                                         ║─────────────────────────────────────╮│
 ││                                    ║  A  amp model browser (on the pedalboard: add a pedal)                                    ║                                     ││
 │╰────────────────────────────────────║  C  cabinet model browser                                                                 ║─────────────────────────────────────╯│
 │╭────────────────────────────────────║  I / X  IR browser / IR bypass                                                            ║─────────────────────────────────────╮│
 ││SELECT A PEDAL — ←→                 ║  O  change audio devices                                                                  ║                                     ││
 ││                                    ║  W  studio-master width: neutral / wide                                                   ║                                     ││
 ││                                    ║  F4 / Ctrl+G  mains-hum floor: on / off (live A/B)                                        ║                                     ││
-││                                    ║  panel 1 master cell: ←/→ select it, ↑/↓ set the rig output                               ║                                     ││
+││                                    ║  panel 1 master cell: ←/→ select it, ↑/↓ set the rig output, D resets                     ║                                     ││
 ││                                    ║  ;  tap tempo: set the delay time by tapping                                              ║                                     ││
 ││                                    ║Tools                                                                                      ║                                     ││
 │╰────────────────────────────────────║  P  preset browser (rig snapshot)                                                         ║─────────────────────────────────────╯│
@@ -51,9 +51,9 @@ expression: text
                                       ║  x  A/B: swap the last two applied presets                                                ║                                       
                                       ║  d  delete (user presets only)                                                            ║                                       
                                       ║  p  close the browser                                                                     ║                                       
+                                      ║Timeline (any panel)                                                                       ║                                       
+                                      ║  Space  play / pause (shows the timeline, keeps focus)                                    ║                                       
+                                      ║  Enter  jump to start (loop in-point if looped; shows the timeline, keeps focus)          ║                                       
                                       ║Timeline (focused)                                                                         ║                                       
-                                      ║  Space  play / pause (any row)                                                            ║                                       
-                                      ║  m / M  mute the selected track / open the metronome                                      ║                                       
-                                      ║  Enter  jump to start (loop in-point if looped)                                           ║                                       
                                       ║                          ↑/↓  PgUp/PgDn scroll  ·  Esc / K close                          ║                                       
                                       ╚═══════════════════════════════════════════════════════════════════════════════════════════╝
