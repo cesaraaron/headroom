@@ -3288,7 +3288,12 @@ mod tests {
         let text = render_with(&params, &board, None, |f| {
             render_help_modal(f, &mut 0);
         });
+        // The help lists the macOS-only AU keys only on macOS, so the golden is
+        // platform-specific.
+        #[cfg(all(feature = "au", target_os = "macos"))]
         insta::assert_snapshot!("help_modal", text);
+        #[cfg(not(all(feature = "au", target_os = "macos")))]
+        insta::assert_snapshot!("help_modal_no_au", text);
     }
 
     /// The save-preset dialog with both fields filled, focus on the name field.
