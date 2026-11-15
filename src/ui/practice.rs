@@ -26,7 +26,7 @@ use ratatui::{
 };
 use std::sync::atomic::Ordering::Relaxed;
 
-use super::styles::{frame_set, panel_border_style, panel_style, shade, theme};
+use super::styles::{frame_set, mix, panel_border_style_at, panel_style, shade, theme};
 use crate::audio::AudioEngine;
 use crate::audio::calibration::{InputCalibration, REFERENCE_VERSION};
 use crate::dsp::Params;
@@ -1810,15 +1810,16 @@ impl PracticeUi {
 
     // ── Rendering ───────────────────────────────────────────────────────────────
 
-    /// Render the timeline pane. `focused` is true while the pane owns focus;
-    /// `recording` drives the transport REC lamp.
+    /// Render the timeline pane. `emphasis` is the pane's reveal: 1.0 while it
+    /// owns focus, 0.0 when settled unfocused, in between mid fade. `recording`
+    /// drives the transport REC lamp.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn render(
         &self,
         f: &mut Frame,
         area: Rect,
         practice: &Practice,
-        focused: bool,
+        emphasis: f32,
         blink: bool,
         recording: bool,
         hits: &mut HitMap,
@@ -1826,15 +1827,20 @@ impl PracticeUi {
         if area.height < 2 || area.width < 4 {
             return;
         }
-        let focused_glyph = if focused {
-            theme().accent
-        } else {
-            shade(theme().accent, 0.55)
-        };
+        // The hint row swaps its whole text between the focused and unfocused
+        // variants, and text cannot fade: keep the focused keys up for the whole
+        // transition instead of switching them at the midpoint, which would flash
+        // a different row for half the animation.
+        let focused = emphasis > 0.0;
+        let focused_glyph = mix(
+            shade(theme().accent, 0.55),
+            theme().accent,
+            emphasis.clamp(0.0, 1.0),
+        );
         let block = Block::default()
             .borders(Borders::ALL)
             .border_set(frame_set(border::PLAIN))
-            .border_style(panel_border_style(focused))
+            .border_style(panel_border_style_at(emphasis))
             .title(Line::from(Span::styled(
                 " T I M E L I N E ",
                 Style::default()
@@ -3805,7 +3811,7 @@ mod tests {
         let mut hits: HitMap = HitMap::new();
         term.draw(|f| {
             let area = f.area();
-            ui.render(f, area, &practice, true, false, false, &mut hits);
+            ui.render(f, area, &practice, 1.0, false, false, &mut hits);
         })
         .expect("draw");
 
@@ -3879,7 +3885,7 @@ mod tests {
             ui.row_zoom = zoom;
             term.draw(|f| {
                 let area = f.area();
-                ui.render(f, area, &practice, true, false, false, &mut HitMap::new());
+                ui.render(f, area, &practice, 1.0, false, false, &mut HitMap::new());
             })
             .expect("draw");
             let text = screen_text(&term);
@@ -3918,11 +3924,12 @@ mod tests {
         assert_eq!(ui.selection, Selection::Track(1), "first track is selected");
 
         let mut term = Terminal::new(TestBackend::new(90, 12)).expect("test backend");
-        for focused in [true, false] {
+        for emphasis in [1.0f32, 0.0] {
+            let focused = emphasis > 0.5;
             let mut hits: HitMap = HitMap::new();
             term.draw(|f| {
                 let area = f.area();
-                ui.render(f, area, &practice, focused, false, false, &mut hits);
+                ui.render(f, area, &practice, emphasis, false, false, &mut hits);
             })
             .expect("draw");
             let buf = term.backend().buffer();
@@ -4006,7 +4013,7 @@ mod tests {
         let mut hits: HitMap = HitMap::new();
         term.draw(|f| {
             let area = f.area();
-            ui.render(f, area, &practice, true, false, false, &mut hits);
+            ui.render(f, area, &practice, 1.0, false, false, &mut hits);
         })
         .expect("draw");
         let buf = term.backend().buffer();
@@ -4071,7 +4078,7 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(90, 12)).expect("test backend");
         term.draw(|f| {
             let area = f.area();
-            ui.render(f, area, &practice, true, false, false, &mut HitMap::new());
+            ui.render(f, area, &practice, 1.0, false, false, &mut HitMap::new());
         })
         .expect("draw");
         let text = screen_text(&term);
@@ -4213,7 +4220,7 @@ mod tests {
         let render = |ui: &PracticeUi, term: &mut Terminal<TestBackend>| {
             term.draw(|f| {
                 let area = f.area();
-                ui.render(f, area, &practice, true, false, false, &mut HitMap::new());
+                ui.render(f, area, &practice, 1.0, false, false, &mut HitMap::new());
             })
             .expect("draw");
             screen_text(term)
@@ -4328,7 +4335,7 @@ mod tests {
         let render = |ui: &PracticeUi, term: &mut Terminal<TestBackend>| {
             term.draw(|f| {
                 let area = f.area();
-                ui.render(f, area, &practice, true, false, false, &mut HitMap::new());
+                ui.render(f, area, &practice, 1.0, false, false, &mut HitMap::new());
             })
             .expect("draw");
             screen_text(term)
@@ -4430,7 +4437,7 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(90, 16)).expect("test backend");
         term.draw(|f| {
             let area = f.area();
-            ui.render(f, area, &practice, true, false, false, &mut HitMap::new());
+            ui.render(f, area, &practice, 1.0, false, false, &mut HitMap::new());
         })
         .expect("draw");
         let text = screen_text(&term);

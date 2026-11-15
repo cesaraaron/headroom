@@ -100,6 +100,28 @@ pub(super) fn cycle_theme() {
     set_theme(theme_index().wrapping_add(1));
 }
 
+// ── Focus animation preference ────────────────────────────────────────────────
+// Panel focus changes cross-fade (see `super::fade`). On by default; `F6` turns
+// it off for a snappier UI or a terminal that cannot keep up, and `ui.conf`
+// remembers the choice across runs. Set from the UI thread, read while rendering
+// (never on the audio thread).
+static ANIMATIONS: AtomicBool = AtomicBool::new(true);
+
+pub(super) fn animations() -> bool {
+    ANIMATIONS.load(Ordering::Relaxed)
+}
+
+pub(super) fn set_animations(on: bool) {
+    ANIMATIONS.store(on, Ordering::Relaxed);
+}
+
+/// Flip the animation preference (`F6`); returns the new state.
+pub(super) fn toggle_animations() -> bool {
+    let on = !animations();
+    set_animations(on);
+    on
+}
+
 // ── Panel frame look ──────────────────────────────────────────────────────────
 // A small ladder of cumulative panel-border looks, cycled live with `F5` so a
 // change can be compared against earlier rungs without a rebuild. `rounded` is
@@ -203,28 +225,78 @@ pub(super) fn shade(c: Color, factor: f32) -> Color {
     }
 }
 
+/// Blend two colors: `t` 0.0 is `a`, 1.0 is `b`. A terminal has no alpha
+/// channel, so every fade in this UI is a color interpolation rather than an
+/// opacity ramp. Named/indexed colors cannot be interpolated, so they snap at
+/// the halfway point.
+pub(super) fn mix(a: Color, b: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    match (a, b) {
+        (Color::Rgb(ar, ag, ab), Color::Rgb(br, bg, bb)) => {
+            let lerp =
+                |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * t).round() as u8;
+            Color::Rgb(lerp(ar, br), lerp(ag, bg), lerp(ab, bb))
+        }
+        _ if t >= 0.5 => b,
+        _ => a,
+    }
+}
+
 /// Border style for a structural panel: the full [`Theme::border`] when the
 /// region is active/focused, otherwise a heavily faded border with the
 /// terminal's `DIM` attribute, so the focused region stands out.
-pub(super) fn panel_border_style(active: bool) -> Style {
-    if active {
+///
+/// `emphasis` 0.0 is the settled unfocused frame and 1.0 the settled focused
+/// one, and the color ramps between them while a panel fades. The `BOLD`/`DIM`
+/// modifiers stay pinned to the two settled ends (they cannot be interpolated,
+/// and switching them mid-ramp would show as a step), so a fading frame is pure
+/// color — exactly where the eye is.
+pub(super) fn panel_border_style_at(emphasis: f32) -> Style {
+    let e = emphasis.clamp(0.0, 1.0);
+    if e >= 1.0 {
         Style::default()
             .fg(theme().border)
             .add_modifier(Modifier::BOLD)
-    } else {
+    } else if e <= 0.0 {
         Style::default()
             .fg(shade(theme().border, 0.35))
             .add_modifier(Modifier::DIM)
+    } else {
+        Style::default().fg(mix(shade(theme().border, 0.35), theme().border, e))
     }
 }
 
 /// Color for a region's on-border glyphs (titles), matching
-/// [`panel_border_style`].
-pub(super) fn panel_edge_color(active: bool) -> Color {
-    if active {
-        theme().border
-    } else {
-        shade(theme().border, 0.35)
+/// [`panel_border_style_at`], ramped by the same emphasis.
+pub(super) fn panel_edge_color_at(emphasis: f32) -> Color {
+    mix(
+        shade(theme().border, 0.35),
+        theme().border,
+        emphasis.clamp(0.0, 1.0),
+    )
+}
+
+// ── Preferences file ──────────────────────────────────────────────────────────
+// `~/.config/headroom/ui.conf` holds the choices that outlive a run: the palette
+// and whether focus changes animate. Both live in one file, so a write from
+// either switch rewrites the whole set rather than clobbering the other key
+// (mirrors the `midi.conf` shape: `key = value`, temp file + rename).
+
+/// Everything `ui.conf` stores.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct UiPrefs {
+    /// Palette index in [`THEMES`].
+    pub(super) theme: u8,
+    /// Whether a focus change cross-fades.
+    pub(super) animations: bool,
+}
+
+impl Default for UiPrefs {
+    fn default() -> Self {
+        Self {
+            theme: DEFAULT_THEME,
+            animations: true,
+        }
     }
 }
 
@@ -233,45 +305,91 @@ fn ui_conf_path() -> Option<std::path::PathBuf> {
     dirs::home_dir().map(|h| h.join(".config").join("headroom").join("ui.conf"))
 }
 
-/// Load a saved theme id (`theme = <n>`); missing/corrupt files mean the
-/// default — a fresh install has no config dir yet, and a forward-dated id
-/// clamps in `set_theme`.
-pub(super) fn load_theme_conf() {
+/// Load the saved preferences. A missing or corrupt file means the defaults — a
+/// fresh install has no config dir yet, and a forward-dated theme id clamps in
+/// `set_theme`.
+pub(super) fn load_ui_conf() {
     let Some(path) = ui_conf_path() else {
         return;
     };
-    load_theme_conf_at(&path);
+    apply_ui_conf(read_ui_conf_at(&path));
 }
 
-pub(super) fn load_theme_conf_at(path: &std::path::Path) {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return;
-    };
-    for line in text.lines() {
-        if let Some(v) = line.trim().strip_prefix("theme")
-            && let Some(v) = v.trim().strip_prefix('=')
-            && let Ok(i) = v.trim().parse::<u8>()
-        {
-            set_theme(i);
-            return;
-        }
+/// The live preference set, for writing.
+pub(super) fn current_ui_prefs() -> UiPrefs {
+    UiPrefs {
+        theme: theme_index(),
+        animations: animations(),
     }
 }
 
-/// Persist the theme id atomically (temp file + rename, like `midi.conf`).
-pub(super) fn write_theme_conf() {
+pub(super) fn apply_ui_conf(prefs: UiPrefs) {
+    set_theme(prefs.theme);
+    set_animations(prefs.animations);
+}
+
+/// Parse a conf file. Unknown keys and unparsable values are skipped, so a file
+/// written by a newer build still loads the keys this one knows, and a file from
+/// before a key existed leaves that key at its default.
+pub(super) fn read_ui_conf_at(path: &std::path::Path) -> UiPrefs {
+    let mut prefs = UiPrefs::default();
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return prefs;
+    };
+    for line in text.lines() {
+        let Some((key, value)) = line.trim().split_once('=') else {
+            continue;
+        };
+        match key.trim() {
+            "theme" => {
+                if let Ok(i) = value.trim().parse::<u8>() {
+                    prefs.theme = i;
+                }
+            }
+            "animations" => {
+                if let Some(on) = parse_switch(value.trim()) {
+                    prefs.animations = on;
+                }
+            }
+            _ => {}
+        }
+    }
+    prefs
+}
+
+/// `on` / `off` is what this writes; the rest are accepted so a hand-edited conf
+/// reads the way a person would expect to write it.
+fn parse_switch(value: &str) -> Option<bool> {
+    match value.to_ascii_lowercase().as_str() {
+        "1" | "on" | "true" | "yes" => Some(true),
+        "0" | "off" | "false" | "no" => Some(false),
+        _ => None,
+    }
+}
+
+/// Persist the whole preference set atomically (temp file + rename, like
+/// `midi.conf`). Every key is written every time, so flipping one switch can
+/// never erase the other.
+pub(super) fn write_ui_conf() {
     let Some(path) = ui_conf_path() else {
         return;
     };
-    let _ = write_theme_conf_at(&path, theme_index());
+    let _ = write_ui_conf_at(&path, current_ui_prefs());
 }
 
-pub(super) fn write_theme_conf_at(path: &std::path::Path, index: u8) -> std::io::Result<()> {
+pub(super) fn write_ui_conf_at(path: &std::path::Path, prefs: UiPrefs) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let tmp = path.with_extension("conf.tmp");
-    std::fs::write(&tmp, format!("theme = {index}\n"))?;
+    std::fs::write(
+        &tmp,
+        format!(
+            "theme = {}\nanimations = {}\n",
+            prefs.theme,
+            if prefs.animations { "on" } else { "off" }
+        ),
+    )?;
     std::fs::rename(&tmp, path)
 }
 
@@ -400,38 +518,169 @@ mod tests {
         assert_eq!(theme_name(), "rust");
     }
 
-    /// A missing `ui.conf` is the fresh-install case: the default palette, no
-    /// error, no state change.
+    /// A missing `ui.conf` is the fresh-install case: the default palette and
+    /// animations on, no error, no state change.
     #[test]
-    fn theme_conf_missing_means_default() {
+    fn ui_conf_missing_means_defaults() {
         let _guard = THEME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_theme(DEFAULT_THEME);
+        set_animations(true);
         let dir = std::env::temp_dir().join("headroom-no-such-dir-xyz");
-        load_theme_conf_at(&dir.join("ui.conf"));
+        apply_ui_conf(read_ui_conf_at(&dir.join("ui.conf")));
         assert_eq!(theme_name(), "rust");
+        assert!(animations(), "a fresh install animates");
     }
 
-    /// A conf round-trips, and the default is what a fresh install writes.
-    /// Uses a temp path so the real config dir is never touched.
+    /// Both preferences round-trip, and the defaults are what a fresh install
+    /// writes. Uses a temp path so the real config dir is never touched.
     #[test]
-    fn theme_conf_round_trips() {
+    fn ui_conf_round_trips() {
         let _guard = THEME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let path = std::env::temp_dir().join("headroom-theme-test-ui.conf");
         let _ = std::fs::remove_file(&path);
 
         // A conf saved before `rust` was the default still means `teal`.
-        write_theme_conf_at(&path, 0).expect("write conf");
+        write_ui_conf_at(
+            &path,
+            UiPrefs {
+                theme: 0,
+                animations: false,
+            },
+        )
+        .expect("write conf");
         set_theme(DEFAULT_THEME);
-        load_theme_conf_at(&path);
+        set_animations(true);
+        apply_ui_conf(read_ui_conf_at(&path));
         assert_eq!(theme_name(), "teal");
+        assert!(!animations(), "the switch must survive a restart");
 
-        write_theme_conf_at(&path, DEFAULT_THEME).expect("write conf");
+        write_ui_conf_at(&path, UiPrefs::default()).expect("write conf");
         set_theme(0);
-        load_theme_conf_at(&path);
+        set_animations(false);
+        apply_ui_conf(read_ui_conf_at(&path));
         assert_eq!(theme_name(), "rust");
+        assert!(animations());
 
         set_theme(DEFAULT_THEME);
+        set_animations(true);
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// A conf written before the animation switch existed (theme only) keeps the
+    /// animation default: an upgrade must not silently turn the fade off.
+    #[test]
+    fn an_older_conf_leaves_animations_on() {
+        let _guard = THEME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let path = std::env::temp_dir().join("headroom-old-ui-conf.conf");
+        std::fs::write(&path, "theme = 0\n").expect("write legacy conf");
+
+        set_animations(false);
+        apply_ui_conf(read_ui_conf_at(&path));
+        assert_eq!(theme_name(), "teal");
+        assert!(animations(), "a missing key must fall back to the default");
+
+        set_theme(DEFAULT_THEME);
+        set_animations(true);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Flipping one switch rewrites the whole file, so it can never erase the
+    /// other key — the failure mode a two-writer conf invites.
+    #[test]
+    fn writing_one_preference_preserves_the_other() {
+        let _guard = THEME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let path = std::env::temp_dir().join("headroom-ui-conf-preserve.conf");
+
+        write_ui_conf_at(
+            &path,
+            UiPrefs {
+                theme: 0,
+                animations: false,
+            },
+        )
+        .expect("write conf");
+        set_theme(0);
+        set_animations(false);
+
+        // F6 equivalent: flip the switch, then persist the live set.
+        toggle_animations();
+        write_ui_conf_at(&path, current_ui_prefs()).expect("write conf");
+
+        set_theme(DEFAULT_THEME);
+        set_animations(false);
+        let loaded = read_ui_conf_at(&path);
+        assert_eq!(loaded.theme, 0, "the theme must survive an F6 write");
+        assert!(loaded.animations, "the new switch value must be written");
+
+        set_theme(DEFAULT_THEME);
+        set_animations(true);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The file format is plain `key = on|off`, and a hand edit in any of the
+    /// usual spellings reads the way the writer meant; junk lines are ignored.
+    #[test]
+    fn the_conf_parses_common_spellings() {
+        let dir = std::env::temp_dir().join("headroom-ui-conf-spellings");
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("ui.conf");
+
+        for (raw, expected) in [
+            ("on", true),
+            ("off", false),
+            ("true", true),
+            ("0", false),
+            ("YES", true),
+            ("garbage", true), // unparsable: falls back to the default
+        ] {
+            std::fs::write(&path, format!("theme = 1\nanimations = {raw}\n")).expect("write");
+            assert_eq!(read_ui_conf_at(&path).animations, expected, "{raw}");
+        }
+
+        std::fs::write(&path, "not a key value line\ntheme=1\n").expect("write");
+        let prefs = read_ui_conf_at(&path);
+        assert_eq!(prefs.theme, 1, "junk lines are skipped, not fatal");
+        assert!(prefs.animations);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `mix` is the fade's only primitive: pinned at both ends and clamped
+    /// outside them, so a settled frame is exactly the color it always was.
+    #[test]
+    fn mix_is_pinned_and_clamped() {
+        let a = Color::Rgb(10, 20, 30);
+        let b = Color::Rgb(110, 220, 130);
+        assert_eq!(mix(a, b, 0.0), a);
+        assert_eq!(mix(a, b, 1.0), b);
+        assert_eq!(mix(a, b, 0.5), Color::Rgb(60, 120, 80));
+        assert_eq!(mix(a, b, -1.0), a, "out of range clamps, never wraps");
+        assert_eq!(mix(a, b, 9.0), b);
+    }
+
+    /// A panel's border at the two ends of the ramp is exactly the old boolean
+    /// rendering, and mid-fade carries no `BOLD`/`DIM` step — so the animation
+    /// never moved a settled frame and never pops mid-ramp.
+    #[test]
+    fn the_border_ramp_ends_are_the_settled_styles() {
+        let _guard = THEME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        set_theme(DEFAULT_THEME);
+
+        let focused = panel_border_style_at(1.0);
+        assert_eq!(focused.fg, Some(theme().border));
+        assert!(focused.add_modifier.contains(Modifier::BOLD));
+
+        let receded = panel_border_style_at(0.0);
+        assert_eq!(receded.fg, Some(shade(theme().border, 0.35)));
+        assert!(receded.add_modifier.contains(Modifier::DIM));
+
+        let mid = panel_border_style_at(0.5);
+        assert_eq!(mid.add_modifier, Modifier::empty());
+        assert_ne!(mid.fg, focused.fg);
+        assert_ne!(mid.fg, receded.fg);
+
+        assert_eq!(panel_edge_color_at(1.0), theme().border);
+        assert_eq!(panel_edge_color_at(0.0), shade(theme().border, 0.35));
     }
 
     /// The frame ladder is cumulative and clamps: level 0 is the shipped look
@@ -480,9 +729,16 @@ mod tests {
         assert_eq!(theme_name(), "rust");
         cycle_theme();
         assert_eq!(theme_name(), "teal");
-        write_theme_conf_at(&path, theme_index()).expect("write conf");
+        write_ui_conf_at(&path, current_ui_prefs()).expect("write conf");
         let body = std::fs::read_to_string(&path).expect("read conf");
-        assert_eq!(body, "theme = 0\n");
+        assert!(
+            body.starts_with("theme = 0\n"),
+            "the theme must be written first: {body:?}"
+        );
+        assert!(
+            body.contains("animations = on\n"),
+            "the write must carry every key: {body:?}"
+        );
 
         cycle_theme();
         assert_eq!(theme_name(), "rust", "cycling must wrap");

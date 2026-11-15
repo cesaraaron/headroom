@@ -54,7 +54,10 @@ cargo run --release -- --opaque
 | `L` | In the import browser: library settings (path, only, subpaths) |
 | `N` | Calibrate the input level |
 | `F2` | MIDI bindings (learn a controller) |
+| `F3` | Cycle the UI theme (`rust` / `teal`, saved) |
 | `F4` / `Ctrl+G` | Toggle the mains-hum floor (live A/B) |
+| `F5` | Cycle the panel look (rounded / classic) |
+| `F6` | Panel focus animation on / off (saved, on by default) |
 | `Q` | Quit |
 
 ## Mouse

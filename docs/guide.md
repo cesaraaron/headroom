@@ -116,6 +116,13 @@ hard the ceiling is working. Press **`F3`** to cycle the UI theme — `rust` (th
 default, the warm amber-orange of the project this one is forked from) or `teal`;
 the choice is saved and restored on restart.
 
+Moving the focus between panels cross-fades the highlight over about a sixth of a
+second, so a `Tab` or a number key reads as a move rather than a jump. Press
+**`F6`** to turn that animation off — the highlight then switches instantly, which
+some people prefer and some slow terminals need. It is on by default, and the
+choice is saved with the theme (`~/.config/headroom/ui.conf`) and restored on
+restart.
+
 `W` toggles the master-bus stereo width (neutral / wide).
 
 `S` saves the session to its folder; when the session is new the session

@@ -3,6 +3,7 @@ mod amp_plugins;
 mod calibration;
 mod config;
 mod draw;
+mod fade;
 mod hit;
 mod input;
 mod ir_browser;
@@ -22,7 +23,7 @@ use std::sync::Arc;
 use std::sync::mpsc::TryRecvError;
 
 use crate::export::{self as exporter, ExportHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use crossterm::{
@@ -42,9 +43,10 @@ use crate::recording::CaptureState;
 
 use config::{ADD_TILE, AMP_END, AMP_START, CHAIN_TILE, PEDALS, PRACTICE_TILE, Panels, pedal_of};
 use draw::{
-    draw, render_add_pedal_modal, render_amp_modal, render_cab_modal, render_export_progress,
-    render_help_modal,
+    draw_animated, render_add_pedal_modal, render_amp_modal, render_cab_modal,
+    render_export_progress, render_help_modal,
 };
+use fade::PanelFade;
 use hit::{HitMap, HitTarget, hit_test};
 use input::{
     PanelMemory, add_pedal, amp_choices, apply_hit, cab_choices, cycle_panel, ensure_focus_visible,
@@ -446,7 +448,7 @@ pub fn run(
     // passed. Set once here; every panel/modal reads it via `styles::panel_style`.
     styles::set_opaque(opaque);
     // Saved palette, if any (missing file = default; set once like above).
-    styles::load_theme_conf();
+    styles::load_ui_conf();
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     // Mouse capture stays on for the whole run: clicks focus panels/cells. Normal
@@ -458,6 +460,9 @@ pub fn run(
     // ── Session state (persists across a device change) ───────────────────────
     // Focus starts on the practice timeline; every panel is visible at startup.
     let mut focus: Option<usize> = Some(PRACTICE_TILE);
+    // Cross-fade clock for panel focus changes. Settled at the opening focus, so
+    // startup is not an animation.
+    let mut focus_fade = PanelFade::new(focus);
     // Selected stage within the ribbon; follows its stage through moves.
     let mut chain_cursor: ChainStage = ChainStage::Amp;
     // Panel 1: whether the header cursor is on the master-output cell.
@@ -674,6 +679,16 @@ pub fn run(
         let mut pending_action: Option<UnsavedAction> = None;
         loop {
             tick = tick.wrapping_add(1);
+            // Start the panel cross-fade before drawing: focus is repaired and
+            // moved from the previous pass's keys/clicks, so the frame below is
+            // the first one that should show the transition.
+            // Off (F6) means the highlight jumps: land the clock on the current
+            // focus instead of starting a transition.
+            if styles::animations() {
+                focus_fade.observe(focus, Instant::now());
+            } else {
+                focus_fade.jump(focus);
+            }
             // Stream error callbacks only bump atomics; log from here (roughly
             // every five seconds) so no stream thread touches the filesystem.
             if tick.is_multiple_of(300) {
@@ -879,7 +894,7 @@ pub fn run(
             // resolves a press against this frame's map.
             let mut hit_map: HitMap = HitMap::new();
             terminal.draw(|f| {
-                hit_map = draw(
+                hit_map = draw_animated(
                     f,
                     &params,
                     &levels,
@@ -898,6 +913,7 @@ pub fn run(
                     Some((session_label.as_str(), session_dirty)),
                     unsaved_view.as_ref(),
                     Some((&practice, &practice_ui)),
+                    &focus_fade,
                 );
                 if add_open {
                     let available: Vec<usize> = (0..PEDALS.len()).filter(|&i| !board[i]).collect();
@@ -1013,7 +1029,14 @@ pub fn run(
             // Drain calibration windows and advance the wizard's timed steps.
             cal_ui.tick(&mut engine, &calibration);
 
-            let ev = if event::poll(Duration::from_millis(30))? {
+            // A running cross-fade needs real frames to play on; idle stays at the
+            // cheap 30 ms tick.
+            let idle = if focus_fade.running(Instant::now()) {
+                Duration::from_millis(16)
+            } else {
+                Duration::from_millis(30)
+            };
+            let ev = if event::poll(idle)? {
                 Some(event::read()?)
             } else {
                 None
@@ -1099,7 +1122,7 @@ pub fn run(
                 // toast + write-back; theme #2 makes it a real switch.
                 if key.code == KeyCode::F(3) && !any_overlay {
                     styles::cycle_theme();
-                    styles::write_theme_conf();
+                    styles::write_ui_conf();
                     save_msg = Some((
                         format!("Theme: {}", styles::theme_name()),
                         std::time::Instant::now(),
@@ -1131,6 +1154,19 @@ pub fn run(
                     styles::cycle_frame();
                     save_msg = Some((
                         format!("Panels: {}", styles::frame_name()),
+                        std::time::Instant::now(),
+                    ));
+                    continue;
+                }
+
+                // Focus animation: F6 turns the panel cross-fade on or off and
+                // writes the choice to `ui.conf`, so it survives a restart. Off
+                // means the highlight jumps, exactly as it did before the fade.
+                if key.code == KeyCode::F(6) && !any_overlay {
+                    let on = styles::toggle_animations();
+                    styles::write_ui_conf();
+                    save_msg = Some((
+                        format!("Animations: {}", if on { "on" } else { "off" }),
                         std::time::Instant::now(),
                     ));
                     continue;

@@ -7,15 +7,18 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
 };
 use std::sync::atomic::Ordering::Relaxed;
+use std::time::Instant;
 
 use crate::audio::calibration::InputCalibration;
 use crate::dsp::{AmpModel, CabModel, ChainStage, Levels, Params, master_output_db};
 use crate::practice::Practice;
 
 use super::config::{
-    ADD_TILE, AMP_END, AMP_START, CHAIN_TILE, KNOBS, MIC_END, MIC_START, PEDALS, PRACTICE_TILE,
-    Panels, Pedal, PedalUi,
+    ADD_TILE, AMP_END, AMP_START, KNOBS, MIC_END, MIC_START, PEDALS, Panels, Pedal, PedalUi,
 };
+#[cfg(test)]
+use super::config::{CHAIN_TILE, PRACTICE_TILE};
+use super::fade::PanelFade;
 #[cfg(test)]
 use super::hit::hit_test;
 use super::hit::{HitMap, HitTarget};
@@ -44,7 +47,110 @@ pub(super) fn draw(
     unsaved: Option<&UnsavedPrompt>,
     timeline: Option<(&Practice, &PracticeUi)>,
 ) -> HitMap {
+    // Settled cross-fade: the device picker and the snapshot tests render exactly
+    // the pre-animation frame.
+    draw_animated(
+        f,
+        params,
+        levels,
+        cal,
+        focus,
+        board,
+        recording,
+        blink,
+        status,
+        plugin,
+        ext_cab,
+        ext_amp,
+        panels,
+        chain_cursor,
+        master_selected,
+        session,
+        unsaved,
+        timeline,
+        &PanelFade::new(focus),
+    )
+}
+
+/// As [`draw`], with the panel cross-fade sampled from `fade`. The event loop
+/// owns that clock (see [`super::fade`]); everything else renders through
+/// [`draw`].
+#[allow(clippy::too_many_arguments)]
+pub(super) fn draw_animated(
+    f: &mut Frame,
+    params: &Params,
+    levels: &Levels,
+    cal: &InputCalibration,
+    focus: Option<usize>,
+    board: &[bool],
+    recording: bool,
+    blink: bool,
+    status: Option<&str>,
+    plugin: Option<&str>,
+    ext_cab: Option<&str>,
+    ext_amp: Option<&str>,
+    panels: Panels,
+    chain_cursor: ChainStage,
+    master_selected: bool,
+    session: Option<(&str, bool)>,
+    unsaved: Option<&UnsavedPrompt>,
+    timeline: Option<(&Practice, &PracticeUi)>,
+    fade: &PanelFade,
+) -> HitMap {
+    draw_at(
+        f,
+        params,
+        levels,
+        cal,
+        focus,
+        board,
+        recording,
+        blink,
+        status,
+        plugin,
+        ext_cab,
+        ext_amp,
+        panels,
+        chain_cursor,
+        master_selected,
+        session,
+        unsaved,
+        timeline,
+        fade,
+        Instant::now(),
+    )
+}
+
+/// The renderer proper, sampling `fade` at an explicit instant so a frame can be
+/// reproduced (tests) and so every panel on it moves together.
+#[allow(clippy::too_many_arguments)]
+fn draw_at(
+    f: &mut Frame,
+    params: &Params,
+    levels: &Levels,
+    cal: &InputCalibration,
+    focus: Option<usize>,
+    board: &[bool],
+    recording: bool,
+    blink: bool,
+    status: Option<&str>,
+    plugin: Option<&str>,
+    ext_cab: Option<&str>,
+    ext_amp: Option<&str>,
+    panels: Panels,
+    chain_cursor: ChainStage,
+    master_selected: bool,
+    session: Option<(&str, bool)>,
+    unsaved: Option<&UnsavedPrompt>,
+    timeline: Option<(&Practice, &PracticeUi)>,
+    fade: &PanelFade,
+    now: Instant,
+) -> HitMap {
     let area = f.area();
+
+    // Every panel's current reveal, plus the cell the outgoing panel keeps lit
+    // until it is dark.
+    let reveal = |panel: u8| fade.reveal(panel, now);
 
     // No outer frame: the only bordered boxes on screen are the four panels
     // (chain, amp, timeline, rig). Layout runs directly on the full area.
@@ -102,7 +208,7 @@ pub(super) fn draw(
         plugin,
         ext_cab,
         ext_amp,
-        focus == Some(CHAIN_TILE),
+        reveal(1),
         chain_cursor,
         master_selected,
         &mut hits,
@@ -110,27 +216,37 @@ pub(super) fn draw(
     i += 1;
     if panels.amp {
         hits.push((rows[i], HitTarget::Panel(2)));
-        render_amp_panel(f, rows[i], params, focus, ext_cab, ext_amp, sr, &mut hits);
+        render_amp_panel(
+            f,
+            rows[i],
+            params,
+            fade.focus_in(2, focus, now),
+            ext_cab,
+            ext_amp,
+            sr,
+            reveal(2),
+            &mut hits,
+        );
         i += 1;
     }
     if show_timeline {
         if let Some((practice, ui)) = timeline {
             hits.push((rows[i], HitTarget::Panel(3)));
-            ui.render(
-                f,
-                rows[i],
-                practice,
-                focus == Some(PRACTICE_TILE),
-                blink,
-                recording,
-                &mut hits,
-            );
+            ui.render(f, rows[i], practice, reveal(3), blink, recording, &mut hits);
         }
         i += 1;
     }
     if panels.rig {
         hits.push((rows[i], HitTarget::Panel(4)));
-        render_rig(f, rows[i], params, board, focus, &mut hits);
+        render_rig(
+            f,
+            rows[i],
+            params,
+            board,
+            fade.focus_in(4, focus, now),
+            reveal(4),
+            &mut hits,
+        );
         i += 1;
     }
     render_help(
@@ -157,15 +273,16 @@ fn render_header(
     plugin: Option<&str>,
     ext_cab: Option<&str>,
     ext_amp: Option<&str>,
-    focused: bool,
+    emphasis: f32,
     cursor: ChainStage,
     master_selected: bool,
     hits: &mut HitMap,
 ) {
+    let focused = emphasis > 0.5;
     let block = Block::default()
         .borders(Borders::ALL)
         .border_set(frame_set(border::PLAIN))
-        .border_style(panel_border_style(focused))
+        .border_style(panel_border_style_at(emphasis))
         .title(
             Line::from(Span::styled("[ ] move", Style::default().fg(theme().dim))).right_aligned(),
         )
@@ -228,7 +345,10 @@ fn render_header(
                 let Some((label, on)) = pedal_stage_state(params, slot_stage) else {
                     continue;
                 };
-                if !on && !focused {
+                // A bypassed stage stays in the row for the whole fade-out; it
+                // collapses only once the ribbon is dark, so losing focus never
+                // reflows the row mid-animation.
+                if !on && emphasis <= 0.0 {
                     continue;
                 }
                 (label.to_owned(), on, theme().accent)
@@ -553,20 +673,15 @@ fn render_amp_panel(
     ext_cab: Option<&str>,
     ext_amp: Option<&str>,
     sr: f32,
+    emphasis: f32,
     hits: &mut HitMap,
 ) {
     let amp_active = focus.is_some_and(|i| (AMP_START..AMP_END).contains(&i));
     let mic_active = focus.is_some_and(|i| (MIC_START..MIC_END).contains(&i));
-    // Each box lights up while its own knob row owns focus.
-    let amp_box_active = amp_active;
-    let cab_box_active = mic_active;
-    let dim = |active: bool| {
-        if active {
-            Modifier::empty()
-        } else {
-            Modifier::DIM
-        }
-    };
+    // Each box lights up while its own knob row owns focus, and ramps with the
+    // panel's reveal so a focus change fades rather than snaps.
+    let amp_box = if amp_active { emphasis } else { 0.0 };
+    let cab_box = if mic_active { emphasis } else { 0.0 };
 
     // Side-by-side boxes filling the whole area; each owns its grille row.
     let boxes = Layout::default()
@@ -574,27 +689,8 @@ fn render_amp_panel(
         .constraints([Constraint::Ratio(7, 10), Constraint::Ratio(3, 10)])
         .split(area);
 
-    render_amp_box(
-        f,
-        boxes[0],
-        params,
-        focus,
-        ext_amp,
-        amp_box_active,
-        dim(amp_box_active),
-        sr,
-        hits,
-    );
-    render_cab_box(
-        f,
-        boxes[1],
-        params,
-        focus,
-        ext_cab,
-        cab_box_active,
-        dim(cab_box_active),
-        hits,
-    );
+    render_amp_box(f, boxes[0], params, focus, ext_amp, amp_box, sr, hits);
+    render_cab_box(f, boxes[1], params, focus, ext_cab, cab_box, hits);
 }
 
 /// Built-in monitoring latency, in ms: the cab convolver's fixed block latency,
@@ -615,8 +711,7 @@ fn render_amp_box(
     params: &Params,
     focus: Option<usize>,
     ext_amp: Option<&str>,
-    box_active: bool,
-    dim: Modifier,
+    emphasis: f32,
     sr: f32,
     hits: &mut HitMap,
 ) {
@@ -626,12 +721,19 @@ fn render_amp_box(
         Some(name) => format!("AU: {name}"),
         None => params.amp_model().name().to_uppercase(),
     };
-    let border_color = panel_edge_color(box_active);
+    let border_color = panel_edge_color_at(emphasis);
+    // `DIM` cannot be interpolated, so it flips at the halfway point; the color
+    // ramp carries the transition and the modifier only settles the ends.
+    let dim = if emphasis >= 0.5 {
+        Modifier::empty()
+    } else {
+        Modifier::DIM
+    };
 
     let block = Block::default()
         .borders(Borders::ALL)
         .border_set(frame_set(border::THICK))
-        .border_style(panel_border_style(box_active))
+        .border_style(panel_border_style_at(emphasis))
         .title(Line::from(vec![
             Span::styled(
                 format!("{} ", frame_rule().right),
@@ -687,8 +789,9 @@ fn render_amp_box(
             focus == Some(ki),
             amp_live,
             theme().amber,
-            !box_active,
+            emphasis <= 0.0,
             None,
+            emphasis,
         );
         if knob_cols[i].width > 0 && knob_cols[i].height > 0 {
             hits.push((knob_cols[i], HitTarget::Knob(ki)));
@@ -699,7 +802,7 @@ fn render_amp_box(
     render_grille(
         f,
         parts[1],
-        shade(theme().border, if box_active { 0.45 } else { 0.18 }),
+        shade(theme().border, 0.18 + 0.27 * emphasis.clamp(0.0, 1.0)),
     );
 }
 
@@ -711,8 +814,7 @@ fn render_cab_box(
     params: &Params,
     focus: Option<usize>,
     ext_cab: Option<&str>,
-    box_active: bool,
-    dim: Modifier,
+    emphasis: f32,
     hits: &mut HitMap,
 ) {
     // The cab box reflects the active cab. An external amp supplying its own
@@ -727,12 +829,17 @@ fn render_cab_box(
             None => params.cab_model().short_name().to_owned(),
         }
     };
-    let border_color = panel_edge_color(box_active);
+    let border_color = panel_edge_color_at(emphasis);
+    let dim = if emphasis >= 0.5 {
+        Modifier::empty()
+    } else {
+        Modifier::DIM
+    };
 
     let block = Block::default()
         .borders(Borders::ALL)
         .border_set(frame_set(border::THICK))
-        .border_style(panel_border_style(box_active))
+        .border_style(panel_border_style_at(emphasis))
         .title(
             Line::from(vec![
                 Span::styled(
@@ -792,8 +899,9 @@ fn render_cab_box(
             focus == Some(ki),
             live,
             theme().chrome,
-            !box_active,
+            emphasis <= 0.0,
             None,
+            emphasis,
         );
         if mic_cols[i].width > 0 && mic_cols[i].height > 0 {
             hits.push((mic_cols[i], HitTarget::Knob(ki)));
@@ -804,7 +912,7 @@ fn render_cab_box(
     render_grille(
         f,
         parts[1],
-        shade(theme().border, if box_active { 0.45 } else { 0.18 }),
+        shade(theme().border, 0.18 + 0.27 * emphasis.clamp(0.0, 1.0)),
     );
 }
 
@@ -853,20 +961,20 @@ fn render_rig(
     params: &Params,
     board: &[bool],
     focus: Option<usize>,
+    emphasis: f32,
     hits: &mut HitMap,
 ) {
     // The rig is "active" whenever focus is on one of its pedals (or the + ADD
-    // tile); otherwise it recedes with the other inactive panels.
-    let rig_active = focus
-        .is_some_and(|i| i == ADD_TILE || PEDALS.iter().any(|p| (p.start..p.end).contains(&i)));
+    // tile); otherwise it recedes with the other inactive panels. `emphasis`
+    // carries that recede as a fade instead of a step.
     let block = Block::default()
         .borders(Borders::ALL)
         .border_set(frame_set(border::PLAIN))
-        .border_style(panel_border_style(rig_active))
+        .border_style(panel_border_style_at(emphasis))
         .title(Line::from(Span::styled(
             " GUITAR RIG ",
             Style::default()
-                .fg(panel_edge_color(rig_active))
+                .fg(panel_edge_color_at(emphasis))
                 .add_modifier(Modifier::BOLD),
         )))
         .style(panel_style());
@@ -917,27 +1025,28 @@ fn render_rig(
                 Some(&pi) => {
                     let pedal = &PEDALS[pi];
                     hits.push((*cell, HitTarget::Knob(pedal.start)));
-                    render_pedal_tile(f, *cell, pedal, focus, params, !rig_active);
+                    render_pedal_tile(f, *cell, pedal, focus, params, emphasis);
                 }
                 None => {
                     hits.push((*cell, HitTarget::Knob(ADD_TILE)));
-                    render_add_tile(f, *cell, focus == Some(ADD_TILE));
+                    render_add_tile(f, *cell, focus == Some(ADD_TILE), emphasis);
                 }
             }
         }
     }
 
-    render_pedal_detail(f, parts[1], params, focus, hits);
+    render_pedal_detail(f, parts[1], params, focus, emphasis, hits);
 }
 
 /// The "+ ADD" tile: an empty slot inviting the user to add a pedal.
-fn render_add_tile(f: &mut Frame, area: Rect, focused: bool) {
-    let color = if focused {
-        theme().accent
+fn render_add_tile(f: &mut Frame, area: Rect, focused: bool, emphasis: f32) {
+    let lit = if focused {
+        emphasis.clamp(0.0, 1.0)
     } else {
-        shade(theme().accent, 0.5)
+        0.0
     };
-    let dim = if focused {
+    let color = mix(shade(theme().accent, 0.5), theme().accent, lit);
+    let dim = if lit >= 0.5 {
         Modifier::empty()
     } else {
         Modifier::DIM
@@ -987,7 +1096,7 @@ fn render_pedal_tile(
     pedal: &Pedal,
     focus: Option<usize>,
     params: &Params,
-    rig_dim: bool,
+    emphasis: f32,
 ) {
     let on = (pedal.enabled)(params).load(Relaxed);
     let active = focus.is_some_and(|i| (pedal.start..pedal.end).contains(&i));
@@ -998,21 +1107,30 @@ fn render_pedal_tile(
     } else {
         Modifier::DIM
     };
-    let body = if active {
-        pedal.color
-    } else if rig_dim {
-        shade(pedal.color, 0.12)
-    } else if on {
+    // The settled unfocused board sinks every tile to a near-black livery; the
+    // reveal ramp lifts them back to the lit board, so gaining focus illuminates
+    // the rig rather than switching it on.
+    let e = emphasis.clamp(0.0, 1.0);
+    let settled_name = if on {
+        shade(pedal.color, 0.7)
+    } else {
+        shade(pedal.color, 0.4)
+    };
+    // A tile's body at rest on a lit board vs. sunk into a receded one.
+    let normal_body = if on {
         shade(pedal.color, 0.55)
     } else {
         shade(pedal.color, 0.25)
     };
-    let name_color = if active {
-        pedal.color
-    } else if on {
-        shade(pedal.color, 0.7)
+    let body = if active {
+        mix(normal_body, pedal.color, e)
     } else {
-        shade(pedal.color, 0.4)
+        mix(shade(pedal.color, 0.12), normal_body, e)
+    };
+    let name_color = if active {
+        mix(settled_name, pedal.color, e)
+    } else {
+        settled_name
     };
 
     let led = if on {
@@ -1054,12 +1172,15 @@ fn render_pedal_tile(
         .map(|ki| format!("{:.1}", (KNOBS[ki].param)(params).load(Relaxed) * 10.0))
         .collect::<Vec<_>>()
         .join("  ");
-    let value_color = if active {
-        pedal.color
-    } else if on {
+    let settled_value = if on {
         shade(pedal.color, 0.8)
     } else {
         theme().off
+    };
+    let value_color = if active {
+        mix(settled_value, pedal.color, e)
+    } else {
+        settled_value
     };
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
@@ -1080,6 +1201,7 @@ fn render_pedal_detail(
     area: Rect,
     params: &Params,
     focus: Option<usize>,
+    emphasis: f32,
     hits: &mut HitMap,
 ) {
     let pedal = PEDALS
@@ -1087,7 +1209,10 @@ fn render_pedal_detail(
         .find(|p| focus.is_some_and(|i| (p.start..p.end).contains(&i)));
 
     // The editor takes on the focused pedal's livery; otherwise it stays dim.
-    let border_color = pedal.map_or(theme().dim, |p| p.color);
+    // Mid-fade it ramps between the two, so the livery arrives with the rig.
+    let border_color = pedal.map_or(theme().dim, |p| {
+        mix(theme().dim, p.color, emphasis.clamp(0.0, 1.0))
+    });
     let adding = focus == Some(ADD_TILE);
 
     // A closed frame of its own — rounded all round, like the pedal it models,
@@ -1153,8 +1278,9 @@ fn render_pedal_detail(
             focus == Some(ki),
             on,
             pedal.color,
-            false,
+            emphasis <= 0.0,
             None,
+            emphasis,
         );
         if cols[i].width > 0 && cols[i].height > 0 {
             hits.push((cols[i], HitTarget::Knob(ki)));
@@ -1173,11 +1299,14 @@ const KNOB_FRAME_W: u16 = 17;
 /// or not, so the dial and label never shift when focus moves. The focused knob
 /// additionally draws its box, but only [`KNOB_FRAME_W`] cells wide, centred on the
 /// cell, so a wide cell gets a consistent frame rather than a stretched one.
-fn knob_cell(f: &mut Frame, area: Rect, focused: bool) -> Rect {
+fn knob_cell(f: &mut Frame, area: Rect, focused: bool, emphasis: f32) -> Rect {
     if area.height < 3 || area.width < 3 {
         return area; // too squeezed for a frame: content full-bleed
     }
-    if focused {
+    // The box is chrome, so it appears (and disappears) as one piece rather than
+    // half-drawn: it arrives at the midpoint of the fade, which reads as the frame
+    // settling around the dial. Its color still ramps the rest of the way.
+    if focused && emphasis > 0.35 {
         // Cap the frame width and centre it, so a wide cell gets a neat box rather
         // than one stretched across the whole cell.
         let w = area.width.min(KNOB_FRAME_W);
@@ -1187,7 +1316,11 @@ fn knob_cell(f: &mut Frame, area: Rect, focused: bool) -> Rect {
             .border_set(frame_set(border::PLAIN))
             .border_style(
                 Style::default()
-                    .fg(theme().accent)
+                    .fg(mix(
+                        shade(theme().accent, 0.35),
+                        theme().accent,
+                        emphasis.clamp(0.0, 1.0),
+                    ))
                     .add_modifier(Modifier::BOLD),
             )
             .style(panel_style());
@@ -1208,7 +1341,7 @@ fn knob_cell(f: &mut Frame, area: Rect, focused: bool) -> Rect {
 #[allow(clippy::too_many_arguments)]
 /// One widget renderer for both pedal dial styles, so the choice can be made at
 /// runtime as a plain function pointer.
-type KnobRender = fn(&mut Frame, Rect, &str, f32, bool, bool, Color, bool, Option<String>);
+type KnobRender = fn(&mut Frame, Rect, &str, f32, bool, bool, Color, bool, Option<String>, f32);
 
 #[allow(clippy::too_many_arguments)]
 fn render_compact_knob(
@@ -1224,25 +1357,29 @@ fn render_compact_knob(
     // master output passes its dB here: a 0-10 readout of a +/-6 dB monitor level
     // is unreadable, since unity at 0.5 would render as "5".
     num: Option<String>,
+    // How lit this panel is this frame: 1.0 settled focused, 0.0 settled
+    // unfocused. Blends the focused styling over the unfocused one, so a panel
+    // gaining or losing focus crosses over instead of snapping.
+    emphasis: f32,
 ) {
     let fade = if dimmed {
         Modifier::DIM
     } else {
         Modifier::empty()
     };
+    let e = emphasis.clamp(0.0, 1.0);
     // Reserved border footprint + focused-only box (see `knob_cell`).
-    let area = knob_cell(f, area, focused);
+    let area = knob_cell(f, area, focused, e);
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(2), Constraint::Length(1)])
         .split(area);
 
+    let dial_base = if active { accent } else { theme().off };
     let dial_color = if focused {
-        theme().accent
-    } else if active {
-        accent
+        mix(dial_base, theme().accent, e)
     } else {
-        theme().off
+        dial_base
     };
 
     let dial_h = (rows[0].height as usize).clamp(2, 5);
@@ -1258,19 +1395,17 @@ fn render_compact_knob(
     f.render_widget(Paragraph::new(art).alignment(Alignment::Center), rows[0]);
 
     let num = num.unwrap_or_else(|| format!("{:.1}", value * 10.0));
+    let label_base = if active { theme().dim } else { theme().off };
     let label_color = if focused {
-        theme().accent
-    } else if active {
-        theme().dim
+        mix(label_base, theme().accent, e)
     } else {
-        theme().off
+        label_base
     };
+    let value_base = if active { accent } else { theme().off };
     let value_color = if focused {
-        theme().accent
-    } else if active {
-        accent
+        mix(value_base, theme().accent, e)
     } else {
-        theme().off
+        value_base
     };
 
     let label_line = Line::from(vec![
@@ -1311,25 +1446,27 @@ fn render_compact_fader(
     // Unused: the fader always shows `value * 10`. Present only so both pedal
     // widget styles share one function-pointer type.
     _num: Option<String>,
+    // Panel reveal, as in [`render_compact_knob`].
+    emphasis: f32,
 ) {
     let fade = if dimmed {
         Modifier::DIM
     } else {
         Modifier::empty()
     };
+    let e = emphasis.clamp(0.0, 1.0);
     // Reserved border footprint + focused-only box (see `knob_cell`).
-    let area = knob_cell(f, area, focused);
+    let area = knob_cell(f, area, focused, e);
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(2), Constraint::Length(1)])
         .split(area);
 
+    let track_base = if active { accent } else { theme().off };
     let track_color = if focused {
-        theme().accent
-    } else if active {
-        accent
+        mix(track_base, theme().accent, e)
     } else {
-        theme().off
+        track_base
     };
 
     // Fixed editor height: cap the track like the dial so extra space (e.g. a
@@ -1347,19 +1484,17 @@ fn render_compact_fader(
     f.render_widget(Paragraph::new(art).alignment(Alignment::Center), rows[0]);
 
     let num = value * 10.0;
+    let label_base = if active { theme().dim } else { theme().off };
     let label_color = if focused {
-        theme().accent
-    } else if active {
-        theme().dim
+        mix(label_base, theme().accent, e)
     } else {
-        theme().off
+        label_base
     };
+    let value_base = if active { accent } else { theme().off };
     let value_color = if focused {
-        theme().accent
-    } else if active {
-        accent
+        mix(value_base, theme().accent, e)
     } else {
-        theme().off
+        value_base
     };
     let label_line = Line::from(vec![
         Span::styled(
@@ -1687,6 +1822,7 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         row("  F2", "  MIDI bindings: learn a controller control"),
         row("  F3", "  cycle the UI theme"),
         row("  F5", "  cycle the panel look (rounded → classic)"),
+        row("  F6", "  panel focus animation: on / off (saved)"),
     ]);
     #[cfg(feature = "clap")]
     lines.push(row("  V", "  plugin browser"));
@@ -2141,6 +2277,62 @@ mod tests {
         out
     }
 
+    /// The same screen, with ANSI color and modifiers, for the visual previews.
+    fn screen_ansi(term: &Terminal<TestBackend>) -> String {
+        use ratatui::style::{Color, Modifier};
+        use std::fmt::Write as _;
+
+        fn sgr(out: &mut String, code: &str, color: Color) {
+            match color {
+                Color::Rgb(r, g, b) => {
+                    let _ = write!(out, "\x1b[{code};2;{r};{g};{b}m");
+                }
+                Color::Reset => out.push_str(if code == "38" { "\x1b[39m" } else { "\x1b[49m" }),
+                Color::Black => {
+                    let _ = write!(out, "\x1b[{code};5;0m");
+                }
+                other => {
+                    // Nothing in this UI uses indexed colors, but keep the preview
+                    // honest if one ever appears.
+                    let _ = write!(out, "\x1b[{code};5;{other:?}m");
+                }
+            }
+        }
+
+        let buf = term.backend().buffer();
+        let area = *buf.area();
+        let mut out = String::from("\x1b[H");
+        for y in 0..area.height {
+            let mut last: Option<(Color, Color, Modifier)> = None;
+            for x in 0..area.width {
+                let cell = &buf[(x, y)];
+                let key = (cell.fg, cell.bg, cell.modifier);
+                if last != Some(key) {
+                    out.push_str("\x1b[0m");
+                    for (flag, code) in [
+                        (Modifier::BOLD, "1"),
+                        (Modifier::DIM, "2"),
+                        (Modifier::ITALIC, "3"),
+                        (Modifier::UNDERLINED, "4"),
+                        (Modifier::RAPID_BLINK, "6"),
+                        (Modifier::REVERSED, "7"),
+                        (Modifier::CROSSED_OUT, "9"),
+                    ] {
+                        if cell.modifier.contains(flag) {
+                            let _ = write!(out, "\x1b[{code}m");
+                        }
+                    }
+                    sgr(&mut out, "38", cell.fg);
+                    sgr(&mut out, "48", cell.bg);
+                    last = Some(key);
+                }
+                out.push_str(cell.symbol());
+            }
+            out.push_str("\x1b[0m\r\n");
+        }
+        out
+    }
+
     /// The footer's left cell shows the session name, with `*` while it has
     /// unsaved changes.
     #[test]
@@ -2196,6 +2388,7 @@ mod tests {
                 theme().amber,
                 false,
                 None,
+                if focused { 1.0 } else { 0.0 },
             );
         })
         .expect("draw");
@@ -2217,6 +2410,7 @@ mod tests {
                 theme().amber,
                 false,
                 None,
+                if focused { 1.0 } else { 0.0 },
             );
         })
         .expect("draw");
@@ -3483,5 +3677,305 @@ mod tests {
             cab < comp,
             "ribbon did not follow COMP move: CAB@{cab} COMP@{comp}"
         );
+    }
+
+    /// The cross-fade must not change a settled frame: a fully settled
+    /// [`draw_animated`] and the plain [`draw`] produce the same buffer. This is
+    /// the contract that keeps every other snapshot test meaningful.
+    #[test]
+    fn a_settled_fade_renders_the_same_frame() {
+        for focus in [
+            Some(CHAIN_TILE),
+            Some(0),
+            Some(PRACTICE_TILE),
+            Some(ADD_TILE),
+        ] {
+            let params = Params::new();
+            let board = board_all(true);
+            let levels = Levels::new();
+            let cal = InputCalibration::default();
+            let practice = Practice::new();
+            let pui = PracticeUi::new();
+            let panels = Panels::all_visible();
+
+            let frame = |animated: bool| {
+                let mut term = Terminal::new(TestBackend::new(120, 40)).expect("test backend");
+                let fade = PanelFade::new(focus);
+                term.draw(|f| {
+                    if animated {
+                        draw_animated(
+                            f,
+                            &params,
+                            &levels,
+                            &cal,
+                            focus,
+                            &board,
+                            false,
+                            false,
+                            None,
+                            None,
+                            None,
+                            None,
+                            panels,
+                            ChainStage::Amp,
+                            false,
+                            None,
+                            None,
+                            Some((&practice, &pui)),
+                            &fade,
+                        );
+                    } else {
+                        draw(
+                            f,
+                            &params,
+                            &levels,
+                            &cal,
+                            focus,
+                            &board,
+                            false,
+                            false,
+                            None,
+                            None,
+                            None,
+                            None,
+                            panels,
+                            ChainStage::Amp,
+                            false,
+                            None,
+                            None,
+                            Some((&practice, &pui)),
+                        );
+                    }
+                })
+                .expect("draw");
+                screen_ansi(&term)
+            };
+
+            assert_eq!(
+                frame(true),
+                frame(false),
+                "a settled fade changed the frame for focus {focus:?}"
+            );
+        }
+    }
+
+    /// The fade really reaches the screen: mid-transition the ribbon's frame is
+    /// neither its settled focused color nor its settled receded one, and it is
+    /// exactly the ramp's midpoint. Guards the whole wiring (`observe` → reveal →
+    /// style), which the settled-endpoint test deliberately cannot see.
+    #[test]
+    fn a_fading_panel_draws_a_color_between_its_two_states() {
+        use super::super::fade::PANEL_FADE;
+        use std::time::Instant;
+
+        let params = Params::new();
+        let board = board_all(true);
+        let levels = Levels::new();
+        let cal = InputCalibration::default();
+        let panels = Panels::all_visible();
+
+        let start = Instant::now();
+        let mut fade = PanelFade::new(Some(CHAIN_TILE));
+        fade.observe(Some(0), start); // ribbon → amp panel
+
+        let corner = |at: Instant| {
+            let mut term = Terminal::new(TestBackend::new(120, 44)).expect("test backend");
+            term.draw(|f| {
+                draw_at(
+                    f,
+                    &params,
+                    &levels,
+                    &cal,
+                    Some(0),
+                    &board,
+                    false,
+                    false,
+                    None,
+                    None,
+                    None,
+                    None,
+                    panels,
+                    ChainStage::Amp,
+                    false,
+                    None,
+                    None,
+                    None,
+                    &fade,
+                    at,
+                );
+            })
+            .expect("draw");
+            term.backend().buffer()[(0, 0)].fg // the ribbon's top-left corner
+        };
+
+        let lit = corner(start);
+        let mid = corner(start + PANEL_FADE / 2);
+        let dark = corner(start + PANEL_FADE);
+        assert_ne!(mid, lit, "the ribbon frame did not move off its lit color");
+        assert_ne!(mid, dark, "the ribbon frame jumped straight to receded");
+        assert_eq!(mid, panel_border_style_at(0.5).fg.unwrap());
+        assert_eq!(dark, shade(theme().border, 0.35));
+    }
+
+    /// The full UI at an explicit instant, for the animation tests.
+    fn frame_at(focus: Option<usize>, fade: &PanelFade, at: std::time::Instant) -> String {
+        let params = Params::new();
+        let board = board_all(true);
+        let levels = Levels::new();
+        let cal = InputCalibration::default();
+        let practice = Practice::new();
+        let pui = PracticeUi::new();
+        let mut term = Terminal::new(TestBackend::new(120, 40)).expect("test backend");
+        term.draw(|f| {
+            draw_at(
+                f,
+                &params,
+                &levels,
+                &cal,
+                focus,
+                &board,
+                false,
+                false,
+                None,
+                None,
+                None,
+                None,
+                Panels::all_visible(),
+                ChainStage::Amp,
+                false,
+                None,
+                None,
+                Some((&practice, &pui)),
+                fade,
+                at,
+            );
+        })
+        .expect("draw");
+        screen_ansi(&term)
+    }
+
+    /// `F6` off is the pre-animation UI: with the clock parked there is no
+    /// intermediate frame at any sample time, and the frame is the settled one.
+    #[test]
+    fn animations_off_switches_instantly() {
+        use super::super::fade::PANEL_FADE;
+        use std::time::Instant;
+
+        let start = Instant::now();
+        let mut fade = PanelFade::new(Some(CHAIN_TILE));
+        fade.jump(Some(0)); // ribbon → amp panel, animations off
+
+        let first = frame_at(Some(0), &fade, start);
+        let later = frame_at(Some(0), &fade, start + PANEL_FADE / 2);
+        assert_eq!(first, later, "a parked clock must not render a fade");
+
+        // The same frame the settled renderer draws for the new focus.
+        assert_eq!(first, frame_at(Some(0), &PanelFade::new(Some(0)), start));
+    }
+
+    /// Not a check — a look. Plays real frames of a focus cycle in the terminal,
+    /// so the cross-fade can be judged before it is tuned (and re-judged after).
+    ///
+    /// ```text
+    /// cargo test --lib ui::draw::tests::preview_panel_fade -- --ignored --nocapture
+    /// ```
+    ///
+    /// It renders the real `draw_animated` output into a test backend, prints the
+    /// buffer with ANSI colors, and paces the frames on the actual fade clock, so
+    /// what plays is the shipped renderer at the shipped timing.
+    #[test]
+    #[ignore = "visual preview: plays an animation instead of asserting"]
+    fn preview_panel_fade() {
+        use crossterm::cursor;
+        use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
+        use ratatui::Terminal;
+        use std::io::Write;
+        use std::time::{Duration, Instant};
+
+        use super::super::fade::PANEL_FADE;
+
+        // Render at the pane's real size, never larger: an oversized backend would
+        // push the top rows out of the visible screen.
+        let (cols, rows) = crossterm::terminal::size().unwrap_or((120, 40));
+        let (w, h) = (cols.max(60), rows.max(20));
+        let mut term = Terminal::new(TestBackend::new(w, h)).expect("test backend");
+
+        let params = Params::new();
+        let board = board_all(true);
+        let levels = Levels::new();
+        let cal = InputCalibration::default();
+        let practice = Practice::new();
+        let pui = PracticeUi::new();
+        let panels = Panels::all_visible();
+
+        // A Tab walk: ribbon → amp → timeline → rig, then back.
+        let route = [
+            Some(CHAIN_TILE),
+            Some(0),
+            Some(PRACTICE_TILE),
+            Some(ADD_TILE),
+            Some(CHAIN_TILE),
+        ];
+
+        let mut stdout = std::io::stdout();
+        let _ = crossterm::terminal::enable_raw_mode();
+        let _ = crossterm::execute!(stdout, EnterAlternateScreen, cursor::Hide);
+
+        let mut paint =
+            |term: &mut Terminal<TestBackend>, focus: Option<usize>, fade: &PanelFade| {
+                term.draw(|f| {
+                    draw_animated(
+                        f,
+                        &params,
+                        &levels,
+                        &cal,
+                        focus,
+                        &board,
+                        false,
+                        false,
+                        None,
+                        None,
+                        None,
+                        None,
+                        panels,
+                        ChainStage::Amp,
+                        false,
+                        None,
+                        None,
+                        Some((&practice, &pui)),
+                        fade,
+                    );
+                })
+                .expect("draw");
+                let _ = stdout.write_all(screen_ansi(term).as_bytes());
+                let _ = stdout.flush();
+            };
+
+        let mut fade = PanelFade::new(route[0]);
+        let mut focus = route[0];
+        // Laps until a key is pressed, so the tab can be watched for as long as
+        // wanted without leaving the renderer in a reused terminal.
+        while !crossterm::event::poll(Duration::ZERO).unwrap_or(false) {
+            for &next in &route[1..] {
+                // Rest on the current panel long enough to read it.
+                let start = Instant::now();
+                while start.elapsed() < Duration::from_millis(650) {
+                    paint(&mut term, focus, &fade);
+                    std::thread::sleep(Duration::from_millis(16));
+                }
+                // Then play the transition into the next panel.
+                let start = Instant::now();
+                fade.observe(next, start);
+                while start.elapsed() < PANEL_FADE + Duration::from_millis(16) {
+                    paint(&mut term, next, &fade);
+                    std::thread::sleep(Duration::from_millis(16));
+                }
+                focus = next;
+            }
+        }
+
+        let _ = crossterm::execute!(stdout, cursor::Show, LeaveAlternateScreen);
+        let _ = crossterm::terminal::disable_raw_mode();
+        println!("preview stopped — any key ends it");
     }
 }
