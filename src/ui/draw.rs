@@ -1,7 +1,7 @@
 use ratatui::symbols::border;
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
@@ -162,16 +162,15 @@ fn render_header(
     master_selected: bool,
     hits: &mut HitMap,
 ) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_set(frame_set(border::PLAIN))
-        .border_style(panel_border_style(focused))
-        .title(
+    let inner = draw_panel(
+        f,
+        area,
+        focused,
+        border::PLAIN,
+        Some(
             Line::from(Span::styled("[ ] move", Style::default().fg(theme().dim))).right_aligned(),
-        )
-        .style(panel_style());
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+        ),
+    );
 
     // The amp and cab are separate stages. An active external amp (hosted AU)
     // replaces the amp label; a full-rig AU also supplies the cab, so the cab
@@ -628,11 +627,12 @@ fn render_amp_box(
     };
     let border_color = panel_edge_color(box_active);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_set(frame_set(border::THICK))
-        .border_style(panel_border_style(box_active))
-        .title(Line::from(vec![
+    let inner = draw_panel(
+        f,
+        area,
+        box_active,
+        border::THICK,
+        Some(Line::from(vec![
             Span::styled(
                 format!("{} ", frame_rule().right),
                 Style::default().fg(border_color),
@@ -649,10 +649,8 @@ fn render_amp_box(
                 Style::default().fg(theme().dim).add_modifier(dim),
             ),
             Span::styled(frame_rule().left, Style::default().fg(border_color)),
-        ]))
-        .style(panel_style());
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+        ])),
+    );
 
     // Knobs, blank bottom margin, grille strip inside the box. Model picking
     // lives in the `A` browser modal; the title shows the active amp.
@@ -729,11 +727,12 @@ fn render_cab_box(
     };
     let border_color = panel_edge_color(box_active);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_set(frame_set(border::THICK))
-        .border_style(panel_border_style(box_active))
-        .title(
+    let inner = draw_panel(
+        f,
+        area,
+        box_active,
+        border::THICK,
+        Some(
             Line::from(vec![
                 Span::styled(
                     format!("{} 🎙 ", frame_rule().right),
@@ -752,10 +751,8 @@ fn render_cab_box(
                 ),
             ])
             .right_aligned(),
-        )
-        .style(panel_style());
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+        ),
+    );
 
     // Mic knobs, blank bottom margin, grille strip inside the box.
     let parts = Layout::default()
@@ -859,19 +856,18 @@ fn render_rig(
     // tile); otherwise it recedes with the other inactive panels.
     let rig_active = focus
         .is_some_and(|i| i == ADD_TILE || PEDALS.iter().any(|p| (p.start..p.end).contains(&i)));
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_set(frame_set(border::PLAIN))
-        .border_style(panel_border_style(rig_active))
-        .title(Line::from(Span::styled(
+    let inner = draw_panel(
+        f,
+        area,
+        rig_active,
+        border::PLAIN,
+        Some(Line::from(Span::styled(
             " GUITAR RIG ",
             Style::default()
                 .fg(panel_edge_color(rig_active))
                 .add_modifier(Modifier::BOLD),
-        )))
-        .style(panel_style());
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+        ))),
+    );
 
     // Only on-board pedals get tiles, in chain order so the grid mirrors the
     // signal flow; the last tile is always "+ ADD". `board` may be shorter than
@@ -942,6 +938,31 @@ fn render_add_tile(f: &mut Frame, area: Rect, focused: bool) {
     } else {
         Modifier::DIM
     };
+    let body = Line::from(vec![
+        Span::styled(
+            "＋",
+            Style::default()
+                .fg(color)
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(dim),
+        ),
+        Span::styled(
+            if focused { "  A" } else { "" },
+            Style::default().fg(theme().dim).add_modifier(dim),
+        ),
+    ]);
+    if super::shadow::supported() {
+        // Borderless: the tile is its own label, one row down.
+        return f.render_widget(
+            Paragraph::new(body).alignment(Alignment::Center),
+            Rect {
+                x: area.x,
+                y: area.y.saturating_add(1),
+                width: area.width,
+                height: 1,
+            },
+        );
+    }
     // A closed box like every other tile; focus shows in the border colour.
     let block = Block::default()
         .borders(Borders::ALL)
@@ -957,24 +978,7 @@ fn render_add_tile(f: &mut Frame, area: Rect, focused: bool) {
         .style(panel_style());
     let inner = block.inner(area);
     f.render_widget(block, area);
-
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(
-                "＋",
-                Style::default()
-                    .fg(color)
-                    .add_modifier(Modifier::BOLD)
-                    .add_modifier(dim),
-            ),
-            Span::styled(
-                if focused { "  A" } else { "" },
-                Style::default().fg(theme().dim).add_modifier(dim),
-            ),
-        ]))
-        .alignment(Alignment::Center),
-        inner,
-    );
+    f.render_widget(Paragraph::new(body).alignment(Alignment::Center), inner);
 }
 
 /// A compact pedal tile: name + LED in the title, all knob values on one line.
@@ -1039,17 +1043,6 @@ fn render_pedal_tile(
         Span::raw(" "),
     ]);
 
-    // Every tile is a closed box, focused or not. The focused tile is set apart by
-    // colour, not by shape, so selecting a pedal never reflows or opens its border.
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_set(frame_set(border::PLAIN))
-        .border_style(Style::default().fg(body).add_modifier(dim))
-        .title(title)
-        .style(panel_style());
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-
     let values: String = (pedal.start..pedal.end)
         .map(|ki| format!("{:.1}", (KNOBS[ki].param)(params).load(Relaxed) * 10.0))
         .collect::<Vec<_>>()
@@ -1061,17 +1054,49 @@ fn render_pedal_tile(
     } else {
         theme().off
     };
-    f.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            values,
-            Style::default()
-                .fg(value_color)
-                .add_modifier(Modifier::BOLD)
-                .add_modifier(dim),
-        )))
-        .alignment(Alignment::Center),
-        inner,
-    );
+    let values = Paragraph::new(Line::from(Span::styled(
+        values,
+        Style::default()
+            .fg(value_color)
+            .add_modifier(Modifier::BOLD)
+            .add_modifier(dim),
+    )))
+    .alignment(Alignment::Center);
+
+    if super::shadow::supported() {
+        // Borderless: the name rides the tile's first row, the values the next,
+        // with a cell of air either side so neighbouring tiles never run together.
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Min(0),
+            ])
+            .split(area);
+        let air = Margin {
+            horizontal: 1,
+            vertical: 0,
+        };
+        f.render_widget(
+            Paragraph::new(title).alignment(Alignment::Center),
+            rows[0].inner(air),
+        );
+        f.render_widget(values, rows[1].inner(air));
+        return;
+    }
+
+    // Every tile is a closed box, focused or not. The focused tile is set apart by
+    // colour, not by shape, so selecting a pedal never reflows or opens its border.
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_set(frame_set(border::PLAIN))
+        .border_style(Style::default().fg(body).add_modifier(dim))
+        .title(title)
+        .style(panel_style());
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    f.render_widget(values, inner);
 }
 
 /// The detail editor: full-size dials for whichever pedal currently has focus.
@@ -1090,15 +1115,20 @@ fn render_pedal_detail(
     let border_color = pedal.map_or(theme().dim, |p| p.color);
     let adding = focus == Some(ADD_TILE);
 
-    // A closed frame of its own — rounded all round, like the pedal it models,
-    // rather than side rails capped by an interior rule.
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_set(frame_set(border::PLAIN))
-        .border_style(Style::default().fg(border_color))
-        .style(panel_style());
-    let body = block.inner(area);
-    f.render_widget(block, area);
+    // The editor is its own box on the bordered look; borderless, the dials are
+    // the whole editor and the pedals above it already say what is selected.
+    let body = if super::shadow::supported() {
+        area
+    } else {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_set(frame_set(border::PLAIN))
+            .border_style(Style::default().fg(border_color))
+            .style(panel_style());
+        let body = block.inner(area);
+        f.render_widget(block, area);
+        body
+    };
 
     let Some(pedal) = pedal else {
         // No pedal under focus: one-line state label, hint beneath it.
@@ -1177,7 +1207,9 @@ fn knob_cell(f: &mut Frame, area: Rect, focused: bool) -> Rect {
     if area.height < 3 || area.width < 3 {
         return area; // too squeezed for a frame: content full-bleed
     }
-    if focused {
+    // Borderless: the focused knob is marked by its reversed value chip, not a
+    // frame, so no box is drawn here at all.
+    if focused && !super::shadow::supported() {
         // Cap the frame width and centre it, so a wide cell gets a neat box rather
         // than one stretched across the whole cell.
         let w = area.width.min(KNOB_FRAME_W);
@@ -1203,6 +1235,20 @@ fn knob_cell(f: &mut Frame, area: Rect, focused: bool) -> Rect {
         area.width.saturating_sub(2),
         area.height.saturating_sub(2),
     )
+}
+
+/// The value readout: a reversed chip while the knob owns focus on the
+/// borderless look, plain text otherwise.
+fn value_style(color: Color, focused: bool, fade: Modifier) -> Style {
+    let style = Style::default()
+        .fg(color)
+        .add_modifier(Modifier::BOLD)
+        .add_modifier(fade);
+    if focused && super::shadow::supported() {
+        style.add_modifier(Modifier::REVERSED)
+    } else {
+        style
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1281,13 +1327,7 @@ fn render_compact_knob(
                 .add_modifier(Modifier::BOLD)
                 .add_modifier(fade),
         ),
-        Span::styled(
-            num.clone(),
-            Style::default()
-                .fg(value_color)
-                .add_modifier(Modifier::BOLD)
-                .add_modifier(fade),
-        ),
+        Span::styled(num.clone(), value_style(value_color, focused, fade)),
     ]);
     f.render_widget(
         Paragraph::new(label_line).alignment(Alignment::Center),
@@ -1369,13 +1409,7 @@ fn render_compact_fader(
                 .add_modifier(Modifier::BOLD)
                 .add_modifier(fade),
         ),
-        Span::styled(
-            format!("{num:.1}"),
-            Style::default()
-                .fg(value_color)
-                .add_modifier(Modifier::BOLD)
-                .add_modifier(fade),
-        ),
+        Span::styled(format!("{num:.1}"), value_style(value_color, focused, fade)),
     ]);
     f.render_widget(
         Paragraph::new(label_line).alignment(Alignment::Center),
@@ -1754,19 +1788,17 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
     };
     f.render_widget(Clear, area);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().border))
-        .title(Span::styled(
+    let inner = draw_dialog(
+        f,
+        area,
+        Style::default().fg(theme().border),
+        vec![Line::from(Span::styled(
             " K E Y B I N D I N G S ",
             Style::default()
                 .fg(theme().amber)
                 .add_modifier(Modifier::BOLD),
-        ))
-        .style(panel_style());
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+        ))],
+    );
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -1805,19 +1837,17 @@ pub(super) fn render_add_pedal_modal(f: &mut Frame, available: &[usize], cursor:
     };
     f.render_widget(Clear, area);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().border))
-        .title(Span::styled(
+    let inner = draw_dialog(
+        f,
+        area,
+        Style::default().fg(theme().border),
+        vec![Line::from(Span::styled(
             " A D D   P E D A L ",
             Style::default()
                 .fg(theme().amber)
                 .add_modifier(Modifier::BOLD),
-        ))
-        .style(panel_style());
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+        ))],
+    );
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -1898,19 +1928,17 @@ fn picker_shell(f: &mut Frame, title: &str, rows: usize) -> Rect {
     };
     f.render_widget(Clear, area);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().border))
-        .title(Span::styled(
+    let inner = draw_dialog(
+        f,
+        area,
+        Style::default().fg(theme().border),
+        vec![Line::from(Span::styled(
             title.to_owned(),
             Style::default()
                 .fg(theme().amber)
                 .add_modifier(Modifier::BOLD),
-        ))
-        .style(panel_style());
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+        ))],
+    );
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -3384,6 +3412,92 @@ mod tests {
         })
         .expect("draw");
         screen_text(&term)
+    }
+
+    /// Borderless: the focused knob drops its box and marks focus with a
+    /// reversed value chip instead.
+    #[test]
+    fn borderless_focused_knob_is_a_chip() {
+        crate::ui::shadow::force(Some(true));
+        let mut term = Terminal::new(TestBackend::new(40, 8)).expect("test backend");
+        term.draw(|f| {
+            render_compact_knob(
+                f,
+                f.area(),
+                "GAIN",
+                0.5,
+                true,
+                true,
+                theme().amber,
+                false,
+                None,
+            );
+        })
+        .expect("draw");
+        crate::ui::shadow::force(None);
+        let text = screen_text(&term);
+        assert!(!text.contains('╭'), "the knob still draws a box:\n{text}");
+        assert!(text.contains("GAIN"), "the knob lost its label");
+        assert!(
+            term.backend()
+                .buffer()
+                .content
+                .iter()
+                .any(|c| c.modifier.contains(Modifier::REVERSED)),
+            "no reversed value chip:\n{text}"
+        );
+    }
+
+    /// The borderless look draws no panel frame at all: no corner glyph, no
+    /// drawn side. Everything a pane needs to read is its title and its content.
+    #[test]
+    fn borderless_mode_draws_no_frames() {
+        crate::ui::shadow::force(Some(true));
+        let params = Params::new();
+        let board = default_board(&params);
+        let text = render_with(&params, &board, Some(AMP_START), |_| {});
+        crate::ui::shadow::force(None);
+
+        for glyph in ['╭', '╮', '╰', '╯', '┌', '┐', '└', '┘', '┏', '┓', '┗', '┛']
+        {
+            assert!(
+                !text.contains(glyph),
+                "a panel frame survived in borderless mode: {glyph}\n{text}"
+            );
+        }
+        assert!(text.contains("MARSHALL PLEXI"), "the amp title is gone");
+        assert!(text.contains("GUITAR RIG"), "the rig title is gone");
+    }
+
+    /// Modals lose their double frame too, but keep their title.
+    #[test]
+    fn borderless_modals_draw_no_frame() {
+        use crate::preset::{Preset, PresetSource};
+        crate::ui::shadow::force(Some(true));
+        let params = Params::new();
+        let mut user = Preset::from_params("My Lead".to_string(), None, &params);
+        user.source = PresetSource::User;
+        let board = default_board(&params);
+        let text = render_with(&params, &board, None, |f| {
+            crate::ui::presets::render_preset_modal(
+                f,
+                &[user],
+                1,
+                &std::collections::HashSet::new(),
+                "",
+            );
+        });
+        crate::ui::shadow::force(None);
+
+        assert!(
+            !text.contains('╔'),
+            "the modal kept its double frame\n{text}"
+        );
+        assert!(
+            !text.contains('║'),
+            "the modal kept its double frame\n{text}"
+        );
+        assert!(text.contains("P R E S E T S"), "the modal title is gone");
     }
 
     /// The practice timeline pane renders its empty state (no track loaded) and is

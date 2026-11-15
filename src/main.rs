@@ -6,11 +6,14 @@ use headroom::{audio, dsp, looper, practice, preset, recording, ui};
 fn print_usage(program: &str) {
     println!("headroom — a guitar amplifier and effects simulator in your terminal");
     println!();
-    println!("Usage: {program} [--opaque]");
+    println!("Usage: {program} [--opaque] [--graphics=auto|on|off]");
     println!();
     println!("Options:");
     println!("  --opaque    Use solid black panel backgrounds (default is transparent,");
     println!("              so terminal transparency such as Ghostty's shows through)");
+    println!("  --graphics  Rounded pane shadows over the terminal's graphics protocol.");
+    println!("              auto (default) = on in kitty, Ghostty, WezTerm and Rex,");
+    println!("              off everywhere else; on/off force it");
     println!("  -h, --help  Show this message");
 }
 
@@ -21,9 +24,12 @@ fn main() -> Result<()> {
         .next()
         .unwrap_or_else(|| "headroom".to_owned());
     let mut opaque = false;
+    let mut graphics = None;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--opaque" => opaque = true,
+            "--graphics=on" => graphics = Some(true),
+            "--graphics=off" => graphics = Some(false),
             "-h" | "--help" => {
                 print_usage(&program);
                 return Ok(());
@@ -60,6 +66,7 @@ fn main() -> Result<()> {
         looper,
         (midi_state, midi_handle),
         opaque,
+        graphics,
     )?;
 
     Ok(())

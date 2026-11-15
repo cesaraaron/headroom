@@ -3,13 +3,13 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 use std::sync::atomic::Ordering::Relaxed;
 
 use crate::dsp::tuner::{SPECTRUM_BINS, Tuner, note_of, spectrum_bin_freq};
 
-use super::styles::{panel_style, theme};
+use super::styles::{draw_dialog, theme};
 
 /// Cents window (±) treated as "in tune".
 const IN_TUNE_CENTS: f32 = 5.0;
@@ -32,26 +32,24 @@ pub(super) fn render_tuner(f: &mut Frame, tuner: &Tuner) {
     let area = centered_rect(70, 80, f.area());
     f.render_widget(Clear, area);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().border))
-        .title(Span::styled(
-            " T U N E R ",
-            Style::default()
-                .fg(theme().amber)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .title(
+    let inner = draw_dialog(
+        f,
+        area,
+        Style::default().fg(theme().border),
+        vec![
+            Line::from(Span::styled(
+                " T U N E R ",
+                Style::default()
+                    .fg(theme().amber)
+                    .add_modifier(Modifier::BOLD),
+            )),
             Line::from(Span::styled(
                 " rig bypassed — clean signal ",
                 Style::default().fg(theme().dim),
             ))
             .right_aligned(),
-        )
-        .style(panel_style());
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+        ],
+    );
 
     let rows = Layout::default()
         .direction(Direction::Vertical)

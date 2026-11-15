@@ -13,12 +13,12 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 
 use crate::midi::{MidiState, MidiTarget};
 
-use super::styles::{panel_style, theme};
+use super::styles::{draw_dialog, theme};
 
 /// What the modal is waiting for: nothing, or a physical control to move.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -132,20 +132,20 @@ pub(super) fn render_midi(f: &mut Frame, ui: &MidiUi, state: &MidiState, port: O
         None if state.enabled() => " no input ".to_owned(),
         None => " MIDI off ".to_owned(),
     };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().border))
-        .title(Span::styled(
-            " M I D I ",
-            Style::default()
-                .fg(theme().amber)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .title(Line::from(Span::styled(status, Style::default().fg(theme().dim))).right_aligned())
-        .style(panel_style());
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+    let inner = draw_dialog(
+        f,
+        area,
+        Style::default().fg(theme().border),
+        vec![
+            Line::from(Span::styled(
+                " M I D I ",
+                Style::default()
+                    .fg(theme().amber)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(status, Style::default().fg(theme().dim))).right_aligned(),
+        ],
+    );
 
     let rows = Layout::default()
         .direction(Direction::Vertical)

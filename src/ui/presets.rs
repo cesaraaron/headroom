@@ -3,10 +3,10 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use super::styles::{panel_style, theme};
+use super::styles::{draw_dialog, theme};
 use std::collections::HashSet;
 
 use crate::preset::{Preset, PresetSource};
@@ -29,11 +29,11 @@ pub(super) fn render_preset_modal(
 
     f.render_widget(Clear, area);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().border))
-        .title(Span::styled(
+    let inner = draw_dialog(
+        f,
+        area,
+        Style::default().fg(theme().border),
+        vec![Line::from(Span::styled(
             if filter.is_empty() {
                 " P R E S E T S ".to_string()
             } else {
@@ -42,11 +42,8 @@ pub(super) fn render_preset_modal(
             Style::default()
                 .fg(theme().amber)
                 .add_modifier(Modifier::BOLD),
-        ))
-        .style(panel_style());
-
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+        ))],
+    );
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -294,18 +291,15 @@ pub(super) fn render_save_dialog(
     let area = centered_rect(55, f.area());
     f.render_widget(Clear, area);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .border_style(Style::default().fg(GREEN))
-        .title(Span::styled(
+    let inner = draw_dialog(
+        f,
+        area,
+        Style::default().fg(GREEN),
+        vec![Line::from(Span::styled(
             " S A V E   P R E S E T ",
             Style::default().fg(GREEN).add_modifier(Modifier::BOLD),
-        ))
-        .style(panel_style());
-
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+        ))],
+    );
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -445,20 +439,17 @@ pub(super) fn render_path_dialog(
     let area = centered_rect(60, f.area());
     f.render_widget(Clear, area);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().border))
-        .title(Span::styled(
+    let inner = draw_dialog(
+        f,
+        area,
+        Style::default().fg(theme().border),
+        vec![Line::from(Span::styled(
             title,
             Style::default()
                 .fg(theme().amber)
                 .add_modifier(Modifier::BOLD),
-        ))
-        .style(panel_style());
-
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+        ))],
+    );
 
     let rows = Layout::default()
         .direction(Direction::Vertical)

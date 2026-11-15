@@ -9,14 +9,14 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 
 use crate::audio::DeviceInfo;
 use crate::dsp::{Levels, Params};
 
 use super::draw::draw;
-use super::styles::{panel_style, theme};
+use super::styles::{draw_dialog, theme};
 
 pub struct Selection {
     pub input_idx: usize,
@@ -205,20 +205,17 @@ fn render_list_modal(
     let area = centered_rect(62, f.area());
     f.render_widget(Clear, area);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().border))
-        .title(Span::styled(
+    let inner = draw_dialog(
+        f,
+        area,
+        Style::default().fg(theme().border),
+        vec![Line::from(Span::styled(
             title,
             Style::default()
                 .fg(theme().amber)
                 .add_modifier(Modifier::BOLD),
-        ))
-        .style(panel_style());
-
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+        ))],
+    );
 
     // With a notice, reserve a two-line warning band above the list (wrapped, so
     // a long backend error still reads); otherwise the list takes the full body.

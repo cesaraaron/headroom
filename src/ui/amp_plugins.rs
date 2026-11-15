@@ -8,12 +8,12 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 
 use std::sync::atomic::Ordering::Relaxed;
 
-use super::styles::{panel_style, theme};
+use super::styles::{draw_dialog, theme};
 use crate::audio::AudioEngine;
 use crate::dsp::Params;
 use crate::host::au::{self, AuParam, DiscoveredAu, LoadedAu};
@@ -320,20 +320,17 @@ impl AmpBrowser {
             View::Browse => " A U   A M P S ",
             View::Edit => " A M P   P A R A M S ",
         };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().border))
-            .title(Span::styled(
+        let inner = draw_dialog(
+            f,
+            area,
+            Style::default().fg(theme().border),
+            vec![Line::from(Span::styled(
                 title,
                 Style::default()
                     .fg(theme().amber)
                     .add_modifier(Modifier::BOLD),
-            ))
-            .style(panel_style());
-
-        let inner = block.inner(area);
-        f.render_widget(block, area);
+            ))],
+        );
 
         let rows = Layout::default()
             .direction(Direction::Vertical)

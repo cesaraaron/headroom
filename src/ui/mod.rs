@@ -14,6 +14,7 @@ mod practice;
 mod presets;
 mod sessions;
 mod setup;
+mod shadow;
 mod styles;
 mod tuner;
 
@@ -441,7 +442,9 @@ pub fn run(
     looper: Arc<LooperControl>,
     midi: (Arc<crate::midi::MidiState>, Option<crate::midi::MidiHandle>),
     opaque: bool,
+    graphics: Option<bool>,
 ) -> Result<()> {
+    shadow::force(graphics);
     // Panel background: transparent (terminal default) unless `--opaque` was
     // passed. Set once here; every panel/modal reads it via `styles::panel_style`.
     styles::set_opaque(opaque);
@@ -543,6 +546,9 @@ pub fn run(
     // ── Session loop: (re)select devices, start the engine, run the UI ─────────
     // The `O` key drops the engine and loops back here so the picker runs again —
     // that is how input/output/channel can be changed at runtime on any platform.
+    // Rounded pane shadows, placed after each frame. No-ops on terminals
+    // without the graphics protocol.
+    let mut shadows = shadow::Layer::new();
     let mut force_prompt = false;
     // Surfaced atop the picker when audio fails to start, so the user learns why it
     // reopened and can choose a working device instead of being dropped out.
@@ -878,6 +884,7 @@ pub fn run(
             // The hit map is rebuilt every frame by `draw`; the mouse handler below
             // resolves a press against this frame's map.
             let mut hit_map: HitMap = HitMap::new();
+            shadow::begin_frame();
             terminal.draw(|f| {
                 hit_map = draw(
                     f,
@@ -1009,6 +1016,9 @@ pub fn run(
                     render_export_progress(f, handle.percent());
                 }
             })?;
+            // Shadows sit above the cell layer, so they are placed once the
+            // frame is flushed; an unchanged frame costs nothing.
+            shadows.commit()?;
 
             // Drain calibration windows and advance the wizard's timed steps.
             cal_ui.tick(&mut engine, &calibration);

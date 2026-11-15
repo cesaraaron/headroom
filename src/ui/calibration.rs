@@ -11,7 +11,7 @@ use ratatui::{
     layout::{Alignment, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
+    widgets::{Clear, Paragraph, Wrap},
 };
 use std::sync::atomic::Ordering::Relaxed;
 use std::time::Instant;
@@ -23,7 +23,7 @@ use crate::audio::calibration::{
     PickupClass, REFERENCE_VERSION, WindowStat, compute_calibration,
 };
 
-use super::styles::{panel_style, theme};
+use super::styles::{draw_dialog, theme};
 
 /// Seconds the noise-floor capture runs.
 const NOISE_SECS: f32 = 2.0;
@@ -219,19 +219,17 @@ impl CalibrationUi {
     pub fn render(&self, f: &mut Frame, cal: &InputCalibration) {
         let area = centered_rect(64, 62, f.area());
         f.render_widget(Clear, area);
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().border))
-            .title(Span::styled(
+        let inner = draw_dialog(
+            f,
+            area,
+            Style::default().fg(theme().border),
+            vec![Line::from(Span::styled(
                 " I N P U T   C A L I B R A T I O N ",
                 Style::default()
                     .fg(theme().amber)
                     .add_modifier(Modifier::BOLD),
-            ))
-            .style(panel_style());
-        let inner = block.inner(area);
-        f.render_widget(block, area);
+            ))],
+        );
         f.render_widget(
             Paragraph::new(self.lines(cal))
                 .alignment(Alignment::Left)

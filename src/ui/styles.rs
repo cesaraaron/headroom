@@ -1,5 +1,9 @@
+use ratatui::Frame;
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::symbols::border;
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 // ── Theme registry ──────────────────────────────────────────────────────────
@@ -180,9 +184,116 @@ pub(super) struct Rule {
 }
 
 pub(super) fn frame_rule() -> Rule {
+    // With the shadow layer there is no top border for the caps to join, so the
+    // titles stand on their own.
+    if super::shadow::supported() {
+        return Rule {
+            left: "",
+            right: "",
+        };
+    }
     Rule {
         left: "├",
         right: "┤",
+    }
+}
+
+// ── Structural panels ─────────────────────────────────────────────────────────
+// Two looks, picked once at startup by the shadow layer: with graphics the
+// panels are borderless and the focused one casts a real shadow; without, they
+// are the bordered boxes this app has always drawn.
+
+/// Draw a structural panel and return the rect its content may use.
+///
+/// Borderless mode keeps the exact geometry of the bordered one: the title sits
+/// on the top edge and the content is inset by a cell, so the shadow ring is the
+/// row and column the border used to occupy. Nothing reflows when the mode
+/// changes; only the glyphs go away.
+pub(super) fn draw_panel(
+    f: &mut Frame,
+    area: Rect,
+    active: bool,
+    classic: border::Set<'static>,
+    title: Option<Line<'static>>,
+) -> Rect {
+    if super::shadow::supported() {
+        if active {
+            super::shadow::want(area);
+        }
+        if let Some(line) = title {
+            let align = line.alignment.unwrap_or(Alignment::Left);
+            f.render_widget(
+                Paragraph::new(line).alignment(align),
+                Rect {
+                    x: area.x,
+                    y: area.y,
+                    width: area.width,
+                    height: 1,
+                },
+            );
+        }
+        return inset(area, 1);
+    }
+    let mut block = Block::default()
+        .borders(Borders::ALL)
+        .border_set(frame_set(classic))
+        .border_style(panel_border_style(active))
+        .style(panel_style());
+    if let Some(title) = title {
+        block = block.title(title);
+    }
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    inner
+}
+
+/// Draw a modal shell: a cleared area, its titles on the top edge, content inset
+/// by a cell. The shadow layer replaces the double frame with a real shadow.
+pub(super) fn draw_dialog<'a>(
+    f: &mut Frame,
+    area: Rect,
+    border: Style,
+    titles: Vec<Line<'a>>,
+) -> Rect {
+    f.render_widget(Clear, area);
+    if super::shadow::supported() {
+        super::shadow::want(area);
+        for title in titles {
+            let align = title.alignment.unwrap_or(Alignment::Left);
+            f.render_widget(
+                Paragraph::new(title).alignment(align),
+                Rect {
+                    x: area.x,
+                    y: area.y,
+                    width: area.width,
+                    height: 1,
+                },
+            );
+        }
+        return inset(area, 1);
+    }
+    // Same shell the modals always had: a double frame. (The shadow path above
+    // is the new one; this is the fallback on terminals without graphics.)
+    let mut block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(ratatui::widgets::BorderType::Double)
+        .border_style(border)
+        .style(panel_style());
+    for title in titles {
+        block = block.title(title);
+    }
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    inner
+}
+
+/// Shrink a rect by `n` cells on every side.
+fn inset(area: Rect, n: u16) -> Rect {
+    Rect {
+        x: area.x.saturating_add(n),
+        y: area.y.saturating_add(n),
+        width: area.width.saturating_sub(n * 2),
+        height: area.height.saturating_sub(n * 2),
     }
 }
 

@@ -3,12 +3,12 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 
 use crate::dsp::metronome::{MAX_BPM, MIN_BPM, Metronome};
 
-use super::styles::{panel_style, theme};
+use super::styles::{draw_dialog, theme};
 
 pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool) {
     let area = centered_rect(60, 45, f.area());
@@ -26,20 +26,20 @@ pub(super) fn render_metronome(f: &mut Frame, metronome: &Metronome, blink: bool
         Span::styled(" ○ stopped ", Style::default().fg(theme().dim))
     };
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().border))
-        .title(Span::styled(
-            " M E T R O N O M E ",
-            Style::default()
-                .fg(theme().amber)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .title(Line::from(status_span).right_aligned())
-        .style(panel_style());
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+    let inner = draw_dialog(
+        f,
+        area,
+        Style::default().fg(theme().border),
+        vec![
+            Line::from(Span::styled(
+                " M E T R O N O M E ",
+                Style::default()
+                    .fg(theme().amber)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(status_span).right_aligned(),
+        ],
+    );
 
     let rows = Layout::default()
         .direction(Direction::Vertical)

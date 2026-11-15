@@ -22,11 +22,11 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 use std::sync::atomic::Ordering::Relaxed;
 
-use super::styles::{frame_set, panel_border_style, panel_style, shade, theme};
+use super::styles::{draw_dialog, draw_panel, shade, theme};
 use crate::audio::AudioEngine;
 use crate::audio::calibration::{InputCalibration, REFERENCE_VERSION};
 use crate::dsp::Params;
@@ -1831,19 +1831,18 @@ impl PracticeUi {
         } else {
             shade(theme().accent, 0.55)
         };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_set(frame_set(border::PLAIN))
-            .border_style(panel_border_style(focused))
-            .title(Line::from(Span::styled(
+        let inner = draw_panel(
+            f,
+            area,
+            focused,
+            border::PLAIN,
+            Some(Line::from(Span::styled(
                 " T I M E L I N E ",
                 Style::default()
                     .fg(focused_glyph)
                     .add_modifier(Modifier::BOLD),
-            )))
-            .style(panel_style());
-        let inner = block.inner(area);
-        f.render_widget(block, area);
+            ))),
+        );
 
         // The ruler needs a spare line; on a very short pane fall back to the
         // old transport + rows + hint layout.
@@ -2546,19 +2545,17 @@ impl PracticeUi {
                 self.browser_filter
             )
         };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().border))
-            .title(Span::styled(
+        let inner = draw_dialog(
+            f,
+            area,
+            Style::default().fg(theme().border),
+            vec![Line::from(Span::styled(
                 title,
                 Style::default()
                     .fg(theme().amber)
                     .add_modifier(Modifier::BOLD),
-            ))
-            .style(panel_style());
-        let inner = block.inner(area);
-        f.render_widget(block, area);
+            ))],
+        );
 
         if self.library_open {
             self.render_library(f, inner);
@@ -2787,19 +2784,17 @@ impl PracticeUi {
         };
         let area = centered_box(46, 7, f.area());
         f.render_widget(Clear, area);
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().border))
-            .title(Span::styled(
+        let inner = draw_dialog(
+            f,
+            area,
+            Style::default().fg(theme().border),
+            vec![Line::from(Span::styled(
                 " T R A C K   G A I N ",
                 Style::default()
                     .fg(theme().amber)
                     .add_modifier(Modifier::BOLD),
-            ))
-            .style(panel_style());
-        let inner = block.inner(area);
-        f.render_widget(block, area);
+            ))],
+        );
 
         let kind = match track.kind {
             TrackKind::Import => "monitor volume",
@@ -2849,19 +2844,17 @@ impl PracticeUi {
         };
         let area = centered_box(48, 7, f.area());
         f.render_widget(Clear, area);
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().border))
-            .title(Span::styled(
+        let inner = draw_dialog(
+            f,
+            area,
+            Style::default().fg(theme().border),
+            vec![Line::from(Span::styled(
                 " M O V E   C L I P ",
                 Style::default()
                     .fg(theme().amber)
                     .add_modifier(Modifier::BOLD),
-            ))
-            .style(panel_style());
-        let inner = block.inner(area);
-        f.render_widget(block, area);
+            ))],
+        );
 
         let start_frames = self
             .session

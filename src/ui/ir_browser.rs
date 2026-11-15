@@ -15,10 +15,10 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 
-use super::styles::{panel_style, theme};
+use super::styles::{draw_dialog, theme};
 use crate::audio::AudioEngine;
 use crate::dsp::Params;
 use crate::dsp::cab::{ExternalIrCab, LIVE_MAX_IR_LEN, load_ir};
@@ -177,20 +177,17 @@ impl IrBrowser {
         let area = centered_rect(60, f.area());
         f.render_widget(Clear, area);
 
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().border))
-            .title(Span::styled(
+        let inner = draw_dialog(
+            f,
+            area,
+            Style::default().fg(theme().border),
+            vec![Line::from(Span::styled(
                 " C A B I N E T   I R s ",
                 Style::default()
                     .fg(theme().amber)
                     .add_modifier(Modifier::BOLD),
-            ))
-            .style(panel_style());
-
-        let inner = block.inner(area);
-        f.render_widget(block, area);
+            ))],
+        );
 
         // A one-line warning banner sits above the list whenever an external amp is
         // active, so the "no effect" state is obvious before the user even tries.

@@ -17,10 +17,10 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use super::styles::{panel_style, theme};
+use super::styles::{draw_dialog, theme};
 use crate::project::{self, RecoveryTake, SessionEntry};
 
 /// Which page is showing.
@@ -291,19 +291,17 @@ impl SessionBrowser {
             View::List => " S E S S I O N S ".to_owned(),
             View::NameInput => " S A V E   S E S S I O N ".to_owned(),
         };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Double)
-            .border_style(Style::default().fg(theme().border))
-            .title(Span::styled(
+        let inner = draw_dialog(
+            f,
+            area,
+            Style::default().fg(theme().border),
+            vec![Line::from(Span::styled(
                 title,
                 Style::default()
                     .fg(theme().amber)
                     .add_modifier(Modifier::BOLD),
-            ))
-            .style(panel_style());
-        let inner = block.inner(area);
-        f.render_widget(block, area);
+            ))],
+        );
 
         match self.view {
             View::List => self.render_list(f, inner),
