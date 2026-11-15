@@ -3441,33 +3441,44 @@ mod tests {
         );
     }
 
-    /// A modal takes the shadow from the panel behind it, and the two prompts
-    /// that draw into their own rect (unsaved / export) ask for one too — every
-    /// surface on screen is covered.
+    /// Every surface asks for a card: the panes, the prompts that build their
+    /// own rect, and the modals — the last of which takes the top-most card.
     #[test]
-    fn every_overlay_asks_for_a_shadow() {
+    fn every_surface_asks_for_a_card() {
         crate::ui::shadow::force(Some(true));
         let params = Params::new();
         let board = default_board(&params);
 
+        crate::ui::shadow::begin_frame();
         let text = render_with(&params, &board, Some(AMP_START), |_| {});
         assert!(text.contains("MARSHALL PLEXI"));
-        let panel = crate::ui::shadow::wanted().expect("no shadow for the focused panel");
+        let panes = crate::ui::shadow::wanted();
+        assert!(
+            panes.len() >= 4,
+            "not every pane asked for a card: {panes:?}"
+        );
 
+        crate::ui::shadow::begin_frame();
         render_with(&params, &board, Some(AMP_START), |f| {
             render_unsaved_prompt(f, &UnsavedPrompt::Choice("Quit".to_string()));
         });
-        let unsaved = crate::ui::shadow::wanted().expect("no shadow for the unsaved prompt");
-        assert_ne!(
-            unsaved, panel,
-            "the prompt must take the shadow, not the panel"
+        let unsaved = crate::ui::shadow::wanted();
+        let top = *unsaved.last().expect("no card for the unsaved prompt");
+        assert!(
+            !panes.iter().any(|(rect, _)| *rect == top.0),
+            "the prompt did not take a card of its own"
         );
 
+        crate::ui::shadow::begin_frame();
         render_with(&params, &board, Some(AMP_START), |f| {
             render_export_progress(f, 40);
         });
-        let export = crate::ui::shadow::wanted().expect("no shadow for the export prompt");
-        assert_ne!(export, panel, "the export prompt must take the shadow");
+        let export = crate::ui::shadow::wanted();
+        let top = *export.last().expect("no card for the export prompt");
+        assert!(
+            !panes.iter().any(|(rect, _)| *rect == top.0),
+            "the export prompt did not take a card of its own"
+        );
 
         crate::ui::shadow::force(None);
     }

@@ -443,11 +443,15 @@ pub fn run(
     midi: (Arc<crate::midi::MidiState>, Option<crate::midi::MidiHandle>),
     opaque: bool,
     graphics: Option<bool>,
+    glass: bool,
 ) -> Result<()> {
     shadow::force(graphics);
+    shadow::set_glass(glass);
     // Panel background: transparent (terminal default) unless `--opaque` was
     // passed. Set once here; every panel/modal reads it via `styles::panel_style`.
-    styles::set_opaque(opaque);
+    // Glass panes need the cells transparent — an opaque fill would paint over
+    // the card image — so `--opaque` yields to `--glass`.
+    styles::set_opaque(opaque && !shadow::glass_on());
     // Saved palette, if any (missing file = default; set once like above).
     styles::load_theme_conf();
     enable_raw_mode()?;

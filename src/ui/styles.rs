@@ -217,9 +217,9 @@ pub(super) fn draw_panel(
     title: Option<Line<'static>>,
 ) -> Rect {
     if super::shadow::supported() {
-        if active {
-            super::shadow::want(area);
-        }
+        // Every pane is a card; focus shows in the rim, not in whether the card
+        // exists.
+        super::shadow::want(area, active);
         if let Some(line) = title {
             let align = line.alignment.unwrap_or(Alignment::Left);
             f.render_widget(
@@ -257,7 +257,7 @@ pub(super) fn draw_dialog<'a>(
 ) -> Rect {
     f.render_widget(Clear, area);
     if super::shadow::supported() {
-        super::shadow::want(area);
+        super::shadow::want(area, true);
         for title in titles {
             let align = title.alignment.unwrap_or(Alignment::Left);
             f.render_widget(

@@ -1,4 +1,5 @@
-//! Rounded pane shadows, drawn over the terminal's graphics protocol.
+//! Rounded pane shadows — and glass panes — over the terminal's graphics
+//! protocol.
 //!
 //! A text cell cannot draw a soft edge: the best a glyph can do is an eighth of
 //! a cell, which reads as a hairline rather than depth. So the focused pane's
@@ -17,6 +18,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use ratatui::layout::Rect;
 
@@ -30,14 +32,50 @@ const OFFSET: f32 = 5.0;
 /// Corner radius, in sixteenths of a cell.
 const RADIUS: f32 = 10.0;
 
-/// Image resolution per cell. Half a typical cell, so the terminal upscales the
-/// gradient 2x — free smoothing, and a quarter of the bytes.
-const PX_W: u32 = 4;
-const PX_H: u32 = 8;
+// ── Glass ─────────────────────────────────────────────────────────────────────
+/// White veil inside the card, as an alpha. Low enough that the terminal's own
+/// background still reads through: this is glass, not a fill.
+const GLASS_FILL: f32 = 0.025;
+/// Extra veil at the top edge, fading out by mid-card — the "lit" side.
+const GLASS_SHEEN: f32 = 0.04;
+/// The rim: a hairline that catches the light, brighter along the top.
+const RIM_TOP: f32 = 0.34;
+const RIM_BOTTOM: f32 = 0.16;
+/// Rim thickness in image pixels.
+const RIM_PX: f32 = 1.2;
+/// The card sits this far inside its pane, in sixteenths of a cell, so two
+/// neighbouring panes leave a sliver of raw background between their rims.
+const CARD_INSET: f32 = 2.0;
+/// Rim of a pane that does not own focus.
+const RIM_IDLE: f32 = 0.12;
+const RIM_IDLE_BOTTOM: f32 = 0.06;
+
+/// Image resolution per cell. Fine enough that the 1 px rim survives the
+/// terminal's scale-down; the shadow is a gradient and costs nothing.
+const PX_W: u32 = 12;
+const PX_H: u32 = 24;
 
 // ── Availability ──────────────────────────────────────────────────────────────
 
 static ENABLED: OnceLock<bool> = OnceLock::new();
+
+/// Whether panes are drawn as glass cards (fill + rim) or bare shadow rings.
+static GLASS: AtomicBool = AtomicBool::new(true);
+
+/// Turn the glass card on or off (`--glass=off` keeps the shadow only).
+pub(super) fn set_glass(on: bool) {
+    GLASS.store(on, Ordering::Relaxed);
+}
+
+fn glass() -> bool {
+    GLASS.load(Ordering::Relaxed)
+}
+
+/// Whether panes are glass cards (the caller uses this to keep panel fills out
+/// of the way).
+pub(super) fn glass_on() -> bool {
+    glass() && supported()
+}
 
 #[cfg(test)]
 thread_local! {
@@ -97,44 +135,45 @@ fn probe() -> bool {
 // ── Per-frame request ─────────────────────────────────────────────────────────
 
 thread_local! {
-    /// The pane that wants a shadow this frame. Only one thing can own focus, so
-    /// this is a slot rather than a list: whoever asks last wins, which is how a
-    /// modal takes the shadow from the panel behind it.
-    static WANTED: RefCell<Option<Rect>> = const { RefCell::new(None) };
+    /// Panes that want a card this frame, and whether each owns focus. Filled by
+    /// `styles::draw_panel` / `draw_dialog` while the frame is built.
+    static WANTED: RefCell<Vec<(Rect, bool)>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Start a frame: forget what the last one asked for.
 pub(super) fn begin_frame() {
-    WANTED.with(|w| *w.borrow_mut() = None);
+    WANTED.with(|w| w.borrow_mut().clear());
 }
 
-/// The rect the current frame asked for (tests only).
+/// The panes the current frame asked for (tests only).
 #[cfg(test)]
-pub(super) fn wanted() -> Option<Rect> {
-    WANTED.with(|w| *w.borrow())
+pub(super) fn wanted() -> Vec<(Rect, bool)> {
+    WANTED.with(|w| w.borrow().clone())
 }
 
-/// Ask for a shadow in `rect` (the pane's whole cell rect).
-pub(super) fn want(rect: Rect) {
+/// Ask for a card in `rect` (a pane's whole cell rect).
+pub(super) fn want(rect: Rect, active: bool) {
     if rect.width >= 3 && rect.height >= 3 {
-        WANTED.with(|w| *w.borrow_mut() = Some(rect));
+        WANTED.with(|w| w.borrow_mut().push((rect, active)));
     }
 }
 
 // ── Placement ─────────────────────────────────────────────────────────────────
 
+#[derive(Clone, Copy, PartialEq)]
 struct Placed {
     id: u32,
     rect: Rect,
+    active: bool,
 }
 
 /// What is currently on screen, so an unchanged frame costs nothing.
 #[derive(Default)]
 pub struct Layer {
-    placed: Option<Placed>,
+    placed: Vec<Placed>,
     next_id: u32,
-    /// PNG bytes per (w, h) cell size.
-    cache: HashMap<(u16, u16), Vec<u8>>,
+    /// PNG bytes per (cell size, focused).
+    cache: HashMap<(u16, u16, bool), Vec<u8>>,
 }
 
 impl Layer {
@@ -150,32 +189,38 @@ impl Layer {
         if !supported() {
             return Ok(());
         }
-        let wanted = WANTED.with(|w| *w.borrow());
-        if self.placed.as_ref().map(|p| p.rect) == wanted {
+        let wanted = WANTED.with(|w| w.borrow().clone());
+        if self.placed.len() == wanted.len()
+            && self
+                .placed
+                .iter()
+                .zip(&wanted)
+                .all(|(p, (rect, active))| p.rect == *rect && p.active == *active)
+        {
             return Ok(());
         }
         let mut out = io::stdout().lock();
-        if let Some(placed) = self.placed.take() {
+        for placed in self.placed.drain(..) {
             write!(out, "\x1b_Ga=d,d=i,i={},q=2\x1b\\", placed.id)?;
         }
-        if let Some(rect) = wanted {
+        for (rect, active) in wanted {
             let id = self.next_id;
             self.next_id += 1;
-            let png = self.image(rect.width, rect.height)?;
+            let png = self.image(rect.width, rect.height, active)?;
             place(&mut out, rect, &png, id)?;
-            self.placed = Some(Placed { id, rect });
+            self.placed.push(Placed { id, rect, active });
         }
         out.flush()
     }
 
     /// PNG for a pane of `w`×`h` cells, memoised — the same pane size is placed
     /// again every time focus returns to it.
-    fn image(&mut self, w: u16, h: u16) -> io::Result<Vec<u8>> {
-        if let Some(png) = self.cache.get(&(w, h)) {
+    fn image(&mut self, w: u16, h: u16, active: bool) -> io::Result<Vec<u8>> {
+        if let Some(png) = self.cache.get(&(w, h, active)) {
             return Ok(png.clone());
         }
-        let png = encode(w, h)?;
-        self.cache.insert((w, h), png.clone());
+        let png = encode(w, h, active)?;
+        self.cache.insert((w, h, active), png.clone());
         Ok(png)
     }
 }
@@ -191,7 +236,7 @@ fn place<W: Write>(out: &mut W, rect: Rect, png: &[u8], id: u32) -> io::Result<(
         if i == 0 {
             write!(
                 out,
-                "\x1b_Ga=T,f=100,q=2,i={},c={},r={},m={};",
+                "\x1b_Ga=T,f=100,q=2,i={},c={},r={},z=-1,m={};",
                 id, rect.width, rect.height, more
             )?;
         } else {
@@ -205,17 +250,80 @@ fn place<W: Write>(out: &mut W, rect: Rect, png: &[u8], id: u32) -> io::Result<(
 
 // ── The image itself ──────────────────────────────────────────────────────────
 
-/// Render the shadow ring for a pane of `w`×`h` cells as RGBA rows.
+/// Render one pane's image: the card (glass fill + rim), then the shadow it
+/// casts, in a single RGBA buffer the size of the pane's cell rect.
 ///
-/// The card occupies the pane inset by one cell; the shadow is the rounded box
-/// grown by the blur, shifted down, with everything inside the card cleared so
-/// the terminal's own text is never covered.
-fn rgba(w: u16, h: u16) -> Vec<u8> {
+/// The card is the pane inset by one cell, matching where the content starts, so
+/// the glass never runs under a glyph that the terminal would then have to fight
+/// with. Everything outside it is the shadow.
+fn rgba(w: u16, h: u16, active: bool) -> Vec<u8> {
+    if !glass() {
+        return shadow_ring(w, h);
+    }
     let iw = u32::from(w) * PX_W;
     let ih = u32::from(h) * PX_H;
     let mut px = vec![0u8; (iw * ih * 4) as usize];
 
-    // Card rect in image pixels (one cell inset all round).
+    // The card fills the pane, held a hair inside it so neighbouring panes keep
+    // a sliver of bare background between their rims.
+    let scale = f32::from(PX_H as u16) / 16.0;
+    let inset = CARD_INSET * scale;
+    let half = (
+        (iw as f32 - 2.0 * inset) / 2.0,
+        (ih as f32 - 2.0 * inset) / 2.0,
+    );
+    let centre = (iw as f32 / 2.0, ih as f32 / 2.0);
+    let radius = (RADIUS * scale).min(half.0).min(half.1);
+    let rim = RIM_PX * scale;
+    let (rim_top, rim_bottom) = if active {
+        (RIM_TOP, RIM_BOTTOM)
+    } else {
+        (RIM_IDLE, RIM_IDLE_BOTTOM)
+    };
+
+    for y in 0..ih {
+        let row = (y as f32 / ih as f32).clamp(0.0, 1.0);
+        for x in 0..iw {
+            let p = (x as f32 + 0.5 - centre.0, y as f32 + 0.5 - centre.1);
+            let d = rounded_box(p, half, radius);
+            let (white, a) = if d <= 0.0 {
+                // Inside the card: the veil, a lit top, and the rim at the edge.
+                let sheen = GLASS_SHEEN * (1.0 - row).powi(2);
+                let mut a = GLASS_FILL + sheen;
+                if d > -rim {
+                    let t = ((d + rim) / rim).clamp(0.0, 1.0); // 0 right at the edge
+                    let edge = rim_top + (rim_bottom - rim_top) * row;
+                    a = a.max(edge * (1.0 - t * 0.15));
+                }
+                (true, a)
+            } else {
+                // Just outside: a hint of shading so the card does not look pasted
+                // on. Dark, and short enough never to clip against the pane edge.
+                let t = (1.0 - d / (2.5 * scale)).clamp(0.0, 1.0);
+                (false, ALPHA * 0.35 * t * t)
+            };
+            let a = (a.clamp(0.0, 1.0) * 255.0) as u8;
+            if a == 0 {
+                continue;
+            }
+            let i = ((y * iw + x) * 4) as usize;
+            let v = if white { 255 } else { 0 };
+            px[i] = v;
+            px[i + 1] = v;
+            px[i + 2] = v;
+            px[i + 3] = a;
+        }
+    }
+    px
+}
+
+/// The bare shadow: a ring around the card, nothing inside it. This is the
+/// `--glass=off` look, and it is what the app shipped before the cards.
+fn shadow_ring(w: u16, h: u16) -> Vec<u8> {
+    let iw = u32::from(w) * PX_W;
+    let ih = u32::from(h) * PX_H;
+    let mut px = vec![0u8; (iw * ih * 4) as usize];
+
     let scale = f32::from(PX_H as u16) / 16.0;
     let (cx0, cy0) = (PX_W as f32, PX_H as f32);
     let (cx1, cy1) = (
@@ -231,12 +339,10 @@ fn rgba(w: u16, h: u16) -> Vec<u8> {
     for y in 0..ih {
         for x in 0..iw {
             let p = (x as f32 + 0.5, y as f32 + 0.5);
-            // Inside the card: leave the cell layer alone.
             let card = rounded_box((p.0 - centre.0, p.1 - centre.1), half, radius);
             if card <= 0.0 {
                 continue;
             }
-            // Distance to the (offset) shadow box.
             let shadow = rounded_box((p.0 - centre.0, p.1 - centre.1 - offset), half, radius);
             let t = (0.5 - shadow / (2.0 * blur)).clamp(0.0, 1.0);
             let eased = t * t * (3.0 - 2.0 * t);
@@ -245,9 +351,6 @@ fn rgba(w: u16, h: u16) -> Vec<u8> {
                 continue;
             }
             let i = ((y * iw + x) * 4) as usize;
-            px[i] = 0;
-            px[i + 1] = 0;
-            px[i + 2] = 0;
             px[i + 3] = a;
         }
     }
@@ -262,7 +365,7 @@ fn rounded_box(p: (f32, f32), half: (f32, f32), radius: f32) -> f32 {
     outside + qx.max(qy).min(0.0) - radius
 }
 
-fn encode(w: u16, h: u16) -> io::Result<Vec<u8>> {
+fn encode(w: u16, h: u16, active: bool) -> io::Result<Vec<u8>> {
     let iw = u32::from(w) * PX_W;
     let ih = u32::from(h) * PX_H;
     let mut png = Vec::new();
@@ -271,7 +374,9 @@ fn encode(w: u16, h: u16) -> io::Result<Vec<u8>> {
         enc.set_color(png::ColorType::Rgba);
         enc.set_depth(png::BitDepth::Eight);
         let mut writer = enc.write_header().map_err(io_err)?;
-        writer.write_image_data(&rgba(w, h)).map_err(io_err)?;
+        writer
+            .write_image_data(&rgba(w, h, active))
+            .map_err(io_err)?;
     }
     Ok(png)
 }
@@ -313,29 +418,64 @@ fn base64(data: &[u8]) -> String {
 mod tests {
     use super::*;
 
-    /// The ring is transparent inside the card, opaque-ish at the card's edge
-    /// and gone by the pane's outer edge — that is what makes it a shadow and
-    /// not a frame.
+    /// `GLASS` is process-global, so the two rendering tests take turns.
+    static GLASS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Glass on: a white veil inside the card, a brighter rim at its edge, and
+    /// a dark shadow outside it.
     #[test]
-    fn shadow_is_a_ring_around_the_card() {
+    fn glass_is_a_veiled_card_with_a_lit_rim() {
+        let _guard = GLASS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        set_glass(true);
         let (w, h) = (12u16, 8u16);
-        let px = rgba(w, h);
+        let px = rgba(w, h, true);
         let iw = w as u32 * PX_W;
         let alpha = |x: u32, y: u32| px[((y * iw + x) * 4 + 3) as usize];
+        let rgb = |x: u32, y: u32| {
+            let i = ((y * iw + x) * 4) as usize;
+            (px[i], px[i + 1], px[i + 2])
+        };
 
-        // Dead centre of the card: untouched.
+        // Middle of the card: a faint white veil, not a fill.
+        let ih = h as u32 * PX_H;
+        let mid = alpha(iw / 2, PX_H * 4);
+        assert!(mid > 0 && mid < 40, "glass veil out of range: {mid}");
+        assert_eq!(rgb(iw / 2, PX_H * 4), (255, 255, 255), "veil must be white");
+        // The rim hugs the card's edge: the brightest pixel of the row sits at
+        // the edge, not in the middle.
+        let row = ih / 2;
+        let (rim_x, rim) = (0..iw)
+            .map(|x| (x, alpha(x, row)))
+            .max_by_key(|(_, a)| *a)
+            .expect("row");
+        assert!(rim > mid * 3, "no rim: {rim} vs veil {mid}");
+        assert!(
+            rim_x < 6 || rim_x > iw - 6,
+            "the rim is not at an edge: x={rim_x}"
+        );
+        // The sliver outside the card is dark, not a glow.
+        assert_eq!(rgb(0, ih / 2), (0, 0, 0), "outer shading must be dark");
+        let _ = h;
+    }
+
+    /// Glass off: the pane is a bare shadow ring again, interior clear.
+    #[test]
+    fn without_glass_the_card_stays_clear() {
+        let _guard = GLASS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        set_glass(false);
+        let (w, h) = (12u16, 8u16);
+        let px = rgba(w, h, true);
+        let iw = w as u32 * PX_W;
+        let alpha = |x: u32, y: u32| px[((y * iw + x) * 4 + 3) as usize];
         assert_eq!(alpha(iw / 2, PX_H * 4), 0, "card interior must stay clear");
-        // The last pixel inside the card's bottom edge: still clear.
         assert_eq!(alpha(iw / 2, 7 * PX_H - 1), 0);
-        // Just under the card: the darkest part of the shadow.
         let under = alpha(iw / 2, 7 * PX_H + 1);
-        assert!(under > 100, "shadow too faint under the card: {under}");
-        // The pane's last row: nearly gone.
+        assert!(under > 60, "shadow too faint under the card: {under}");
         let far = alpha(iw / 2, h as u32 * PX_H - 1);
         assert!(far < 60, "shadow must fade out at the pane edge: {far}");
-        // The corner is lighter than the middle of the edge (rounded corner).
         let corner = alpha(2, 7 * PX_H + 1);
         assert!(corner < under, "corners must be rounded, not square");
+        set_glass(true);
     }
 
     /// The placement moves to the pane's top-left cell (1-based), transmits a
@@ -343,7 +483,7 @@ mod tests {
     #[test]
     fn placement_is_a_well_formed_kitty_transmission() {
         let mut out = Vec::new();
-        let png = encode(12, 4).unwrap();
+        let png = encode(12, 4, true).unwrap();
         place(&mut out, Rect::new(3, 2, 12, 4), &png, 7).unwrap();
         let text = String::from_utf8(out).unwrap();
         assert!(
