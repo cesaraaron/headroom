@@ -53,9 +53,14 @@ pub fn run(
     notice: Option<&str>,
 ) -> Result<Option<Selection>> {
     let mut step = Step::InputDevice { cursor: 0 };
+    // The picker runs its own draw loop, so it needs its own shadow layer: the
+    // panes behind it and the list modal itself get the same rounded shadow the
+    // main screen does.
+    let mut shadows = super::shadow::Layer::new();
 
     loop {
         let step_ref = &step;
+        super::shadow::begin_frame();
         terminal.draw(|f| {
             draw(
                 f,
@@ -127,6 +132,7 @@ pub fn run(
                 }
             }
         })?;
+        shadows.commit()?;
 
         if !event::poll(Duration::from_millis(30))? {
             continue;

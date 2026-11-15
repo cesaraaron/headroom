@@ -4,7 +4,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 use std::sync::atomic::Ordering::Relaxed;
 
@@ -1527,8 +1527,6 @@ pub(super) fn render_unsaved_prompt(f: &mut Frame, prompt: &UnsavedPrompt) {
         width,
         height,
     };
-    f.render_widget(Clear, rect);
-
     let (title, lines) = match prompt {
         UnsavedPrompt::Choice(action) => (
             " U N S A V E D   C H A N G E S ",
@@ -1571,19 +1569,17 @@ pub(super) fn render_unsaved_prompt(f: &mut Frame, prompt: &UnsavedPrompt) {
         ),
     };
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().warn))
-        .title(Span::styled(
+    let inner = draw_dialog(
+        f,
+        rect,
+        Style::default().fg(theme().warn),
+        vec![Line::from(Span::styled(
             title,
             Style::default()
                 .fg(theme().warn)
                 .add_modifier(Modifier::BOLD),
-        ))
-        .style(panel_style());
-    let inner = block.inner(rect);
-    f.render_widget(block, rect);
+        ))],
+    );
     f.render_widget(Paragraph::new(lines).alignment(Alignment::Center), inner);
 }
 
@@ -1603,20 +1599,17 @@ pub(super) fn render_export_progress(f: &mut Frame, percent: u32) {
         width,
         height,
     };
-    f.render_widget(Clear, rect);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .border_style(Style::default().fg(theme().safe))
-        .title(Span::styled(
+    let inner = draw_dialog(
+        f,
+        rect,
+        Style::default().fg(theme().safe),
+        vec![Line::from(Span::styled(
             " E X P O R T I N G ",
             Style::default()
                 .fg(theme().amber)
                 .add_modifier(Modifier::BOLD),
-        ))
-        .style(panel_style());
-    let inner = block.inner(rect);
-    f.render_widget(block, rect);
+        ))],
+    );
 
     let bar_w = inner.width.saturating_sub(2) as usize;
     let filled = (percent as usize * bar_w / 100).min(bar_w);
@@ -3446,6 +3439,37 @@ mod tests {
                 .any(|c| c.modifier.contains(Modifier::REVERSED)),
             "no reversed value chip:\n{text}"
         );
+    }
+
+    /// A modal takes the shadow from the panel behind it, and the two prompts
+    /// that draw into their own rect (unsaved / export) ask for one too — every
+    /// surface on screen is covered.
+    #[test]
+    fn every_overlay_asks_for_a_shadow() {
+        crate::ui::shadow::force(Some(true));
+        let params = Params::new();
+        let board = default_board(&params);
+
+        let text = render_with(&params, &board, Some(AMP_START), |_| {});
+        assert!(text.contains("MARSHALL PLEXI"));
+        let panel = crate::ui::shadow::wanted().expect("no shadow for the focused panel");
+
+        render_with(&params, &board, Some(AMP_START), |f| {
+            render_unsaved_prompt(f, &UnsavedPrompt::Choice("Quit".to_string()));
+        });
+        let unsaved = crate::ui::shadow::wanted().expect("no shadow for the unsaved prompt");
+        assert_ne!(
+            unsaved, panel,
+            "the prompt must take the shadow, not the panel"
+        );
+
+        render_with(&params, &board, Some(AMP_START), |f| {
+            render_export_progress(f, 40);
+        });
+        let export = crate::ui::shadow::wanted().expect("no shadow for the export prompt");
+        assert_ne!(export, panel, "the export prompt must take the shadow");
+
+        crate::ui::shadow::force(None);
     }
 
     /// The borderless look draws no panel frame at all: no corner glyph, no

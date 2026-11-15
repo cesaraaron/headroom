@@ -108,6 +108,12 @@ pub(super) fn begin_frame() {
     WANTED.with(|w| *w.borrow_mut() = None);
 }
 
+/// The rect the current frame asked for (tests only).
+#[cfg(test)]
+pub(super) fn wanted() -> Option<Rect> {
+    WANTED.with(|w| *w.borrow())
+}
+
 /// Ask for a shadow in `rect` (the pane's whole cell rect).
 pub(super) fn want(rect: Rect) {
     if rect.width >= 3 && rect.height >= 3 {
