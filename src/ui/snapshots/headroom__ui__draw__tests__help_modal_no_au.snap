@@ -34,6 +34,7 @@ expression: text
                                       ║  F2  MIDI bindings: learn a controller control                                            ║                                       
                                       ║  F3  cycle the UI theme                                                                   ║                                       
                                       ║  F5  cycle the panel look (rounded → classic)                                             ║                                       
+                                      ║  F6  panel focus animation: on / off (saved)                                              ║                                       
                                       ║  V  plugin browser                                                                        ║                                       
                                       ║  R  arm / stop a dry raw take (auto-plays; lands on the timeline)                         ║                                       
                                       ║Looper                                                                                     ║                                       
@@ -54,6 +55,5 @@ expression: text
                                       ║Timeline (any panel)                                                                       ║                                       
                                       ║  Space  play / pause (shows the timeline, keeps focus)                                    ║                                       
                                       ║  Enter  jump to start (loop in-point if looped; shows the timeline, keeps focus)          ║                                       
-                                      ║Timeline (focused)                                                                         ║                                       
                                       ║                          ↑/↓  PgUp/PgDn scroll  ·  Esc / K close                          ║                                       
                                       ╚═══════════════════════════════════════════════════════════════════════════════════════════╝

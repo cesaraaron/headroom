@@ -253,13 +253,26 @@ alters the UI on purpose, regenerate and review the golden, then commit it:
 cargo insta test --review     # or: INSTA_UPDATE=always cargo test --all-features
 ```
 
-Two things to know:
+A few things to know:
 
 - **Never set `INSTA_UPDATE` in CI** — that would auto-accept and mask regressions.
   A stray pending `*.snap.new` also fails CI, so finish the re-bless and commit the
   `.snap`.
 - The golden tests are gated on the default `clap` feature, because the help footer
   renders a `clap`-only key. Regenerate with default features on.
+- **The help modal has two goldens.** It lists the macOS-only `Z / U` AU keys only
+  under `all(feature = "au", target_os = "macos")`, so `help_modal.snap` (AU) and
+  `help_modal_no_au.snap` (everything else) come from different line lists. A
+  re-bless on macOS has `au` active and updates only the AU golden, but the Linux
+  CI job runs plain `cargo test` and asserts the no-AU one. After *any*
+  help-overlay change, bless both — the second from a build without `au`:
+
+  ```bash
+  INSTA_UPDATE=always cargo test --no-default-features --features clap --lib snapshot_help_modal
+  ```
+
+  Commit both `.snap` files together. The modal is height-clamped, so adding a
+  line also pushes one off the visible tail; expect that second diff too.
 - Snapshot filenames are derived from the crate name (`headroom__…`). If the
   crate is ever renamed, rename the files to match.
 
