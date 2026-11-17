@@ -3,9 +3,9 @@
 Twelve bundled presets were removed from `presets/` on 2026-09-29. **They are not
 lost** — every one is recoverable from git history with a single command (below),
 and this page is the index. Eleven remain retired; **AC/DC — Back in Black was
-restored and re-voiced for the current models on 2026-11-11**.
+restored and re-voiced for the current models on 2026-11-13** (commit `8ce656e`).
 
-On 2026-11-12 the bundled set was curated down to five presets:
+The same commit (2026-11-13) curated the bundled set down to five presets:
 
 - `acdc_back_in_black`
 - `eagles_hotel_california_solo`
@@ -67,7 +67,7 @@ bundled preset**.
 Those models are still covered by their own unit tests (`src/dsp/amp/mod.rs`,
 `src/dsp/cab/mod.rs`) and by the rig matrix in `src/dsp/mod.rs`'s tone tests, but
 they are no longer exercised **end-to-end through a preset** by the fidelity
-harness. (Update 2026-11-11: the restored Back in Black covers Plexi + Marshall
+harness. (Update 2026-11-13: the restored Back in Black covers Plexi + Marshall
 again; the rest of the gap below still stands.) This is the weakest point in the current test setup and the thing to
 remember when a Phase C change shows drift the harness cannot explain.
 
@@ -119,7 +119,7 @@ presence. Their loss is the direct cause of the coverage gap above.
 
 > **Decision (2026-09-29, maintainer): do not bring them back.** The coverage gap
 > is accepted deliberately. (Exception: Back in Black was restored at maintainer
-> request on 2026-11-11 and re-voiced.) The eight surviving artist presets are the point of
+> request on 2026-11-13 and re-voiced.) The five curated artist presets are the point of
 > the set; re-adding non-artist rig showcases to give internal models a bundled
 > presence is not wanted. Those five amp models and four cabs remain covered by
 > their own unit tests in `src/dsp/amp` and `src/dsp/cab` — what they lose is

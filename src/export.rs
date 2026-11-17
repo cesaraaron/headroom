@@ -13,9 +13,11 @@
 //!
 //! The render runs on a worker thread with its own [`DspChain`], built from a
 //! **snapshot** of the rig settings (`Preset`), so knob moves during a render do
-//! not affect it. External third-party processors cannot be cloned faithfully yet
-//! (no state capture), so the UI refuses to export while an AU amp or CLAP insert
-//! is loaded; the external **IR** is supported and re-loaded at the export rate.
+//! not affect it. A live AU/CLAP instance cannot be reused from a worker thread,
+//! so the export rebuilds separate instances from captured plugin state; it
+//! refuses **per plugin** only when that state cannot be captured (see
+//! "External-rig parity" below). The external **IR** is re-loaded at the export
+//! rate.
 //!
 //! ## Export contract
 //!

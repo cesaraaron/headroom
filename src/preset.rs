@@ -58,7 +58,8 @@ pub struct Preset {
     pub tremolo: Option<TremoloSection>,
     pub delay: Option<DelaySection>,
     pub reverb: ReverbSection,
-    /// Studio-master output width. Absent in older presets → default (`1.3`).
+    /// Studio-master output width. Absent in older presets → default (`1.0`,
+    /// neutral); `1.3` is the studio-wide toggle value.
     pub master: Option<MasterSection>,
     /// Signal-chain order as stage names (`"gate"`, `"comp"`, `"amp"`, `"cab"`,
     /// `"delay"`…). Absent in older presets → the shipped default order. Legacy
@@ -387,8 +388,9 @@ pub struct ReverbSection {
 }
 
 /// Studio-master output stage. `width` is the stereo widener: `1.0` = neutral
-/// reference (untouched sides), `1.3` = the historic shipped sound. Optional —
-/// omitting `[master]` resets the width to its default.
+/// reference (untouched sides, the default), `1.3` = `WIDE_MASTER_WIDTH` (the
+/// studio-wide toggle). Optional — omitting `[master]` resets the width to the
+/// default, `DEFAULT_MASTER_WIDTH = 1.0`.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MasterSection {
     pub width: f32,

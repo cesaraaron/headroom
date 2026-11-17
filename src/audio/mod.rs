@@ -809,9 +809,9 @@ fn follow_stereo(env: f32, l: f32, r: f32, attack: f32, release: f32) -> f32 {
 ///
 /// Both buses get the same [`MIX_HEADROOM`] trim before the sum. That is the
 /// headroom the old monitor duck was trying to buy: at −4 dB a full-scale
-/// guitar plus a −6 dBFS backing lands just under the limiter knee, so the
-/// limiter stays transparent and the backing is never pulled down under the
-/// guitar. The limiter is the only thing that touches the mix after the sum,
+/// guitar plus a −6 dBFS backing lands just over the limiter knee (0.878 vs
+/// 0.864), engaging only a fraction of a dB. The backing is never pulled down
+/// under the guitar because one gain is applied to both buses. The limiter is the only thing that touches the mix after the sum,
 /// and it applies one gain to both buses, so the guitar/backing balance is
 /// preserved.
 ///

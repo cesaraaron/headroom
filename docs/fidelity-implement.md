@@ -290,7 +290,7 @@ finding **resolved** here, with the commit, when its item ships.
 | R7 | Low | `on_input` resizes/extends buffers when a callback exceeds `MAX_BLOCK = 4096` frames — an allocation on the audio thread (rare). | `src/audio/mod.rs` ~835–849, `MAX_BLOCK` line 80 | A5 | **resolved** (A5) |
 | R8 | Decision | `DEFAULT_MASTER_WIDTH = 1.3` kept for compatibility. For period-accurate presets, set `[master] width = 1.0` per preset (guitar on these records is a mono track) rather than flipping the global default. | `src/dsp/mod.rs` ~475 | Preset phase | **resolved** (2026-09-25): all 17 bundled presets now set `[master] width = 1.0` |
 | R9 | Gap | There is **no input-level calibration** anywhere: amp breakup depends on the user's interface gain, so presets tuned on one interface are under/over-driven on another. Likely cause of the "rescue" TS + two EQs in several presets. | `rg -i "input_gain\|trim\|calibrat" src/` finds nothing relevant | B3–B5, B8 | **resolved in code** (B3–B5; B8 retunes the provisional targets) |
-| R10 | Gap | Phase 0 step 3 (offline harness) was not built. Analysis helpers (`db`, `rms`, `goertzel`, `ltas`, `envelope`, `percentile`) are duplicated across `examples/`. The timeline's raw takes + offline export (`src/export.rs`) already provide most of the rendering machinery. | `examples/di_compare.rs`, `drive_analysis.rs`, `amp_analysis.rs`, `knob_match.rs` | B1, B2 | **resolved** (B1, B2) |
+| R10 | Gap | Phase 0 step 3 (offline harness) was not built. Analysis helpers (`db`, `rms`, `goertzel`, `ltas`, `envelope`, `percentile`) are duplicated across `examples/`. The timeline's raw takes + offline export (`src/export.rs`) already provide most of the rendering machinery. | `examples/di_compare.rs`, `drive_analysis.rs`, `amp_analysis.rs`, `knob_match.rs` | B1, B2 | **partially resolved** (B1, B2): shared helpers now live in `src/analysis/metrics.rs`, but six `examples/*.rs` still carry local copies (see `docs/audit-2026-11-16.md` #56) |
 
 Verified correct during the review (no action): bypass wire-transparency;
 Amp/Cab split and `"ampcab"` migration; `sanitize_chain_order` repair;
@@ -2681,10 +2681,10 @@ signal topology:
 - **Presets.** Restored AC/DC — Back in Black from the retired set and re-voiced
   it for the current Plexi/Greenback models (tighter lows, more upper-mid bite,
   dry cab).
-- **2026-11-11:** retired the five `_alt_` chain-order experiment presets
+- **2026-11-13 (one commit, `8ce656e`):** restored and re-voiced Back in
+  Black, retired the five `_alt_` chain-order experiment presets
   (`comfortably_numb_solo_1_alt_{comp_after_fuzz,muff_td,rotary}`,
-  `time_solo_alt_{boost_first,vibe_after_delay}`).
-- **2026-11-12:** curated the bundled set to five (`acdc_back_in_black`,
-  `eagles_hotel_california_solo`, `led_zeppelin_stairway_solo`,
-  `pink_floyd_comfortably_numb_solo_2`, `pink_floyd_time_solo`). The fidelity
-  baseline covers all five.
+  `time_solo_alt_{boost_first,vibe_after_delay}`), and curated the bundled set
+  to five (`acdc_back_in_black`, `eagles_hotel_california_solo`,
+  `led_zeppelin_stairway_solo`, `pink_floyd_comfortably_numb_solo_2`,
+  `pink_floyd_time_solo`). The fidelity baseline covers all five.

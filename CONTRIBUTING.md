@@ -84,7 +84,9 @@ non-test code — use `?`, `unwrap_or_else`, and `anyhow` errors. **Caveat:** th
 package does not yet opt in with `[lints] workspace = true`; enabling it today
 would fail on a large existing backlog (mostly `unwrap`/`expect` in tests and
 examples). Until that cleanup happens, CI enforces the default Clippy groups,
-not the restriction/pedantic groups.
+not the restriction/pedantic groups. Commit messages sometimes record `Gates:`
+lines from local runs; CI (`.github/workflows/test.yml`) is the authority — a
+green local run on macOS does not imply a green Linux job.
 
 ## DSP conventions
 
@@ -250,7 +252,10 @@ expected output, and CI diffs the freshly rendered screen against it. When a cha
 alters the UI on purpose, regenerate and review the golden, then commit it:
 
 ```bash
-cargo insta test --review     # or: INSTA_UPDATE=always cargo test --all-features
+# macOS / AU golden (default or all features):
+INSTA_UPDATE=always cargo test --all-features --lib snapshot_help_modal
+# no-AU golden, asserted by the Linux CI job:
+INSTA_UPDATE=always cargo test --no-default-features --features clap --lib snapshot_help_modal
 ```
 
 A few things to know:
@@ -259,7 +264,8 @@ A few things to know:
   A stray pending `*.snap.new` also fails CI, so finish the re-bless and commit the
   `.snap`.
 - The golden tests are gated on the default `clap` feature, because the help footer
-  renders a `clap`-only key. Regenerate with default features on.
+  renders a `clap`-only key. The first command above (default/all features)
+  covers that golden; the two-golden rule below covers the other.
 - **The help modal has two goldens.** It lists the macOS-only `Z / U` AU keys only
   under `all(feature = "au", target_os = "macos")`, so `help_modal.snap` (AU) and
   `help_modal_no_au.snap` (everything else) come from different line lists. A
@@ -328,7 +334,7 @@ file              = "strat_neck_bends.wav"
 guitar            = "Strat, neck single-coil"
 calibrated        = true              # recorded through headroom after `N`
 trim_db           = 0.0               # applied by the harness only if not calibrated
-reference_version = 1
+reference_version = 3
 ```
 
 To record your own DI: calibrate (`N`), press `R` for a dry take, save the

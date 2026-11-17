@@ -70,17 +70,17 @@
 **Files:**
 - Modify: `AGENTS.md:74`, `docs/retired-presets.md:5-8,70,121,122`, `docs/fidelity-implement.md:2684,2687,293`, `docs/research/2026-11-02-gilmour-gap-review-facts.md:5`, `CONTRIBUTING.md:73-87,253-262,331`, `src/lib.rs:17-18`, `src/preset.rs:61,389-391`, `src/export.rs:16-18`, `src/project.rs:26-27,35-43`, `src/audio/mod.rs:810-814`
 
-- [ ] **Step 1:** Collapse the preset restore/curate dates to the single commit `8ce656e` (2026-11-13) in `AGENTS.md`, `docs/retired-presets.md`, `docs/fidelity-implement.md`; "eight surviving"→"five curated".
-- [ ] **Step 2:** Fix the broken research link (`...gap-analysis.md`→`...gear-gap-analysis.md`).
-- [ ] **Step 3:** `docs/fidelity-implement.md:293` R10: replace "**resolved** (B1, B2)" with an honest note that helpers now exist in `src/analysis/metrics.rs` but six `examples/*.rs` still carry local copies.
-- [ ] **Step 4:** `CONTRIBUTING.md`: `reference_version = 1`→`3`; make the two-golden bless command the primary instruction; rewrite "Code style" so it says CI enforces default clippy groups and the strict policy is aspirational (no inert TOML claim); add a note that commit-message `Gates:` lines record local runs and CI is the authority (finding 26).
-- [ ] **Step 5:** `src/lib.rs:17-18`: looper is take/program-bus audio re-amped by `take_chain`, not monitor-only.
-- [ ] **Step 6:** `src/preset.rs:61,389-391`: default width `1.0` (neutral), `1.3` = `WIDE_MASTER_WIDTH`.
-- [ ] **Step 7:** `src/export.rs:16-18`: external AU/CLAP are re-instantiated from captured state on the worker; refusal is per-plugin when capture fails.
-- [ ] **Step 8:** `src/project.rs`: correct the Load/Partial-load contract to what `read_manifest`/`load_external` actually do after T6 (write this step after T6 lands, in the same commit as T6 if convenient — see Ruling in ledger).
-- [ ] **Step 9:** `src/audio/mod.rs:810-814`: "just over the knee, engaging only a fraction of a dB" instead of "just under … transparent".
-- [ ] **Step 10:** Verify with `rg` that no stale date/`1.3`/`reference_version = 1`/broken link survives; run `cargo fmt --all -- --check`.
-- [ ] **Step 11:** Commit: `docs: correct as-built records, dates and module contracts`.
+- [x] **Step 1:** Collapse the preset restore/curate dates to the single commit `8ce656e` (2026-11-13) in `AGENTS.md`, `docs/retired-presets.md`, `docs/fidelity-implement.md`; "eight surviving"→"five curated".
+- [x] **Step 2:** Fix the broken research link (`...gap-analysis.md`→`...gear-gap-analysis.md`).
+- [x] **Step 3:** `docs/fidelity-implement.md:293` R10: replace "**resolved** (B1, B2)" with an honest note that helpers now exist in `src/analysis/metrics.rs` but six `examples/*.rs` still carry local copies.
+- [x] **Step 4:** `CONTRIBUTING.md`: `reference_version = 1`→`3`; make the two-golden bless command the primary instruction; rewrite "Code style" so it says CI enforces default clippy groups and the strict policy is aspirational (no inert TOML claim); add a note that commit-message `Gates:` lines record local runs and CI is the authority (finding 26).
+- [x] **Step 5:** `src/lib.rs:17-18`: looper is take/program-bus audio re-amped by `take_chain`, not monitor-only.
+- [x] **Step 6:** `src/preset.rs:61,389-391`: default width `1.0` (neutral), `1.3` = `WIDE_MASTER_WIDTH`.
+- [x] **Step 7:** `src/export.rs:16-18`: external AU/CLAP are re-instantiated from captured state on the worker; refusal is per-plugin when capture fails.
+- [x] **Step 8:** `src/project.rs`: correct the Load/Partial-load contract to what `read_manifest`/`load_external` actually do after T6 (write this step after T6 lands, in the same commit as T6 if convenient — see Ruling in ledger).
+- [x] **Step 9:** `src/audio/mod.rs:810-814`: "just over the knee, engaging only a fraction of a dB" instead of "just under … transparent".
+- [x] **Step 10:** Verify with `rg` that no stale date/`1.3`/`reference_version = 1`/broken link survives; run `cargo fmt --all -- --check`.
+- [x] **Step 11:** Commit: `docs: correct as-built records, dates and module contracts`.
 
 ### Task 4: Help overlay and keybinding accuracy
 

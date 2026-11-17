@@ -2,7 +2,7 @@
 
 Status: **review only. No source code, no presets, and not the original research
 doc were modified.** This file exists to be read next to
-[`2026-11-02-gilmour-gap-analysis.md`](2026-11-02-gilmour-gap-analysis.md).
+[`2026-11-02-gilmour-gear-gap-analysis.md`](2026-11-02-gilmour-gear-gap-analysis.md).
 
 Scope: the gear claims in the "Gilmour's rigs by era" table, the Tier 1–3 lists,
 the amp/cab notes, and the gear-specific chain-order experiments. DSP/code
