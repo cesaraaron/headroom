@@ -17,24 +17,27 @@
 //! original assets into the project folder, write and validate the versioned
 //! manifest, then commit the manifest last — so a failure while copying leaves
 //! the previous manifest intact. Asset paths resolve relative to the project folder and
-//! paths that escape it are rejected, so a supposedly portable session never
-//! depends on absolute local imports. Originals and recovery captures are left
+//! paths that escape it are rejected **on both write and read**, so a
+//! supposedly portable session never depends on absolute local imports. Originals and recovery captures are left
 //! untouched until the save completes. Re-saving in place is safe:
 //! [`write_session`] skips copying a file onto itself, without which a
 //! load-then-save would truncate the asset.
 //!
-//! **Load.** Parse and validate the version, project rate, loop/order, IDs, asset
-//! paths and existence; decode/resample assets and prepare plugin and IR
-//! instances off-thread; then replace the active session coherently. A failure
+//! **Load.** `read_manifest` validates the version, project rate, duplicate IDs
+//! and that every asset path stays inside the folder; `Manifest::into_session`
+//! additionally checks asset existence. `list_sessions` uses only
+//! `read_manifest`, so a folder with an escaping path is never offered as
+//! loadable. Decode/resample assets and prepare plugin and IR instances
+//! off-thread; then replace the active session coherently. A failure
 //! keeps the previous working session. Effect playback state resets at the new
 //! session boundary, the playhead seeks to the saved position, and the session
 //! loads **paused** even if the transport was playing when saved. Track
 //! selection and panel UI may be restored, but appearance is secondary to
 //! audio/project data.
 //!
-//! **Partial loads.** If a required AU/CLAP binary or plugin state is
-//! unavailable, report which one is missing and what was not restored — never
-//! display an external rig as active when its processor is absent. The raw
+//! **Partial loads.** If a plugin state sidecar is missing, unreadable or
+//! malformed, `load_external` drops that spec (so the UI never displays an
+//! absent processor as active) and prints the reason on the control thread. The raw
 //! project audio still loads so the user can resolve it or switch to a built-in
 //! rig deliberately. A session restores the selected IR and whether it was
 //! active, full-rig vs amp-only AU routing, the plugin insert, and all
@@ -303,6 +306,31 @@ pub fn read_manifest(dir: &Path) -> Result<Manifest> {
             bail!("session has duplicate track id {}", track.id);
         }
     }
+    // An escaping path is a corrupt/hostile manifest, not a missing file.
+    // Reject it here so `list_sessions` never offers such a folder as loadable;
+    // existence is checked later by `Manifest::into_session`.
+    let check_path = |rel: &str| -> Result<()> {
+        resolve_asset(dir, rel).with_context(|| format!("invalid session asset path {rel}"))?;
+        Ok(())
+    };
+    if let Some(rel) = &manifest.external_ir {
+        check_path(rel)?;
+    }
+    for track in &manifest.tracks {
+        if let Some(rel) = &track.asset {
+            check_path(rel)?;
+        }
+    }
+    if let Some(c) = &manifest.clap_insert
+        && let Some(rel) = &c.state
+    {
+        check_path(rel)?;
+    }
+    if let Some(a) = &manifest.au_amp
+        && let Some(rel) = &a.params
+    {
+        check_path(rel)?;
+    }
     Ok(manifest)
 }
 
@@ -320,7 +348,8 @@ pub fn write_session(
     std::fs::create_dir_all(dir.join("audio"))
         .with_context(|| format!("creating session folder {}", dir.display()))?;
     for blob in blobs {
-        let dst = dir.join(&blob.rel);
+        let dst = resolve_asset(dir, &blob.rel)
+            .with_context(|| format!("invalid asset path {}", blob.rel))?;
         if let Some(parent) = dst.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating {}", parent.display()))?;
@@ -328,7 +357,8 @@ pub fn write_session(
         std::fs::write(&dst, &blob.bytes).with_context(|| format!("writing {}", dst.display()))?;
     }
     for asset in assets {
-        let dst = dir.join(&asset.rel);
+        let dst = resolve_asset(dir, &asset.rel)
+            .with_context(|| format!("invalid asset path {}", asset.rel))?;
         // A vanished source must never abort the whole save. If the destination
         // already holds a copy it is kept as-is (the caller retargets the track at
         // it); otherwise the asset is skipped rather than failing every other
@@ -602,38 +632,63 @@ pub fn build_manifest(
 
 impl Manifest {
     /// Read the external-plugin identity/state sidecars referenced by this
-    /// manifest. Missing or unreadable sidecars degrade to `None` rather than
-    /// failing the whole session load.
+    /// manifest. A sidecar that is missing, unreadable, or malformed makes that
+    /// plugin `None` — the UI must never display an absent processor as active.
+    /// A plugin with no sidecar at all is still restorable with empty state.
+    /// The reason is printed on the control thread; the raw project audio loads
+    /// either way.
     pub fn load_external(&self, dir: &Path) -> SessionExternal {
-        let clap = self.clap_insert.as_ref().map(|s| {
-            let state = s
-                .state
-                .as_ref()
-                .and_then(|rel| std::fs::read(resolve_asset(dir, rel).ok()?).ok())
-                .unwrap_or_default();
-            ClapSpec {
+        let clap = self.clap_insert.as_ref().and_then(|s| {
+            let state = match &s.state {
+                Some(rel) => {
+                    let bytes = resolve_asset(dir, rel).and_then(|path| {
+                        std::fs::read(&path).map_err(|e| anyhow!("reading {}: {e}", path.display()))
+                    });
+                    match bytes {
+                        Ok(b) => b,
+                        Err(e) => {
+                            eprintln!("session: CLAP insert not restored: {e}");
+                            return None;
+                        }
+                    }
+                }
+                None => Vec::new(),
+            };
+            Some(ClapSpec {
                 path: PathBuf::from(&s.path),
                 id: s.id.clone(),
                 name: s.name.clone(),
                 state,
-            }
+            })
         });
-        let au = self.au_amp.as_ref().map(|a| {
-            let params = a
-                .params
-                .as_ref()
-                .and_then(|rel| std::fs::read_to_string(resolve_asset(dir, rel).ok()?).ok())
-                .and_then(|text| toml::from_str::<AuParamsFile>(&text).ok())
-                .map(|file| file.params.into_iter().map(|p| (p.id, p.value)).collect())
-                .unwrap_or_default();
-            AuSpec {
+        let au = self.au_amp.as_ref().and_then(|a| {
+            let params = match &a.params {
+                Some(rel) => {
+                    let parsed = resolve_asset(dir, rel).and_then(|path| {
+                        std::fs::read_to_string(&path)
+                            .map_err(|e| anyhow!("reading {}: {e}", path.display()))
+                            .and_then(|text| {
+                                toml::from_str::<AuParamsFile>(&text).map_err(Into::into)
+                            })
+                    });
+                    match parsed {
+                        Ok(file) => file.params.into_iter().map(|p| (p.id, p.value)).collect(),
+                        Err(e) => {
+                            eprintln!("session: AU amp not restored: {e}");
+                            return None;
+                        }
+                    }
+                }
+                None => Vec::new(),
+            };
+            Some(AuSpec {
                 name: a.name.clone(),
                 type_code: a.type_code,
                 subtype: a.subtype,
                 manufacturer: a.manufacturer,
                 amp_only: a.amp_only,
                 params,
-            }
+            })
         });
         SessionExternal { clap, au }
     }
@@ -642,6 +697,107 @@ impl Manifest {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn manifest_with_asset(rel: &str) -> Manifest {
+        let params = crate::dsp::Params::new();
+        let rig = Preset::from_params("rig".into(), None, &params);
+        build_manifest(
+            "Test".into(),
+            48_000,
+            TransportSection::default(),
+            MetronomeSection::default(),
+            rig,
+            None,
+            false,
+            None,
+            None,
+            vec![TrackSection {
+                id: 1,
+                kind: "import".into(),
+                name: "x".into(),
+                asset: Some(rel.into()),
+                start_ticks: 0,
+                length_ticks: 100,
+                gain: 1.0,
+                muted: false,
+                input_trim_db: None,
+                calibration_ref: None,
+            }],
+        )
+        .expect("build manifest")
+    }
+
+    #[test]
+    fn write_session_rejects_escaping_asset_rel() {
+        let dir = tmp_dir("write-escape");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let src = dir.join("source.wav");
+        std::fs::write(&src, b"x").expect("write src");
+        let escape_name = format!("headroom-escape-{}.wav", std::process::id());
+        let rel = format!("../{escape_name}");
+        let escaped = dir.parent().unwrap().join(&escape_name);
+        let _ = std::fs::remove_file(&escaped);
+        let m = manifest_with_asset(&rel);
+        let assets = [AssetCopy { source: src, rel }];
+        assert!(
+            write_session(&dir, &m, &assets, &[]).is_err(),
+            "an escaping asset path must be rejected on write"
+        );
+        assert!(
+            !escaped.exists(),
+            "nothing may be written outside the session folder"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_manifest_rejects_escaping_asset() {
+        let dir = tmp_dir("read-escape");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let m = manifest_with_asset("../escape.wav");
+        let text = toml::to_string_pretty(&m).expect("serialize");
+        std::fs::write(dir.join(MANIFEST_FILE), text).expect("write manifest");
+        assert!(
+            read_manifest(&dir).is_err(),
+            "escaping asset paths must be rejected at manifest read"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_external_hides_a_missing_sidecar() {
+        let dir = tmp_dir("missing-sidecar");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let params = crate::dsp::Params::new();
+        let rig = Preset::from_params("rig".into(), None, &params);
+        let m = build_manifest(
+            "Test".into(),
+            48_000,
+            TransportSection::default(),
+            MetronomeSection::default(),
+            rig,
+            None,
+            false,
+            Some(ClapInsertSection {
+                path: "/plugins/x.clap".into(),
+                id: "x".into(),
+                name: "X".into(),
+                state: Some("plugins/missing.bin".into()),
+            }),
+            None,
+            vec![],
+        )
+        .expect("build manifest");
+        let text = toml::to_string_pretty(&m).expect("serialize");
+        std::fs::write(dir.join(MANIFEST_FILE), text).expect("write manifest");
+        let read = read_manifest(&dir).expect("read manifest");
+        let external = read.load_external(&dir);
+        assert!(
+            external.clap.is_none(),
+            "an unreadable sidecar must not show the plugin as active"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn tmp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

@@ -121,17 +121,17 @@
 - Modify: `src/project.rs:273-331,285-307,607-639`, `src/dsp/cab/external.rs:100-112`
 - Test: `src/project.rs`, `src/dsp/cab/external.rs` `#[cfg(test)]` modules
 
-- [ ] **Step 1:** RED — `int_scale_handles_zero_bits`: assert `int_scale(0)` equals `int_scale(1)` (clamped) and `int_scale(16) == 1.0 / 32768.0`; run `cargo test --lib dsp::cab::external` → FAIL (function undefined).
-- [ ] **Step 2:** Extract `fn int_scale(bits: u16) -> f32` using `bits.clamp(1, 32)` and use it in the integer decode arm; reject `bits_per_sample == 0` in the loader with a clear error.
-- [ ] **Step 3:** GREEN — `cargo test --lib dsp::cab::external` → PASS.
-- [ ] **Step 4:** RED — `write_session_rejects_escaping_asset_rel`: build a `Session` whose track asset `rel` is `../escape.wav` and assert `write_session` returns `Err` and creates no file outside the dir. Run → FAIL.
-- [ ] **Step 5:** Apply `resolve_asset(dir, rel)?` on the write paths (`project.rs:323,331`) before `dir.join`; keep the existing "skip copying a file onto itself" behavior.
-- [ ] **Step 6:** GREEN — `cargo test --lib project::tests` → PASS.
-- [ ] **Step 7:** `read_manifest`: add asset-path validation (`resolve_asset`) and existence checks so `list_sessions` skips invalid folders; add `read_manifest_rejects_escaping_asset` test RED→GREEN.
-- [ ] **Step 8:** `load_external`: on any sidecar read/parse failure return `None` for that spec (never show an absent processor as active) and log the reason via `eprintln!` on the control thread; add `load_external_hides_a_missing_sidecar` RED→GREEN. **Ruling:** a full `Result` status channel would require changing `SessionExternal` and every `ui/mod.rs` restore call; `None` + a control-thread warning satisfies the contract's "never display as active" clause without a cross-module API change. Cost if wrong: the UI cannot name the missing plugin; it will show the built-in rig.
-- [ ] **Step 9:** Update `src/project.rs` module docs (T3 Step 8) to match the implemented behavior.
-- [ ] **Step 10:** `cargo test --lib project::tests` + fmt + clippy.
-- [ ] **Step 11:** Commit: `fix(project): validate asset paths on write, report missing plugin sidecars, clamp IR bit depth`.
+- [x] **Step 1:** RED — `int_scale_handles_zero_bits`: assert `int_scale(0)` equals `int_scale(1)` (clamped) and `int_scale(16) == 1.0 / 32768.0`; run `cargo test --lib dsp::cab::external` → FAIL (function undefined).
+- [x] **Step 2:** Extract `fn int_scale(bits: u16) -> f32` using `bits.clamp(1, 32)` and use it in the integer decode arm; reject `bits_per_sample == 0` in the loader with a clear error.
+- [x] **Step 3:** GREEN — `cargo test --lib dsp::cab::external` → PASS.
+- [x] **Step 4:** RED — `write_session_rejects_escaping_asset_rel`: build a `Session` whose track asset `rel` is `../escape.wav` and assert `write_session` returns `Err` and creates no file outside the dir. Run → FAIL.
+- [x] **Step 5:** Apply `resolve_asset(dir, rel)?` on the write paths (`project.rs:323,331`) before `dir.join`; keep the existing "skip copying a file onto itself" behavior.
+- [x] **Step 6:** GREEN — `cargo test --lib project::tests` → PASS.
+- [x] **Step 7:** `read_manifest`: add asset-path validation (`resolve_asset`) and existence checks so `list_sessions` skips invalid folders; add `read_manifest_rejects_escaping_asset` test RED→GREEN.
+- [x] **Step 8:** `load_external`: on any sidecar read/parse failure return `None` for that spec (never show an absent processor as active) and log the reason via `eprintln!` on the control thread; add `load_external_hides_a_missing_sidecar` RED→GREEN. **Ruling:** a full `Result` status channel would require changing `SessionExternal` and every `ui/mod.rs` restore call; `None` + a control-thread warning satisfies the contract's "never display as active" clause without a cross-module API change. Cost if wrong: the UI cannot name the missing plugin; it will show the built-in rig.
+- [x] **Step 9:** Update `src/project.rs` module docs (T3 Step 8) to match the implemented behavior.
+- [x] **Step 10:** `cargo test --lib project::tests` + fmt + clippy.
+- [x] **Step 11:** Commit: `fix(project): validate asset paths on write, report missing plugin sidecars, clamp IR bit depth`.
 
 ### Task 7: DSP correctness and dead state
 

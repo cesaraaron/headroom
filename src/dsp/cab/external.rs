@@ -82,6 +82,15 @@ impl LoadedIr {
     }
 }
 
+/// Scale factor for integer PCM samples. `hound` already rejects 0-bit and
+/// non-8/16/24 integer WAVs at open time, but clamp anyway so a future reader
+/// change can never underflow the shift (`bits - 1`) or produce a negative
+/// scale from a 64-bit shift.
+fn int_scale(bits: u16) -> f32 {
+    let bits = bits.clamp(1, 32) as u32;
+    1.0 / (1i64 << (bits - 1)) as f32
+}
+
 /// Decode and condition a `.wav` impulse response for use at `target_sr`.
 ///
 /// Runs entirely off the audio thread (file IO, an offline resample and a couple of
@@ -97,6 +106,9 @@ pub fn load_ir(path: impl AsRef<Path>, target_sr: f32, max_len: usize) -> Result
     if channels == 0 {
         return Err(anyhow!("IR file has no channels"));
     }
+    if spec.bits_per_sample == 0 {
+        return Err(anyhow!("IR file reports zero bits per sample"));
+    }
 
     // Decode every sample to interleaved f32 in [-1, 1].
     let samples: Vec<f32> = match spec.sample_format {
@@ -105,7 +117,7 @@ pub fn load_ir(path: impl AsRef<Path>, target_sr: f32, max_len: usize) -> Result
             .collect::<std::result::Result<_, _>>()
             .context("decoding float IR samples")?,
         hound::SampleFormat::Int => {
-            let scale = 1.0 / (1i64 << (spec.bits_per_sample - 1)) as f32;
+            let scale = int_scale(spec.bits_per_sample);
             reader
                 .samples::<i32>()
                 .map(|s| s.map(|v| v as f32 * scale))
@@ -269,6 +281,18 @@ impl Cabinet for ExternalIrCab {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// hound already rejects 0-bit / odd bit depths, but the scale helper must
+    /// still be total so a future reader change cannot underflow the shift.
+    #[test]
+    fn int_scale_is_bounded_for_every_bit_depth() {
+        assert_eq!(int_scale(0), int_scale(1), "zero bits clamps to 1");
+        assert_eq!(int_scale(16), 1.0 / 32768.0);
+        assert_eq!(int_scale(24), 1.0 / 8388608.0);
+        assert_eq!(int_scale(32), 1.0 / 2147483648.0);
+        assert_eq!(int_scale(64), int_scale(32), "above 32 clamps");
+        assert!(int_scale(0).is_finite() && int_scale(0) > 0.0);
+    }
 
     /// L2 normalisation leaves the passband gain proportional to √sr; the same
     /// capture at 96 kHz must not come out +3 dB hotter.
