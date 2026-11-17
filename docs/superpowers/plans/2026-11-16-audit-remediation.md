@@ -182,14 +182,14 @@
 - Modify: `Cargo.toml:88-186`, `clippy.toml`, `CONTRIBUTING.md:73-87`, `.github/workflows/test.yml:36,45-57`, `.github/workflows/release.yml:29-31`, `.gitignore`
 - Delete: `.config/nextest.toml`
 
-- [ ] **Step 1:** `Cargo.toml`: delete the inert `[workspace.lints.*]` block; add a short comment pointing at `CONTRIBUTING.md` for the aspirational style policy. Confirm `cargo metadata --no-deps` still resolves and `cargo clippy … -D warnings` stays green.
-- [ ] **Step 2:** Rewrite `clippy.toml` to only keys that affect default-enabled clippy lints (`too-many-arguments-threshold`, `type-complexity-threshold`, `vec-box-size-threshold`, `array-size-threshold`, `stack-size-threshold`, `single-char-binding-names-threshold`, `enum-variant-name-threshold`, `large-error-threshold`) with honest comments; drop the rest.
-- [ ] **Step 3:** `CONTRIBUTING.md` "Code style": state that CI enforces the default clippy groups via `-D warnings`, that the strict no-unwrap/panic policy is a target for non-test code, and that there is no workspace lint opt-in.
-- [ ] **Step 4:** `test.yml`: remove the unreachable "Check for un-blessed UI snapshots" step; add `cargo test --no-default-features --features clap` as a Linux step; wrap the apt install in a 3-attempt retry loop.
-- [ ] **Step 5:** `release.yml`: add `toolchain: "1.96"` to the Install Rust step.
-- [ ] **Step 6:** Delete `.config/nextest.toml`; confirm no `nextest` reference remains.
-- [ ] **Step 7:** Verify locally: `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, both test branches, and `cargo check --no-default-features`.
-- [ ] **Step 8:** Commit: `chore(ci): remove dead lint config, cover the minimal build, pin release toolchain`.
+- [x] **Step 1:** `Cargo.toml`: delete the inert `[workspace.lints.*]` block; add a short comment pointing at `CONTRIBUTING.md` for the aspirational style policy. Confirm `cargo metadata --no-deps` still resolves and `cargo clippy … -D warnings` stays green.
+- [x] **Step 2:** Rewrite `clippy.toml` to only keys that affect default-enabled clippy lints (`too-many-arguments-threshold`, `type-complexity-threshold`, `vec-box-size-threshold`, `array-size-threshold`, `stack-size-threshold`, `single-char-binding-names-threshold`, `enum-variant-name-threshold`, `large-error-threshold`) with honest comments; drop the rest.
+- [x] **Step 3:** `CONTRIBUTING.md` "Code style": state that CI enforces the default clippy groups via `-D warnings`, that the strict no-unwrap/panic policy is a target for non-test code, and that there is no workspace lint opt-in.
+- [x] **Step 4:** `test.yml`: remove the unreachable "Check for un-blessed UI snapshots" step; add `cargo test --no-default-features --features clap` as a Linux step; wrap the apt install in a 3-attempt retry loop.
+- [x] **Step 5:** `release.yml`: add `toolchain: "1.96"` to the Install Rust step.
+- [x] **Step 6:** Delete `.config/nextest.toml`; confirm no `nextest` reference remains.
+- [x] **Step 7:** Verify locally: `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, both test branches, and `cargo check --no-default-features`.
+- [x] **Step 8:** Commit: `chore(ci): remove dead lint config, cover the minimal build, pin release toolchain`.
 
 ### Task 11: Final verification, review, delivery
 

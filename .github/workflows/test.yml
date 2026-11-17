@@ -33,7 +33,18 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libpipewire-0.3-dev
+        # apt mirrors occasionally fail DNS resolution; retry so a transient
+        # network error is not reported as a build failure (run 807a05f).
+        run: |
+          set -e
+          for attempt in 1 2 3; do
+            if sudo apt-get update && sudo apt-get install -y libasound2-dev libpipewire-0.3-dev; then
+              exit 0
+            fi
+            echo "apt attempt $attempt failed; retrying in $((attempt * 5))s"
+            sleep $((attempt * 5))
+          done
+          exit 1
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -44,17 +55,12 @@ jobs:
       - name: Run tests
         run: cargo test
 
-      - name: Check for un-blessed UI snapshots
-        # `cargo test` already fails on a snapshot mismatch, but insta
-        # leaves a pending `.snap.new` beside it. Fail loudly if any slipped into
-        # the tree (a half-finished re-bless) so the diff is never silently ignored.
+      - name: Check the minimal build and the no-AU snapshot branch
+        # `cargo test` covers the default feature set. This covers the documented
+        # `--no-default-features` build and the same no-AU golden without `au`.
         run: |
-          pending=$(find . -name '*.snap.new' -not -path './target/*')
-          if [ -n "$pending" ]; then
-            echo "::error::Un-blessed insta snapshots found. Run 'cargo insta review' and commit the .snap files:"
-            echo "$pending"
-            exit 1
-          fi
+          cargo check --no-default-features
+          cargo test --no-default-features --features clap
 
   # The AudioUnit host (`--features au`) only compiles on macOS, so its tests run
   # here and not in the Linux job. The fidelity baseline was generated on

@@ -70,23 +70,25 @@ in `src/session.rs`.
 
 ## Code style
 
-The target lint policy lives in `Cargo.toml` under `[workspace.lints.*]`.
-Before committing, run the enforced gate:
+Before committing, run the gate:
 
 ```bash
 cargo fmt
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
+CI enforces the **default** Clippy groups with `-D warnings`. There is no
+`[workspace.lints.*]` opt-in and the strict restriction/pedantic/nursery groups
+are not enabled; `clippy.toml` only holds thresholds for lints that are enabled.
+
 Comments should only explain *why*, not *what*. Well-named identifiers carry the
-what. The target style is: no `unwrap`/`expect`/`panic`/`exit`/`mem_forget` in
-non-test code — use `?`, `unwrap_or_else`, and `anyhow` errors. **Caveat:** the
-package does not yet opt in with `[lints] workspace = true`; enabling it today
-would fail on a large existing backlog (mostly `unwrap`/`expect` in tests and
-examples). Until that cleanup happens, CI enforces the default Clippy groups,
-not the restriction/pedantic groups. Commit messages sometimes record `Gates:`
-lines from local runs; CI (`.github/workflows/test.yml`) is the authority — a
-green local run on macOS does not imply a green Linux job.
+what. The **target** style below is aspirational, not enforced: no
+`unwrap`/`expect`/`panic`/`exit`/`mem_forget` in non-test code — use `?`,
+`unwrap_or_else`, and `anyhow` errors.
+
+Commit messages sometimes record `Gates:` lines from local runs; CI
+(`.github/workflows/test.yml`) is the authority — a green local run on macOS
+does not imply a green Linux job.
 
 ## DSP conventions
 
