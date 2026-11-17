@@ -981,6 +981,30 @@ struct InputState {
     win_len: u32,
 }
 
+/// Drain a command ring while its disposal ring still has room.
+///
+/// A full disposal ring leaves the command queued for the next callback instead
+/// of dropping the displaced value in the realtime path — which for a practice
+/// track is a large `Vec<f32>` and for an `AuInsert` runs a blocking teardown.
+/// The control thread drains each disposal ring on its next `set_*`/`install_*`
+/// call, so a deferred command is picked up on the following block.
+fn drain_with_disposal<C, P>(
+    cmds: &mut Consumer<C>,
+    disposal: &mut Producer<P>,
+    mut apply: impl FnMut(C) -> Option<P>,
+) {
+    while !disposal.is_full() {
+        let Ok(cmd) = cmds.pop() else {
+            break;
+        };
+        if let Some(old) = apply(cmd) {
+            // `is_full()` was false and this is the only producer, so the push
+            // cannot fail: the value now belongs to the control thread.
+            let _ = disposal.push(old);
+        }
+    }
+}
+
 impl InputState {
     /// Deinterleave, process and fan the input block back out to the ring buffer
     /// the output callback drains. Samples arrive as the device's `T` and are
@@ -990,48 +1014,45 @@ impl InputState {
         T: Sample,
         f32: FromSample<T>,
     {
-        // Apply any pending insert swaps before processing this block. The old
-        // insert is shipped back to the control thread for disposal; if that
-        // queue is somehow full we drop it here as a last resort.
-        while let Ok(cmd) = self.insert_rx.pop() {
-            if let Some(old) = self.chain.replace_insert(cmd) {
-                let _ = self.dropped_tx.push(old);
-            }
-        }
-        // Same lock-free discipline for external-IR cab swaps.
-        while let Ok(cmd) = self.ext_cab_rx.pop() {
-            if let Some(old) = self.chain.replace_external_cab(cmd) {
-                let _ = self.ext_dropped_tx.push(old);
-            }
-        }
-        // ...and for external-amp swaps.
-        while let Ok(cmd) = self.ext_amp_rx.pop() {
-            if let Some(old) = self.chain.replace_ext_amp(cmd) {
-                let _ = self.ext_amp_dropped_tx.push(old);
-            }
-        }
+        // Apply pending swaps only while the matching disposal ring has room.
+        // A full ring defers the command to the next block instead of freeing a
+        // large buffer or running a blocking plugin teardown in the callback.
+        let chain = &mut self.chain;
+        drain_with_disposal(&mut self.insert_rx, &mut self.dropped_tx, |cmd| {
+            chain.replace_insert(cmd)
+        });
+        drain_with_disposal(&mut self.ext_cab_rx, &mut self.ext_dropped_tx, |cmd| {
+            chain.replace_external_cab(cmd)
+        });
+        drain_with_disposal(&mut self.ext_amp_rx, &mut self.ext_amp_dropped_tx, |cmd| {
+            chain.replace_ext_amp(cmd)
+        });
         // The take bus mirrors the same external rig with its own instances.
-        while let Ok(cmd) = self.take_insert_rx.pop() {
-            if let Some(old) = self.take_chain.replace_insert(cmd) {
-                let _ = self.take_insert_dropped_tx.push(old);
-            }
-        }
-        while let Ok(cmd) = self.take_ext_cab_rx.pop() {
-            if let Some(old) = self.take_chain.replace_external_cab(cmd) {
-                let _ = self.take_ext_cab_dropped_tx.push(old);
-            }
-        }
-        while let Ok(cmd) = self.take_ext_amp_rx.pop() {
-            if let Some(old) = self.take_chain.replace_ext_amp(cmd) {
-                let _ = self.take_ext_amp_dropped_tx.push(old);
-            }
-        }
+        let take_chain = &mut self.take_chain;
+        drain_with_disposal(
+            &mut self.take_insert_rx,
+            &mut self.take_insert_dropped_tx,
+            |cmd| take_chain.replace_insert(cmd),
+        );
+        drain_with_disposal(
+            &mut self.take_ext_cab_rx,
+            &mut self.take_ext_cab_dropped_tx,
+            |cmd| take_chain.replace_external_cab(cmd),
+        );
+        drain_with_disposal(
+            &mut self.take_ext_amp_rx,
+            &mut self.take_ext_amp_dropped_tx,
+            |cmd| take_chain.replace_ext_amp(cmd),
+        );
         // Timeline track commands: apply every pending add/remove/gain/mute at
-        // once so this block sees a coherent track set. Displaced buffers go back
-        // to the control thread; a full return queue defers the swap rather than
-        // freeing a large `Vec` in the callback.
-        while let Ok(cmd) = self.track_rx.pop() {
-            match cmd {
+        // once so this block sees a coherent track set. Displaced buffers go
+        // back to the control thread; a full return queue defers the swap.
+        let player = &mut self.player;
+        let ack_tx = &mut self.track_ack_tx;
+        drain_with_disposal(
+            &mut self.track_rx,
+            &mut self.track_dropped_tx,
+            |cmd| match cmd {
                 TrackCommand::Install {
                     id,
                     generation,
@@ -1039,43 +1060,41 @@ impl InputState {
                     track,
                     gain,
                     muted,
-                } => match self.player.install(id, kind, track, gain, muted) {
+                } => match player.install(id, kind, track, gain, muted) {
                     Ok(displaced) => {
-                        if let Some(old) = displaced {
-                            let _ = self.track_dropped_tx.push(old);
-                        }
-                        let _ = self.track_ack_tx.push(TrackAck {
+                        let _ = ack_tx.push(TrackAck {
                             id,
                             generation,
                             installed: true,
                             error: None,
                         });
+                        displaced
                     }
                     Err(e) => {
-                        let _ = self.track_ack_tx.push(TrackAck {
+                        let _ = ack_tx.push(TrackAck {
                             id,
                             generation,
                             installed: false,
                             error: Some(e),
                         });
+                        None
                     }
                 },
-                TrackCommand::Remove { id } => {
-                    if let Some(slot) = self.player.remove(id) {
-                        let _ = self.track_dropped_tx.push(slot.track);
-                    }
-                }
+                TrackCommand::Remove { id } => player.remove(id).map(|slot| slot.track),
                 TrackCommand::SetGain { id, gain } => {
-                    self.player.set_gain(id, gain);
+                    player.set_gain(id, gain);
+                    None
                 }
                 TrackCommand::SetMute { id, muted } => {
-                    self.player.set_muted(id, muted);
+                    player.set_muted(id, muted);
+                    None
                 }
                 TrackCommand::SetStart { id, start } => {
-                    self.player.set_start(id, start);
+                    player.set_start(id, start);
+                    None
                 }
-            }
-        }
+            },
+        );
 
         // Process in chunks of at most MAX_BLOCK frames. A device callback can ask
         // for more than our preallocated block (large ALSA periods); splitting
@@ -1698,6 +1717,34 @@ mod tests {
         Limiter, MIX_CEILING, MIX_HEADROOM, block_ranges, follow_stereo, monitor_frame,
         output_stage,
     };
+
+    /// A full disposal ring must leave the command queued for the next block
+    /// rather than freeing a large buffer (or running a blocking AU teardown)
+    /// inside the realtime callback.
+    #[test]
+    fn a_full_disposal_ring_defers_the_command() {
+        let (mut cmd_tx, mut cmd_rx) = rtrb::RingBuffer::<u32>::new(4);
+        let (mut drop_tx, mut drop_rx) = rtrb::RingBuffer::<Box<Vec<f32>>>::new(1);
+
+        // The control thread has not drained the last displaced buffer yet.
+        drop_tx.push(Box::new(vec![0.0; 4])).expect("prime");
+        cmd_tx.push(7).expect("queue command");
+
+        super::drain_with_disposal(&mut cmd_rx, &mut drop_tx, |_| Some(Box::new(vec![1.0; 4])));
+        assert!(
+            matches!(cmd_rx.pop(), Ok(7)),
+            "a full disposal ring must defer the command"
+        );
+        assert!(drop_rx.pop().is_ok(), "the earlier item survives");
+        assert!(drop_rx.pop().is_err(), "nothing was freed on the callback");
+
+        // Once drained, the deferred command applies and its displaced value is
+        // handed back to the control thread.
+        cmd_tx.push(7).expect("requeue");
+        super::drain_with_disposal(&mut cmd_rx, &mut drop_tx, |_| Some(Box::new(vec![2.0; 4])));
+        let displaced = drop_rx.pop().expect("displaced buffer handed back");
+        assert_eq!(displaced[0], 2.0);
+    }
 
     const SR: f32 = 48_000.0;
 

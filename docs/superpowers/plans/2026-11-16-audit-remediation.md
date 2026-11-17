@@ -156,12 +156,12 @@
 - Modify: `src/audio/mod.rs:990-1050`
 - Test: `src/audio/mod.rs` `#[cfg(test)]` module
 
-- [ ] **Step 1:** RED — add `a_full_disposal_ring_defers_the_command`: create `RingBuffer<u32>` command and `RingBuffer<Box<Vec<f32>>>` disposal rings of capacity 1, pre-fill disposal, push one command, call `drain_with_disposal`, assert the command is still in the ring and no `Box` was dropped; drain the disposal ring, call again, assert the command is consumed and the displaced buffer is now in the disposal ring. Run → FAIL (function undefined).
-- [ ] **Step 2:** Add `fn drain_with_disposal<C, P>(cmds: &mut Consumer<C>, disposal: &mut Producer<P>, apply: impl FnMut(C) -> Option<P>)` that loops only while `!disposal.is_full()`, pops a command, applies it, and pushes the displaced value (guaranteed to succeed). Use it for the six insert/IR/amp swap loops and the track-command loop, adapting each closure to return the displaced value.
-- [ ] **Step 3:** Correct the `audio/mod.rs:1030-1032` comment to describe the actual deferral, and remove the "drop it here as a last resort" wording at `:993-995`.
-- [ ] **Step 4:** GREEN — `cargo test --lib audio::tests` → PASS.
-- [ ] **Step 5:** Verify `cargo test --lib audio::` and `cargo clippy --all-targets --all-features -- -D warnings`; confirm no `let _ = …push(old)` remains in `on_input`/`on_input_chunk`.
-- [ ] **Step 6:** Commit: `fix(audio): defer swaps when the disposal ring is full instead of freeing on the callback`.
+- [x] **Step 1:** RED — add `a_full_disposal_ring_defers_the_command`: create `RingBuffer<u32>` command and `RingBuffer<Box<Vec<f32>>>` disposal rings of capacity 1, pre-fill disposal, push one command, call `drain_with_disposal`, assert the command is still in the ring and no `Box` was dropped; drain the disposal ring, call again, assert the command is consumed and the displaced buffer is now in the disposal ring. Run → FAIL (function undefined).
+- [x] **Step 2:** Add `fn drain_with_disposal<C, P>(cmds: &mut Consumer<C>, disposal: &mut Producer<P>, apply: impl FnMut(C) -> Option<P>)` that loops only while `!disposal.is_full()`, pops a command, applies it, and pushes the displaced value (guaranteed to succeed). Use it for the six insert/IR/amp swap loops and the track-command loop, adapting each closure to return the displaced value.
+- [x] **Step 3:** Correct the `audio/mod.rs:1030-1032` comment to describe the actual deferral, and remove the "drop it here as a last resort" wording at `:993-995`.
+- [x] **Step 4:** GREEN — `cargo test --lib audio::tests` → PASS.
+- [x] **Step 5:** Verify `cargo test --lib audio::` and `cargo clippy --all-targets --all-features -- -D warnings`; confirm no `let _ = …push(old)` remains in `on_input`/`on_input_chunk`.
+- [x] **Step 6:** Commit: `fix(audio): defer swaps when the disposal ring is full instead of freeing on the callback`.
 
 ### Task 9: UI focus repair and per-frame work
 
