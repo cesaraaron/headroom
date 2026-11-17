@@ -33,7 +33,7 @@ expression: text
                                       ║  M  practice metronome (uppercase M on the timeline; +/− tempo, Space on/off)             ║                                       
                                       ║  N  calibrate input level                                                                 ║                                       
                                       ║  F2  MIDI bindings: learn a controller control                                            ║                                       
-                                      ║  F3  cycle the UI theme                                                                   ║                                       
+                                      ║  F3  cycle the UI theme (saved)                                                           ║                                       
                                       ║  F5  cycle the panel look (rounded → classic)                                             ║                                       
                                       ║  F6  panel focus animation: on / off (saved)                                              ║                                       
                                       ║  V  plugin browser                                                                        ║                                       
@@ -43,7 +43,7 @@ expression: text
                                       ║  F  clear the loop                                                                        ║                                       
                                       ║  , / .  toggle overdub / undo the last overdub layer                                      ║                                       
                                       ║  Q / Ctrl-C  quit                                                                         ║                                       
-                                      ║Panels                                                                                     ║                                       
+                                      ║Tracks                                                                                     ║                                       
                                       ║  B  import a track (MP3/WAV/FLAC); / search · L library                                   ║                                       
                                       ║Preset browser                                                                             ║                                       
                                       ║  /  search: press / then type to filter by name (Backspace; Esc clears)                   ║                                       

@@ -1688,9 +1688,6 @@ pub(super) fn render_unsaved_prompt(f: &mut Frame, prompt: &UnsavedPrompt) {
     f.render_widget(Paragraph::new(lines).alignment(Alignment::Center), inner);
 }
 
-/// Full keybinding cheat-sheet, opened with `K`. Sections mirror the footer
-/// rows the modal replaces, plus the context keys for the preset browser,
-/// the practice timeline, and the metronome.
 /// A small centered modal showing offline-export progress.
 pub(super) fn render_export_progress(f: &mut Frame, percent: u32) {
     let area = f.area();
@@ -1736,6 +1733,9 @@ pub(super) fn render_export_progress(f: &mut Frame, percent: u32) {
     f.render_widget(Paragraph::new(text), inner);
 }
 
+/// Full keybinding cheat-sheet, opened with `K`. Sections mirror the footer
+/// rows the modal replaces, plus the context keys for the preset browser,
+/// the practice timeline, and the metronome.
 pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
     // Modal-local description gray: brighter than the shared `DIM` (which is
     // near-invisible on black at this size) but still a step below `CHROME`
@@ -1820,7 +1820,7 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         ),
         row("  N", "  calibrate input level"),
         row("  F2", "  MIDI bindings: learn a controller control"),
-        row("  F3", "  cycle the UI theme"),
+        row("  F3", "  cycle the UI theme (saved)"),
         row("  F5", "  cycle the panel look (rounded → classic)"),
         row("  F6", "  panel focus animation: on / off (saved)"),
     ]);
@@ -1836,7 +1836,7 @@ pub(super) fn render_help_modal(f: &mut Frame, scroll: &mut u16) {
         row("  F", "  clear the loop"),
         row("  , / .", "  toggle overdub / undo the last overdub layer"),
         row("  Q / Ctrl-C", "  quit"),
-        head("Panels"),
+        head("Tracks"),
         row(
             "  B",
             "  import a track (MP3/WAV/FLAC); / search · L library",

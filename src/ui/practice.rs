@@ -2504,7 +2504,7 @@ impl PracticeUi {
             Line::from(vec![
                 Span::styled("Space", key),
                 Span::styled(" play/pause  ", dim),
-                Span::styled("M", key),
+                Span::styled("m", key),
                 Span::styled(" mute  ", dim),
                 Span::styled("Enter", key),
                 Span::styled(" start  ", dim),

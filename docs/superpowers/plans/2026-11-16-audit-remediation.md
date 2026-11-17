@@ -88,14 +88,14 @@
 - Modify: `src/ui/draw.rs:1691-1695,1786-1789,1823,1839`, `src/ui/mod.rs:2410`, `src/ui/practice.rs:2507-2508`, `src/ui/snapshots/headroom__ui__draw__tests__help_modal.snap`, `src/ui/snapshots/headroom__ui__draw__tests__help_modal_no_au.snap`
 - Test: `src/ui/draw.rs` `#[cfg(test)]` module
 
-- [ ] **Step 1:** Write the failing snapshot check: run `cargo test --no-default-features --features clap --lib snapshot_help_modal` and `cargo test --lib snapshot_help_modal` — both currently pass; the RED step is the deliberate help-text edit in Step 2, which makes them fail. Record the expected FAILED diff.
-- [ ] **Step 2:** `draw.rs`: move the cheat-sheet doc from `render_export_progress` to `render_help_modal`; `row("  F3", "  cycle the UI theme (saved)")`; `head("Panels")`→`head("Tracks")` before the `B` row; keep line counts unchanged so the height-clamped tail does not shift.
-- [ ] **Step 3:** `src/ui/mod.rs:2410`: bind `KeyCode::Char('d') | KeyCode::Char('D')`.
-- [ ] **Step 4:** `src/ui/practice.rs:2507-2508`: hint `M`→`m` for mute.
-- [ ] **Step 5:** Run both snapshot tests — expected FAILED on the two changed rows.
-- [ ] **Step 6:** Re-bless both goldens with the two commands in Global Constraints; confirm no `*.snap.new`.
-- [ ] **Step 7:** Verify both snapshot tests pass plus `cargo test --lib ui::draw` and `cargo fmt --all -- --check`.
-- [ ] **Step 8:** Commit: `fix(ui): correct help keys, sections and docs; re-bless both goldens`.
+- [x] **Step 1:** Write the failing snapshot check: run `cargo test --no-default-features --features clap --lib snapshot_help_modal` and `cargo test --lib snapshot_help_modal` — both currently pass; the RED step is the deliberate help-text edit in Step 2, which makes them fail. Record the expected FAILED diff.
+- [x] **Step 2:** `draw.rs`: move the cheat-sheet doc from `render_export_progress` to `render_help_modal`; `row("  F3", "  cycle the UI theme (saved)")`; `head("Panels")`→`head("Tracks")` before the `B` row; keep line counts unchanged so the height-clamped tail does not shift.
+- [x] **Step 3:** `src/ui/mod.rs:2410`: bind `KeyCode::Char('d') | KeyCode::Char('D')`.
+- [x] **Step 4:** `src/ui/practice.rs:2507-2508`: hint `M`→`m` for mute.
+- [x] **Step 5:** Run both snapshot tests — expected FAILED on the two changed rows.
+- [x] **Step 6:** Re-bless both goldens with the two commands in Global Constraints; confirm no `*.snap.new`.
+- [x] **Step 7:** Verify both snapshot tests pass plus `cargo test --lib ui::draw` and `cargo fmt --all -- --check`.
+- [x] **Step 8:** Commit: `fix(ui): correct help keys, sections and docs; re-bless both goldens`.
 
 ### Task 5: Silent-failure bugs in state and storage
 

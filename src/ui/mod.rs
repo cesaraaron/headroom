@@ -2403,11 +2403,11 @@ pub fn run(
                             Some(ADD_TILE | PRACTICE_TILE | CHAIN_TILE) | None => {}
                             Some(i) => nudge(&params, i, -0.05),
                         },
-                        // Lowercase `d` disables (bypasses) the focused pedal in
+                        // `d` / `D` disables (bypasses) the focused pedal in
                         // place, or the selected ribbon stage; on the master cell
                         // it resets the rig output to unity. `Del` takes a pedal
                         // off the board.
-                        KeyCode::Char('d') => match focus {
+                        KeyCode::Char('d') | KeyCode::Char('D') => match focus {
                             Some(CHAIN_TILE) if header_on_master => {
                                 params.master_output.store(
                                     crate::dsp::DEFAULT_MASTER_OUTPUT,
