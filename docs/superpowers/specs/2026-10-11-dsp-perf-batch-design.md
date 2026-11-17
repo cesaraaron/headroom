@@ -1,5 +1,7 @@
 # DSP perf batch (Item 2) — design
 
+> **SUPERSEDED:** shipped; see `docs/audit-2026-11-16.md`.
+
 **Status:** written for review; implements roadmap-next.md "Item 2 — DSP perf batch (tone-neutral, measurable)".
 **Scope:** E3 per-sample transcendentals + D7 IR-build `exp`/`sin` + ragged-IR verification + mic-build decision. Palette refactor explicitly out.
 

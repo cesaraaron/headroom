@@ -1,5 +1,7 @@
 # F1 limiter remainder — design
 
+> **SUPERSEDED:** shipped; see `docs/audit-2026-11-16.md`.
+
 **Status:** written for review; implements roadmap Item 3, first workstream
 ("F1 remainder", `roadmap-next.md` + `docs/fidelity-implement.md:2379`).
 **Scope:** the master-bus + final limiter in `src/dsp/limiter.rs` and its

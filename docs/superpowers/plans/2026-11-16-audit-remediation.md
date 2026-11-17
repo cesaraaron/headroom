@@ -45,25 +45,25 @@
 
 **Interfaces:** Produces the spec path and the plan path every later task references.
 
-- [ ] **Step 1:** Write the audit spec (`docs/audit-2026-11-16.md`) with all 57 findings and the verified-clean list.
-- [ ] **Step 2:** Write this plan with `- [ ]` steps.
-- [ ] **Step 3:** Create the ledger with first line `# SDD ledger — plan: docs/superpowers/plans/2026-11-16-audit-remediation.md`, record the two rulings above, and `Pre-flight: no shared interfaces`.
-- [ ] **Step 4:** Verify both files are tracked and `git status` shows only the two new docs.
-- [ ] **Step 5:** Commit: `docs: add the 2026-11-16 audit and remediation plan`.
+- [x] **Step 1:** Write the audit spec (`docs/audit-2026-11-16.md`) with all 57 findings and the verified-clean list.
+- [x] **Step 2:** Write this plan with `- [x]` steps.
+- [x] **Step 3:** Create the ledger with first line `# SDD ledger — plan: docs/superpowers/plans/2026-11-16-audit-remediation.md`, record the two rulings above, and `Pre-flight: no shared interfaces`.
+- [x] **Step 4:** Verify both files are tracked and `git status` shows only the two new docs.
+- [x] **Step 5:** Commit: `docs: add the 2026-11-16 audit and remediation plan`.
 
 ### Task 2: Agent-facing documentation
 
 **Files:**
 - Modify: `AGENTS.md:44,47,100-105,110,113-114`, `.claude/skills/add-pedal/SKILL.md:28,30`, `roadmap-next.md:17-73,61,286-295,302-307`, `docs/parallel-work.md:11-20,30-35,52-54,67,71,97-98`, `.opencode/agent/tests-writer.md:28`, `docs/superpowers/specs/*.md:3` (7 files)
 
-- [ ] **Step 1:** `AGENTS.md`: `Space`→`D` (and note `Space`/`Enter` are transport); "Output limiter (per-channel soft-clip)"→"master-bus lookahead limiter (stereo-linked, −1 dBFS)"; add `docs/guide.md` to the user-facing guide list; list all 13 examples; demote the roadmap handoff pointer to "historical, see the audit spec".
-- [ ] **Step 2:** `.claude/skills/add-pedal/SKILL.md`: `D`-to-remove→`Del`-to-remove; "`Space` can bypass"→"`D` bypasses".
-- [ ] **Step 3:** `roadmap-next.md`: retitle the handoff `## Handoff — historical (2026-10-12, superseded)`; add a one-paragraph "Current state (2026-11-16, 83602a8)" summary; correct "opens with only the practice timeline / `Panels::timeline_only()`"→"every panel visible (test-only layout)"; `D` removes→`Del` removes; "single theme"/"Theme #2 is data entry"→two shipped themes `rust`/`teal`; note `2026-10-12-palette-design.md`'s decision was reversed.
-- [ ] **Step 4:** `docs/parallel-work.md`: label "Current split (2026-10-11)" as historical; add a note that `opencode.json` disables all six agents so the runbook is archival.
-- [ ] **Step 5:** `.opencode/agent/tests-writer.md:28`: `17 presets`→`5 presets`.
-- [ ] **Step 6:** Prepend `> **SUPERSEDED:** shipped; see docs/audit-2026-11-16.md.` after line 1 of each `docs/superpowers/specs/*.md`; note the two plans without specs in `roadmap-next.md`.
-- [ ] **Step 7:** Verify: `rg -n "Space\`|per-channel soft-clip|17 presets|Theme #2|timeline_only" AGENTS.md .claude/skills roadmap-next.md docs/parallel-work.md .opencode/agent` returns no stale claims.
-- [ ] **Step 8:** Commit: `docs: correct agent-facing keys, limiter, handoff and archived specs`.
+- [x] **Step 1:** `AGENTS.md`: `Space`→`D` (and note `Space`/`Enter` are transport); "Output limiter (per-channel soft-clip)"→"master-bus lookahead limiter (stereo-linked, −1 dBFS)"; add `docs/guide.md` to the user-facing guide list; list all 13 examples; demote the roadmap handoff pointer to "historical, see the audit spec".
+- [x] **Step 2:** `.claude/skills/add-pedal/SKILL.md`: `D`-to-remove→`Del`-to-remove; "`Space` can bypass"→"`D` bypasses".
+- [x] **Step 3:** `roadmap-next.md`: retitle the handoff `## Handoff — historical (2026-10-12, superseded)`; add a one-paragraph "Current state (2026-11-16, 83602a8)" summary; correct "opens with only the practice timeline / `Panels::timeline_only()`"→"every panel visible (test-only layout)"; `D` removes→`Del` removes; "single theme"/"Theme #2 is data entry"→two shipped themes `rust`/`teal`; note `2026-10-12-palette-design.md`'s decision was reversed.
+- [x] **Step 4:** `docs/parallel-work.md`: label "Current split (2026-10-11)" as historical; add a note that `opencode.json` disables all six agents so the runbook is archival.
+- [x] **Step 5:** `.opencode/agent/tests-writer.md:28`: `17 presets`→`5 presets`.
+- [x] **Step 6:** Prepend `> **SUPERSEDED:** shipped; see docs/audit-2026-11-16.md.` after line 1 of each `docs/superpowers/specs/*.md`; note the two plans without specs in `roadmap-next.md`.
+- [x] **Step 7:** Verify: `rg -n "Space\`|per-channel soft-clip|17 presets|Theme #2|timeline_only" AGENTS.md .claude/skills roadmap-next.md docs/parallel-work.md .opencode/agent` returns no stale claims.
+- [x] **Step 8:** Commit: `docs: correct agent-facing keys, limiter, handoff and archived specs`.
 
 ### Task 3: As-built records and code-level doc comments
 

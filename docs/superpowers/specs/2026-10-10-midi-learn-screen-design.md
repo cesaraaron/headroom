@@ -1,5 +1,7 @@
 # MIDI learn / bind screen — design
 
+> **SUPERSEDED:** shipped; see `docs/audit-2026-11-16.md`.
+
 **Status:** defaults chosen by the assistant (human opted out of the design
 questions); written for review.
 **Scope:** an in-app MIDI binding screen, plus the small `src/midi.rs` changes it

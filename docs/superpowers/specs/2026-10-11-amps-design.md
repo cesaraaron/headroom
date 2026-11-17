@@ -1,5 +1,7 @@
 # Amp gaps remainder (C2–C5) — design
 
+> **SUPERSEDED:** shipped; see `docs/audit-2026-11-16.md`.
+
 **Status:** written for review; implements roadmap Item 3, third workstream
 ("C2–C5 amp gaps", `roadmap-next.md` + `docs/dsp-findings-2026-09.md` Phase C).
 **Scope:** `src/dsp/amp/**` only. Each model independently listenable; the

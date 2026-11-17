@@ -41,11 +41,12 @@ Guitar input
   → Delay               (three modes: digital ping-pong | tape/EP-3 | Binson Echorec drum echo; 0–500 ms)
   → Stereo Reverb       (dual decorrelated Freeverb cores + 15 ms predelay and a slow wet LFO)
   → Master-bus widener  (stereo mid/side enhancement)
-  → Output limiter      (per-channel soft-clip)
+  → Output limiter      (master-bus lookahead limiter, stereo-linked, −1 dBFS)
 ```
 
-Every bypassable stage can be toggled independently with `Space`; the order can be
-changed at runtime with `[` / `]` (see `ChainStage::default_order`).
+Every bypassable stage can be toggled independently with `D` (removal is `Del`);
+the order can be changed at runtime with `[` / `]` (see `ChainStage::default_order`).
+`Space` / `Enter` drive the practice transport from any panel.
 
 **Monitor-only buses.** The practice metronome and the practice player (backing
 track + recorded take) are summed into the output **after** the recording tap (see
@@ -100,6 +101,9 @@ The repository includes several standalone analysis utilities under `examples/` 
 - `examples/au_cab_extract.rs` and `examples/au_params.rs` — inspect AudioUnit cabinet and parameter data
 - `examples/cone_interference.rs`, `examples/di_compare.rs`, `examples/knob_match.rs`, and `examples/rig_loudness.rs` — compare signal paths, input stages, and loudness behavior
 - `examples/fidelity_render.rs` — the fidelity harness: renders presets offline over the synthetic corpus or a DI manifest, reports loudness/tone/level metrics, and checks against `docs/fidelity/baseline-synth-48k.toml` (see `CONTRIBUTING.md` → "Fidelity harness")
+- `examples/audio_probe.rs` — diagnoses audio-device startup failures (per-device stream probes)
+- `examples/bench.rs` — plain timing harness for the DSP chain
+- `examples/drive_analysis.rs` — nonlinear characterisation of the drive pedals
 
 External impulse responses (IRs) for cabinet simulation are stored in `~/.config/headroom/irs/`.
 
@@ -107,13 +111,13 @@ External impulse responses (IRs) for cabinet simulation are stored in `~/.config
 
 ## Documentation
 
-The user-facing guide is the in-app help overlay (`K`) plus the README. The
-design/as-built notes live in `docs/` (`fidelity-plan.md`,
-`fidelity-implement.md`), and the off-path product/engineering roadmap is
-`roadmap-next.md` at the root — **its first section is the running handoff (what
-shipped, what to do next, the gates); a fresh session should start there.** For
-running parallel feature branches/agents, see `docs/parallel-work.md`. There is no
-separate docs website.
+The user-facing guide is the in-app help overlay (`K`), the README, and
+`docs/guide.md` (the full key/feature reference). Design/as-built notes live in
+`docs/` (`fidelity-plan.md`, `fidelity-implement.md`), and the off-path
+product/engineering roadmap is `roadmap-next.md` at the root — its first section
+is a **historical** handoff (2026-10-12, superseded); for current state read
+`docs/audit-2026-11-16.md` and the latest commit. For running parallel feature
+branches/agents, see `docs/parallel-work.md`. There is no separate docs website.
 
 ---
 

@@ -1,5 +1,7 @@
 # Palette / theming refactor (3.3 remainder) — design
 
+> **SUPERSEDED:** shipped; see `docs/audit-2026-11-16.md`.
+
 **Status:** written for review; implements roadmap Item 3.3 remainder
 ("palette refactor", `roadmap-next.md` Track 3.3). The narrow-width half
 shipped; this is the runtime-selectable palette.

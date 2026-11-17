@@ -1,5 +1,7 @@
 # Mouse click-to-focus — design
 
+> **SUPERSEDED:** shipped; see `docs/audit-2026-11-16.md`.
+
 **Status:** approved in conversation 2026-10-10; awaiting written-spec review.
 **Scope:** a new *input subsystem* (mouse capture + hit-testing) that also changes the
 `draw`↔input-loop interface.

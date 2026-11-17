@@ -25,9 +25,9 @@ Signal-path code must be **allocation-free, lock-free, and panic-free** at runti
 2. **`src/dsp/effects/mod.rs`** — declare and re-export the module.
 3. **`src/dsp/mod.rs`** — add a field to `DspChain`, a line in `DspChain::process` using the `mono_stage!` / `stereo_stage!` macro (so it bypasses cleanly and reads `Params`), and the `Params` fields + defaults: one `Arc<AtomicF32>` per knob **and** the `<fx>_enabled: Arc<AtomicBool>` bypass flag.
 4. **`src/ui/draw.rs`** — update the `render_header` chain.
-5. **`src/ui/config.rs`** — add the `<FX>_START` / `<FX>_END` knob-range constants and the `KNOBS` entries (in top-to-bottom on-screen order — `←`/`→` walks the array linearly), then a `PEDALS` entry (name, livery colour accessor, knob range, `enabled`-flag accessor). The tile grid, detail editor, `+ ADD` picker, and `D`-to-remove all derive from this table.
+5. **`src/ui/config.rs`** — add the `<FX>_START` / `<FX>_END` knob-range constants and the `KNOBS` entries (in top-to-bottom on-screen order — `←`/`→` walks the array linearly), then a `PEDALS` entry (name, livery colour accessor, knob range, `enabled`-flag accessor). The tile grid, detail editor, `+ ADD` picker, and `Del`-to-remove all derive from this table.
 6. **`src/ui/styles.rs`** — add the `PEDAL_<NAME>` colour used by the `PEDALS` entry.
-7. **`src/ui/input.rs`** — add the pedal's `enabled` flag to the `toggle_pedal` match so `Space` can bypass it on the board.
+7. **`src/ui/input.rs`** — add the pedal's `enabled` flag to the `toggle_pedal` match so `D` can bypass it on the board.
 8. **`src/preset.rs`** — add the preset section/fields (including the on/off state). Mirror an existing optional section like `FuzzSection`. Board membership is separate: the top-level `board` list carries it, and old presets without it fall back to the enabled flags.
 9. **Tests** — a `#[cfg(test)]` module in the effect file: finite/bounded output, and that each knob moves the band/level it should.
 10. **UI tests** — your `config.rs` edit deliberately trips the UI table tests; update them in the same commit:

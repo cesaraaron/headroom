@@ -1,5 +1,9 @@
 # Parallel work: branches, worktrees, and agents
 
+> **ARCHIVAL (2026-11-16):** `opencode.json` disables all six
+> `.opencode/agent/*` agents, so the `--agent …` commands below are historical.
+> The workflow itself is still sound; see `docs/audit-2026-11-16.md`.
+
 headroom has a few **central registries** that almost every feature touches —
 `src/dsp/mod.rs` (`ChainStage`, `Params`, the stage dispatch),
 `src/ui/config.rs` (`KNOBS`/`PEDALS` tables + range consts), `src/preset.rs`
@@ -11,7 +15,7 @@ own `git worktree` (separate checkout + separate `target/`), driven by a scoped
 opencode agent. The maintainer (or the `integrator` agent) merges serially on
 `main`.
 
-## The safe trio (current)
+## The safe trio (historical, 2026-10-11)
 
 | Branch | Agent | Owns (only) | Merge order |
 | ------ | ----- | ----------- | ----------- |
@@ -27,7 +31,7 @@ CI's fidelity `--check` stays valid.
 > (bench + guide + preset search). Keep the table below as the template for the
 > next batch.
 
-> **Current split (2026-10-11):** the two open workstreams are disjoint and can
+> **Historical split (2026-10-11, both workstreams have since shipped):** the two workstreams were disjoint and could
 > run in parallel — the **DSP batch** (roadmap item 2/3) owns `src/dsp/**`,
 > `examples/bench.rs` and `docs/fidelity/**`; the **palette refactor**
 > (roadmap 3.3) owns `src/ui/**` (and `src/ui/config.rs`'s `PEDALS` colours). The
@@ -95,4 +99,4 @@ scoped brief like the existing ones.
 - Push-triggered CI is the per-branch verification; if it ever stops firing,
   `gh workflow run test.yml` runs it manually.
 - The `.claude/skills/add-amp-model|add-pedal|add-bundled-preset` guides are the
-  reference for registry-touching work.
+  reference for registry-touching work (kept in sync with the current keybindings).

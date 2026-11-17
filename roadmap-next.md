@@ -14,13 +14,22 @@ Each item states **why**, **scope**, **audio-thread constraints**, and
 
 ---
 
-## Handoff — current state (2026-10-12)
+## Handoff — historical (2026-10-12, superseded)
 
-**A fresh agent should be able to continue from this section alone.** The
-off-path roadmap is DONE except blocked Phase 3. What shipped, what remains,
-and the working conventions.
+> **SUPERSEDED (2026-11-16):** this section records the state at 2026-10-12.
+> 88 commits have landed since; several items below were later changed or
+> reverted. For current state see `docs/audit-2026-11-16.md` and `git log`.
+> Do not use this section as a starting handoff.
 
-### Just shipped (on `main`, pushed)
+### Current state (2026-11-16, `83602a8`)
+
+- CI green on both jobs (Linux `cargo test`, macOS release + fidelity `--check`).
+- 5 bundled presets; two themes (`rust` / `teal`); every panel visible at startup.
+- `Space`/`Enter` are the global transport, `D` bypasses, `Del` removes a pedal.
+- The off-path roadmap remains closed; fidelity Phase 3 is still blocked on
+  re-amp + mic captures. Open work is tracked in `docs/audit-2026-11-16.md`.
+
+### Just shipped (on `main`, pushed, as of 2026-10-12)
 
 | Area | Commits | Where |
 | --- | --- | --- |
@@ -28,7 +37,7 @@ and the working conventions.
 | DSP perf batch (Item 2) | `803d96e`…`932cec8` | `src/dsp/effects/*` caches, `src/dsp/cab/ir.rs` recurrence + sparse taps; `CabBank::new` 221→24 ms; spec/plan `docs/superpowers/{specs,plans}/2026-10-11-dsp-perf-batch*` |
 | F1 limiter remainder | `ab05e93`…`597b6de` | 4× true-peak detector + oversampled clamp (`src/dsp/limiter.rs`), GR readout on OUT row, true-peak hold; baseline re-blessed; `…/2026-10-11-f1-limiter*` |
 | Reorder safety (B2/B4/B5) | `3b2b005`…`292e449` | mono-after-cab toast (`src/ui/input.rs`), feedback-tail clear on reorder (`DspChain::snapshot_order`); B4 verified-and-closed; `…/2026-10-11-reorder*` |
-| Amp gaps remainder (C2–C5) | `1edf712`…`c83b89a` | Randall load-only ripple, `SpeakerLoad` rename; Vox/Hiwatt/Fender ripple measured inaudible and reverted (tests `#[ignore]`d); no re-bless needed; `…/2026-10-11-amps*` |
+| Amp gaps remainder (C2–C5) | `1edf712`…`c83b89a` | Randall load-only ripple, `SpeakerLoad` rename; Vox/Hiwatt/Fender ripple measured inaudible and reverted (recorded in `docs/fidelity-implement.md`); no re-bless needed; `…/2026-10-11-amps*` |
 | Palette + pedal rename (3.3) | `2177d70`…`f23db93` | `Theme` registry (single default), F3 + `ui.conf`, product tile names; `…/2026-10-12-palette*` (spec) / `2026-10-11-amps.md`-dated plans live under `docs/superpowers/plans/` |
 | Equal IN/OUT meter chrome | `03b166b` | `src/ui/draw.rs` unified meter chrome |
 | Rename → `headroom` (v0.3.0) | `293dffd` | crate/binary, config dir with a chained one-time migration, `HEADROOM_*` env vars (legacy `RUSTY_AMP_*` still read), CLAP host id, release assets, snapshots re-blessed; GitHub repo renamed `cesaraaron/headroom` |
@@ -58,8 +67,7 @@ fidelity `--check` now rejects non-finite render metrics instead of silently pas
 
 - **Blocked:** fidelity Phase 3 (measured-IR / cab-capture match) needs
   re-amp + mic captures — do not start.
-- **If wanted:** theme #2+ (infrastructure in place — data entry +
-  eyeball); Vox power-drive re-voice (×9 trim leaves the power stage
+- **Shipped since:** theme #2 (`rust`, F3 cycles it with `teal`); Vox power-drive re-voice (×9 trim leaves the power stage
   clean — no grind/ghosts; new project, re-blesses); the deferred minors
   listed in each batch's ledger (now in git history — `git log` for
   `Ruling:`/`minor (deferred)` lines).
@@ -69,7 +77,7 @@ fidelity `--check` now rejects non-finite render metrics instead of silently pas
 
 ### Next up
 
-Nothing scheduled. The off-path roadmap is complete; play the rig and
+Nothing scheduled (as of 2026-10-12). The off-path roadmap is complete; play the rig and
 file new work as it earns it.
 
 **Blocked:** fidelity Phase 3 (measured-IR / cab-capture match) needs re-amp + mic
@@ -103,13 +111,16 @@ captures — do not start.
   cargo test                                   # debug
   cargo run --release --example fidelity_render -- --check docs/fidelity/baseline-synth-48k.toml
   ```
-- **Re-bless a snapshot** after an intentional UI change:
-  `INSTA_UPDATE=always cargo test --release --lib`, then
-  `find . -name '*.snap.new' -not -path './target/*' -delete`.
+- **Re-bless BOTH help goldens** after an intentional UI change (the AU and
+  no-AU variants differ): `cargo test` on macOS, then
+  `INSTA_UPDATE=always cargo test --no-default-features --features clap --lib snapshot_help_modal`,
+  then `find . -name '*.snap.new' -not -path './target/*' -delete`.
 - **Workflow** for anything non-trivial: spec first
   (`docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`), then a plan
   (`docs/superpowers/plans/…`), then TDD execution task by task. Parallel-agent
-  rules: `docs/parallel-work.md`.
+  rules: `docs/parallel-work.md`. **Exception (2026-11-16):** two plans
+  (`2026-10-23-chain-audit-phase1.md`, `2026-11-02-gilmour-tier1-gear.md`)
+  have no paired spec.
 - **Audio path**: `AGENTS.md` → "DSP constraints" — no allocation, blocking or
   locking on the audio thread; knob values are 0.0–1.0 internally.
 - **Measure before you refactor**: the compact-mode attempt on 2026-10-11 was
@@ -283,7 +294,7 @@ layout. Keep the ratatui snapshot tests meaningful.
 
 **Acceptance.** Screenshots/snapshots per theme; no clipping at a small size.
 
-**Status — done 2026-10-12 (infrastructure + rename, single theme).**
+**Status — done 2026-10-12 (infrastructure + rename); two themes now ship.**
 The narrow-width half landed 2026-10-11; the palette half landed 2026-10-12
 (`2177d70`…`f23db93`, spec `docs/superpowers/specs/2026-10-12-palette-design.md`):
 a `Theme` registry in `src/ui/styles.rs` (single default palette,
@@ -291,20 +302,19 @@ value-for-value legacy — all existing snapshots pass unmodified), ~400 call
 sites migrated flag-day, F3 cycle + `~/.config/headroom/ui.conf` write-back,
 and pedal tiles renamed to product names (CRY BABY, DYNA COMP, BIG MUFF,
 POWER BOOST, GE-7, CE-2; multi-kind pedals stay generic). Verified by
-TestBackend cell-color assertions (snapshots are glyphs-only). Theme #2 is
-now data entry + eyeball.
+TestBackend cell-color assertions (snapshots are glyphs-only). Theme #2 shipped (`rust`); the spec's
+"ship current default theme ONLY" decision was reversed.
 
 ### 3.4 UI quality-of-life (rolling)
 
 **Why.** Small interaction wins that don't fit a single plan item.
 
 **Status — several landed:**
-- **Open on the timeline; close to it.** The app opens with only the practice
-  timeline (plus the always-visible chain ribbon) and focus on the timeline;
-  closing a focused panel returns focus to the timeline when it is open (else the
-  ribbon). `Panels::timeline_only()`.
+- **Open with every panel.** Every panel (chain ribbon, amp, timeline, pedals)
+  is visible at startup (`Panels::all_visible()`); `timeline_only()` is a
+  test-only layout. Closing a focused panel returns focus to a visible panel.
 - **Quick-add a pedal.** On the pedalboard, `a` opens the add-pedal picker
-  (elsewhere `a` still opens the amp browser); `D` removes the focused pedal.
+  (elsewhere `a` still opens the amp browser); `Del` removes the focused pedal.
 - **Timeline ruler polish.** A gutter divider and minor ticks, drawn as a low
   vertical tick.
 - **Expiring notices.** Status toasts have a lifetime rather than sticking.

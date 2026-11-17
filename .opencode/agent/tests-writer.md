@@ -25,7 +25,7 @@ Add `tests/bundled_presets.rs` — a broad, fast integration test that loads
 
 Mirror the existing `tests/fidelity_harness.rs` (it renders one preset through
 `render_preset` with `RenderOpts { max_tail_s: 0.0, .. }` and a synthetic
-`Phrase`). Keep it within the test budget: if all 17 presets are too slow in a
+`Phrase`). Keep it within the test budget: if all 5 presets are too slow in a
 debug build, use a short phrase/short render, or cover a representative subset
 and say why in a comment. Do **not** weaken the fidelity harness itself.
 

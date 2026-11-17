@@ -1,5 +1,7 @@
 # Reorder safety (B2/B4/B5) — design
 
+> **SUPERSEDED:** shipped; see `docs/audit-2026-11-16.md`.
+
 **Status:** written for review; implements roadmap Item 3, second workstream
 ("B2 / B4 / B5", `roadmap-next.md` + `docs/dsp-findings-2026-09.md` Phase B).
 **Scope:** `[`/`]` moves (`src/ui/input.rs::move_selected_stage`), order
