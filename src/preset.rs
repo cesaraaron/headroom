@@ -1420,6 +1420,22 @@ mod tests {
         );
     }
 
+    /// The guard must also hold for keys *inside* a section: an optional
+    /// `[master]`/`[delay]` field typo would otherwise silently fall back to its
+    /// default and ship a mistuned preset.
+    #[test]
+    fn preset_rejects_unknown_section_field() {
+        let mut text =
+            std::fs::read_to_string("presets/acdc_back_in_black.toml").expect("bundled preset");
+        // A bare key after the last table header belongs to that table (`[master]`).
+        text.push_str("\ntypo = 1\n");
+        let parsed = toml::from_str::<Preset>(&text);
+        assert!(
+            parsed.is_err(),
+            "a typo'd section key must not deserialize silently"
+        );
+    }
+
     /// Every bundled preset must deserialize against the current schema — guards
     /// against a typo or a renamed field silently breaking a shipped preset.
     #[test]

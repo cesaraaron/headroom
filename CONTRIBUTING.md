@@ -263,8 +263,8 @@ INSTA_UPDATE=always cargo test --no-default-features --features clap --lib snaps
 A few things to know:
 
 - **Never set `INSTA_UPDATE` in CI** — that would auto-accept and mask regressions.
-  A stray pending `*.snap.new` also fails CI, so finish the re-bless and commit the
-  `.snap`.
+  `*.snap.new` is gitignored; `cargo test` fails on a golden mismatch, so finish
+  the re-bless and commit the `.snap`.
 - The golden tests are gated on the default `clap` feature, because the help footer
   renders a `clap`-only key. The first command above (default/all features)
   covers that golden; the two-golden rule below covers the other.

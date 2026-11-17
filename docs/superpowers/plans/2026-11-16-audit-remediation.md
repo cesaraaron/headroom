@@ -198,8 +198,8 @@
 
 - [x] **Step 1:** Re-read `docs/audit-2026-11-16.md` and tick every item addressed; list any item deliberately not fixed as a `Ruling:` in the ledger with its cost.
 - [x] **Step 2:** Full gate run: `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test`, `cargo test --no-default-features --features clap`, `cargo check --no-default-features`, `find . -name '*.snap.new'`.
-- [ ] **Step 3:** Whole-branch review: dispatch one fresh `general` subagent with the diff range `83602a8..HEAD`, this plan, the spec, the Review Focus table verbatim, and the ledger's `Ruling:` lines; ask for severity-graded findings.
-- [ ] **Step 4:** Re-grade findings by user effect; fix Critical/Important in one RED→GREEN pass with a full green suite; ledger deferred Minors.
-- [ ] **Step 5:** Mark all checkboxes complete, delete `.superpowers/sdd/2026-11-16-audit-remediation/`, commit the plan updates.
-- [ ] **Step 6:** Push to `main`; watch the CI run with `gh run watch --exit-status` and confirm both jobs pass.
-- [ ] **Step 7:** Report: findings fixed, rulings, deferred minors, CI run URL.
+- [x] **Step 3:** Whole-branch review: dispatch one fresh `general` subagent with the diff range `83602a8..HEAD`, this plan, the spec, the Review Focus table verbatim, and the ledger's `Ruling:` lines; ask for severity-graded findings.
+- [x] **Step 4:** Re-grade findings by user effect; fix Critical/Important in one RED→GREEN pass with a full green suite; ledger deferred Minors.
+- [x] **Step 5:** Mark all checkboxes complete, delete `.superpowers/sdd/2026-11-16-audit-remediation/`, commit the plan updates.
+- [x] **Step 6:** Push to `main`; watch the CI run with `gh run watch --exit-status` and confirm both jobs pass.
+- [x] **Step 7:** Report: findings fixed, rulings, deferred minors, CI run URL.
