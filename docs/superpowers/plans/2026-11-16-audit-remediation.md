@@ -169,12 +169,12 @@
 - Modify: `src/ui/mod.rs:149-163`, `src/ui/input.rs:414-425`, `src/ui/draw.rs:127,339,988`
 - Test: `src/ui/input.rs` `#[cfg(test)]` module
 
-- [ ] **Step 1:** RED — `resync_clamps_hidden_amp_knob_focus`: build `params`/`board`/`panels`, set focus to `AMP_START + 6`, switch the amp model to a 2-knob one, call `resync_board_after_rig_change`, assert the returned focus is `< AMP_START + amp_knob_count()`. Run → FAIL.
-- [ ] **Step 2:** Make `ensure_focus_visible` use `focus_reachable`, or add the `f - AMP_START >= params.amp_knob_count()` clamp to `resync_board_after_rig_change` (choose whichever keeps existing `hiding_the_focused_panel_repairs_focus` passing).
-- [ ] **Step 3:** GREEN — `cargo test --lib ui::input::tests` → PASS.
-- [ ] **Step 4:** `draw.rs`: compute `rendered_stages(&params.chain_slots(), board)` once in `draw_at` and pass `&[(…)]` into `render_header` and `render_rig`; keep signatures explicit and update all callers incl. tests.
-- [ ] **Step 5:** `cargo test --lib ui::draw::tests` + fmt + clippy; re-run both help snapshots if any rendered output changed (none expected).
-- [ ] **Step 6:** Commit: `fix(ui): repair hidden amp-knob focus and compute rendered stages once per frame`.
+- [x] **Step 1:** RED — `resync_clamps_hidden_amp_knob_focus`: build `params`/`board`/`panels`, set focus to `AMP_START + 6`, switch the amp model to a 2-knob one, call `resync_board_after_rig_change`, assert the returned focus is `< AMP_START + amp_knob_count()`. Run → FAIL.
+- [x] **Step 2:** Make `ensure_focus_visible` use `focus_reachable`, or add the `f - AMP_START >= params.amp_knob_count()` clamp to `resync_board_after_rig_change` (choose whichever keeps existing `hiding_the_focused_panel_repairs_focus` passing).
+- [x] **Step 3:** GREEN — `cargo test --lib ui::input::tests` → PASS.
+- [x] **Step 4:** `draw.rs`: compute `rendered_stages(&params.chain_slots(), board)` once in `draw_at` and pass `&[(…)]` into `render_header` and `render_rig`; keep signatures explicit and update all callers incl. tests.
+- [x] **Step 5:** `cargo test --lib ui::draw::tests` + fmt + clippy; re-run both help snapshots if any rendered output changed (none expected).
+- [x] **Step 6:** Commit: `fix(ui): repair hidden amp-knob focus and compute rendered stages once per frame`.
 
 ### Task 10: Build, CI and lint-policy cleanup
 

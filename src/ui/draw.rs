@@ -148,6 +148,11 @@ fn draw_at(
 ) -> HitMap {
     let area = f.area();
 
+    // Both the ribbon and the pedalboard need the rendered chain. Compute it
+    // once per frame (one Vec allocation and one read of the 24 order atomics)
+    // instead of twice.
+    let rendered = rendered_stages(&params.chain_slots(), board);
+
     // Every panel's current reveal, plus the cell the outgoing panel keeps lit
     // until it is dark.
     let reveal = |panel: u8| fade.reveal(panel, now);
@@ -204,7 +209,7 @@ fn draw_at(
         params,
         levels,
         cal,
-        board,
+        &rendered,
         plugin,
         ext_cab,
         ext_amp,
@@ -242,7 +247,7 @@ fn draw_at(
             f,
             rows[i],
             params,
-            board,
+            &rendered,
             fade.focus_in(4, focus, now),
             reveal(4),
             &mut hits,
@@ -269,7 +274,7 @@ fn render_header(
     params: &Params,
     levels: &Levels,
     cal: &InputCalibration,
-    board: &[bool],
+    rendered: &[(usize, ChainStage)],
     plugin: Option<&str>,
     ext_cab: Option<&str>,
     ext_amp: Option<&str>,
@@ -336,7 +341,7 @@ fn render_header(
         chain.push((Span::styled(text, style), is_sel, target));
     };
 
-    for &(_, slot_stage) in &rendered_stages(&params.chain_slots(), board) {
+    for &(_, slot_stage) in rendered {
         let selected_here = focused && !master_selected && cursor == slot_stage;
         let (label, lit, color) = match slot_stage {
             ChainStage::Amp => (amp_label.clone(), true, theme().amber),
@@ -959,7 +964,7 @@ fn render_rig(
     f: &mut Frame,
     area: Rect,
     params: &Params,
-    board: &[bool],
+    rendered: &[(usize, ChainStage)],
     focus: Option<usize>,
     emphasis: f32,
     hits: &mut HitMap,
@@ -985,9 +990,9 @@ fn render_rig(
     // signal flow; the last tile is always "+ ADD". `board` may be shorter than
     // PEDALS (e.g. the device-setup screen passes an empty slice), so treat
     // missing entries as off-board.
-    let on_board: Vec<usize> = rendered_stages(&params.chain_slots(), board)
-        .into_iter()
-        .filter_map(|(_, stage)| stage.pedal_index())
+    let on_board: Vec<usize> = rendered
+        .iter()
+        .filter_map(|&(_, stage)| stage.pedal_index())
         .collect();
     let tile_count = on_board.len() + 1;
 

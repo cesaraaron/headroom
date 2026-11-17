@@ -153,11 +153,19 @@ fn resync_board_after_rig_change(
     panels: &Panels,
 ) {
     *board = sync_board(params);
-    if let Some(i) = *focus
-        && let Some(pi) = pedal_of(i)
-        && !board[pi]
-    {
-        *focus = Some(AMP_START);
+    let amp_count = params.amp_knob_count();
+    if let Some(i) = *focus {
+        if let Some(pi) = pedal_of(i)
+            && !board[pi]
+        {
+            *focus = Some(AMP_START);
+        }
+        // A model with fewer front-panel knobs can leave focus on a knob that
+        // is no longer drawn. The amp-modal path clamps this; a preset/session
+        // load must do the same.
+        if (AMP_START..AMP_END).contains(&i) && i - AMP_START >= amp_count {
+            *focus = Some(AMP_START + amp_count.saturating_sub(1));
+        }
     }
     *focus = ensure_focus_visible(*focus, board, panels, &params.chain_slots());
 }
@@ -2490,6 +2498,28 @@ pub fn run(
 mod tests {
     use super::*;
     use std::sync::atomic::Ordering::Relaxed;
+
+    /// Applying a preset / loading a session can switch to an amp with fewer
+    /// front-panel knobs; focus must not be left on a knob that is not drawn.
+    #[test]
+    fn resync_clamps_hidden_amp_knob_focus() {
+        let params = Params::new();
+        params
+            .amp_model
+            .store(crate::dsp::AmpModel::Supro as u8, Relaxed);
+        let count = params.amp_knob_count();
+        assert!(
+            count < crate::dsp::amp::AMP_MAX,
+            "test needs a model with fewer than AMP_MAX knobs"
+        );
+        let mut board = sync_board(&params);
+        let mut focus = Some(AMP_START + crate::dsp::amp::AMP_MAX - 1);
+        resync_board_after_rig_change(&params, &mut board, &mut focus, &Panels::all_visible());
+        assert!(
+            focus.is_some_and(|f| f < AMP_START + count),
+            "focus landed on an amp knob the current model does not render: {focus:?}"
+        );
+    }
 
     /// Overlays are keyboard-only: any one of them being open must swallow mouse
     /// events, and only when none is open may a click reach the board.
