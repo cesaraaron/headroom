@@ -355,12 +355,6 @@ const NEIGHBOR_LP_HZ: f32 = 2200.0;
 struct ConeSpread {
     buf: Vec<f32>,
     pos: usize,
-    /// Used only in tests
-    #[allow(dead_code)]
-    d_side: usize,
-    /// Used only in tests
-    #[allow(dead_code)]
-    d_diag: usize,
     /// (delay, gain) sub-taps for both neighbour clusters.
     taps: [(usize, f32); 5],
     norm: f32,
@@ -417,8 +411,6 @@ impl ConeSpread {
         Self {
             buf: vec![0.0; d_diag + 6],
             pos: 0,
-            d_side,
-            d_diag,
             taps,
             norm: 1.0 / (1.0 + power).sqrt(),
             lp: Biquad::lowpass(sr, NEIGHBOR_LP_HZ, 0.707),
@@ -1710,8 +1702,8 @@ mod tests {
         for i in 0..n {
             out.push(cs.process(if i == 0 { 1.0 } else { 0.0 }));
         }
-        let d_side = cs.d_side;
-        let d_diag = cs.d_diag;
+        let d_side = cs.taps[0].0;
+        let d_diag = cs.taps[3].0;
         // Geometry sanity: side cones ~0.58 ms, diagonal ~0.90 ms at 48 kHz
         // (28 cm pitch, 10 cm capsule-to-cone — see the constants).
         assert!(

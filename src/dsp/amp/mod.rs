@@ -1054,9 +1054,13 @@ pub struct AmpBank {
     /// Crossfade position, 0 = all `fading`, 1 = all `live`.
     ramp: f32,
     ramp_step: f32,
-    /// The knobs passed on the previous sample; they belong to the outgoing
-    /// model once the selection changes.
-    prev_knobs: [f32; AMP_MAX],
+    /// Knobs used to drive the live model on the previous sample.
+    live_knobs: [f32; AMP_MAX],
+    /// Knobs of the model currently fading out; snapshotted at every switch so
+    /// a rapid second switch does not reuse the first model's bank.
+    fading_knobs: [f32; AMP_MAX],
+    /// Last speaker load pushed into all nine models.
+    last_load: Option<(f32, f32)>,
 }
 
 impl AmpBank {
@@ -1074,8 +1078,10 @@ impl AmpBank {
             live: None,
             fading: None,
             ramp: 1.0,
-            ramp_step: 1.0 / (0.006 * sr).max(1.0),
-            prev_knobs: [0.0; AMP_MAX],
+            ramp_step: 1.0 / (crate::dsp::BYPASS_DECLICK_SECS * sr).max(1.0),
+            live_knobs: [0.0; AMP_MAX],
+            fading_knobs: [0.0; AMP_MAX],
+            last_load: None,
         }
     }
 
@@ -1127,32 +1133,37 @@ impl AmpBank {
         knobs: &[f32; AMP_MAX],
         load: (f32, f32),
     ) -> f32 {
-        // Push the load into **every** model, not just the live one, so a model
-        // selected later cannot run a block against a stale load. Each call is a
-        // compare-and-return when the numbers already match, so the eight no-op calls
-        // are the cheap case and only the live model's biquad is ever rebuilt.
-        self.marshall.set_load(load);
-        self.mesa.set_load(load);
-        self.randall.set_load(load);
-        self.vox.set_load(load);
-        self.hiwatt.set_load(load);
-        self.plexi.set_load(load);
-        self.fender.set_load(load);
-        self.supro.set_load(load);
-        self.tweed.set_load(load);
+        // Push the load into every model when it changes, so a model selected
+        // later cannot run against a stale load. An unchanged load skips all
+        // nine compare-and-return calls on this hottest path.
+        if self.last_load != Some(load) {
+            self.last_load = Some(load);
+            self.marshall.set_load(load);
+            self.mesa.set_load(load);
+            self.randall.set_load(load);
+            self.vox.set_load(load);
+            self.hiwatt.set_load(load);
+            self.plexi.set_load(load);
+            self.fender.set_load(load);
+            self.supro.set_load(load);
+            self.tweed.set_load(load);
+        }
         if self.live != Some(model) {
             // The incoming model has not been advanced while inactive, so its
             // oversampler/spring state is stale: clear it, then fade from the
             // outgoing model instead of cutting on a single sample.
             self.clear_switch_state(model);
+            // Snapshot the knobs the outgoing model was driven with last
+            // sample, before `live` is replaced.
+            self.fading_knobs = self.live_knobs;
             self.fading = self.live;
             self.ramp = 0.0;
             self.live = Some(model);
         }
         let next = self.process_model(model, sample, knobs);
         let out = if let Some(old) = self.fading {
-            let prev_knobs = self.prev_knobs;
-            let prev = self.process_model(old, sample, &prev_knobs);
+            let fading_knobs = self.fading_knobs;
+            let prev = self.process_model(old, sample, &fading_knobs);
             let ramp = self.ramp;
             self.ramp = (ramp + self.ramp_step).min(1.0);
             if self.ramp >= 1.0 {
@@ -1162,12 +1173,9 @@ impl AmpBank {
         } else {
             next
         };
-        // While a fade is running, `prev_knobs` is the *outgoing* model's control
-        // snapshot. Overwriting it here would drive that model with the incoming
-        // model's bank on every sample after the first.
-        if self.fading.is_none() {
-            self.prev_knobs = *knobs;
-        }
+        // Remember the knobs the live model used this sample, so the next
+        // switch can snapshot them for the model that starts fading out.
+        self.live_knobs = *knobs;
         out
     }
 }
@@ -2045,110 +2053,6 @@ mod tests {
         );
     }
 
-    /// The Vox must breathe like the Marshall: 100 Hz UK ripple growing ghost
-    /// sidebands only under load. Same window discipline as the Marshall test
-    /// (f0 225 Hz over 30 720 samples keeps every bin integer-cycle).
-    ///
-    /// NOT SHIPPED — documents a measured negative, do not "fix" by tuning:
-    /// at sibling depth (0.05) the Vox power stage runs ~18% of rail (×9.037
-    /// output trim makes level downstream), so `sagged_rail` cancels the
-    /// supply exactly in the linear zone: driven 1.1e-4 vs 8.4e-5 floor, no
-    /// load contrast at any drive or f0 (150 Hz hotspot: 1.5x, knife-edge).
-    /// Audible Vox ghosting needs the power stage driven into clipping (a
-    /// power-drive re-voice, out of scope) or ear-set depths ~10x higher.
-    /// Wiring verified correct by scaling probe (10x depth → exactly 10x
-    /// sidebands) and reverted; see the plan ledger Task 1 ruling.
-    #[test]
-    #[ignore = "power stage too clean to imprint ripple at sane depths; pending ear-pass depths / power-drive re-voice"]
-    fn vox_ripple_grows_ghost_sidebands_only_when_driven() {
-        let f0 = 225.0;
-        const WIN: usize = 30_720;
-        let sidebands = |amp_in: f32, gain: f32| -> f32 {
-            let mut amp = Vox::new(SR);
-            let knobs = standard_knobs(AmpModel::Vox, gain, 0.5, 0.5, 0.6, 0.5, 0.8);
-            let out = run_tone(&mut amp, f0, amp_in, &knobs);
-            let out = &out[out.len() - WIN..];
-            let fund = goertzel(out, f0, SR).max(1e-9);
-            (goertzel(out, f0 - 100.0, SR) + goertzel(out, f0 + 100.0, SR)) / fund
-        };
-        let quiet = sidebands(0.01, 0.2);
-        let driven = sidebands(0.6, 0.9);
-        assert!(
-            driven > quiet * 2.0,
-            "vox ghost notes not load-dependent: quiet {quiet:.5} driven {driven:.5}"
-        );
-        assert!(
-            (0.0004..0.15).contains(&driven),
-            "vox driven ghost-note level out of range: {driven:.5}"
-        );
-    }
-
-    /// Hiwatt: 100 Hz UK ripple, same shape.
-    ///
-    /// NOT SHIPPED — measured negative, do not "fix" by tuning: the DR103
-    /// authentically stays clean and loud (stiff supply, moderate drive), so
-    /// the power stage never leaves the linear zone where `sagged_rail`
-    /// cancels supply exactly: driven == quiet at 1.8e-4 (IM hash floor).
-    /// See the plan ledger Task 1 ruling.
-    #[test]
-    #[ignore = "stiff+clean power stage cannot imprint ripple; authentic headroom behavior"]
-    fn hiwatt_ripple_grows_ghost_sidebands_only_when_driven() {
-        let f0 = 225.0;
-        const WIN: usize = 30_720;
-        let sidebands = |amp_in: f32, gain: f32| -> f32 {
-            let mut amp = Hiwatt::new(SR);
-            let knobs = standard_knobs(AmpModel::Hiwatt, gain, 0.5, 0.5, 0.6, 0.5, 0.8);
-            let out = run_tone(&mut amp, f0, amp_in, &knobs);
-            let out = &out[out.len() - WIN..];
-            let fund = goertzel(out, f0, SR).max(1e-9);
-            (goertzel(out, f0 - 100.0, SR) + goertzel(out, f0 + 100.0, SR)) / fund
-        };
-        let quiet = sidebands(0.01, 0.2);
-        let driven = sidebands(0.6, 0.9);
-        assert!(
-            driven > quiet * 2.0,
-            "hiwatt ghost notes not load-dependent: quiet {quiet:.5} driven {driven:.5}"
-        );
-        assert!(
-            (0.0004..0.15).contains(&driven),
-            "hiwatt driven ghost-note level out of range: {driven:.5}"
-        );
-    }
-
-    /// Fender: 120 Hz US ripple (like the Mesa). Window differs from the
-    /// 100 Hz models: 120 Hz sidebands of 225 Hz can never be integer-cycle
-    /// in the 30 720 window, so f0=200 over 24 000 samples (fund 100cy,
-    /// ±120 bins 40/160cy).
-    ///
-    /// NOT SHIPPED — measured negative, do not "fix" by tuning: Twin runs
-    /// clean (stiff supply, gentle drive) and carries a pre-existing ~3e-4
-    /// floor (bias-trem texture) that dwarfs any sane-depth ripple. See
-    /// the plan ledger Task 1 ruling.
-    #[test]
-    #[ignore = "clean power stage + structural floor dominate sane-depth ripple"]
-    fn fender_ripple_grows_ghost_sidebands_only_when_driven() {
-        let f0 = 200.0;
-        const WIN: usize = 24_000;
-        let sidebands = |amp_in: f32, gain: f32| -> f32 {
-            let mut amp = Fender::new(SR);
-            let knobs = standard_knobs(AmpModel::Fender, gain, 0.5, 0.5, 0.6, 0.5, 0.8);
-            let out = run_tone(&mut amp, f0, amp_in, &knobs);
-            let out = &out[out.len() - WIN..];
-            let fund = goertzel(out, f0, SR).max(1e-9);
-            (goertzel(out, f0 - 120.0, SR) + goertzel(out, f0 + 120.0, SR)) / fund
-        };
-        let quiet = sidebands(0.01, 0.2);
-        let driven = sidebands(0.5, 0.9);
-        assert!(
-            driven > quiet * 2.0,
-            "fender ghost notes not load-dependent: quiet {quiet:.5} driven {driven:.5}"
-        );
-        assert!(
-            (0.0004..0.15).contains(&driven),
-            "fender driven ghost-note level out of range: {driven:.5}"
-        );
-    }
-
     /// Randall's stiff rails still breathe: 120 Hz US ripple on the rail
     /// scale grows ghost sidebands only under load. f0=200 over 24 000
     /// samples keeps fund (100cy), ±120 Hz bins (40/160cy) and ±50 Hz
@@ -2745,15 +2649,40 @@ mod tests {
             "switch cut to the new model instead of fading: {y} vs {r}"
         );
         assert_eq!(
-            bank.prev_knobs, a,
+            bank.fading_knobs, a,
             "the outgoing model was driven with the incoming model's knobs"
         );
         // The second sample keeps fading from the old model with its own knobs.
         let x = (2.0 * PI * 220.0 * 2_001.0 / sr).sin() * 0.4;
         let _ = bank.process(AmpModel::Fender, x, &b, load);
         assert_eq!(
-            bank.prev_knobs, a,
+            bank.fading_knobs, a,
             "the outgoing model's knob snapshot changed mid-fade"
+        );
+    }
+
+    /// A second switch inside the 6 ms fade must fade out the model that was
+    /// actually live, using **its** knobs — not the frozen knobs of the model
+    /// from the first switch.
+    #[test]
+    fn rapid_amp_switch_snapshots_the_outgoing_models_knobs() {
+        let sr = 48_000.0;
+        let a = [0.1f32; AMP_MAX];
+        let b = [0.9f32; AMP_MAX];
+        let c = [0.5f32; AMP_MAX];
+        let load = crate::dsp::CabModel::Mesa.speaker_load();
+        let mut bank = AmpBank::new(sr);
+        let x = 0.4;
+        // Settle on Marshall with `a`.
+        bank.process(AmpModel::Marshall, x, &a, load);
+        bank.process(AmpModel::Marshall, x, &a, load);
+        // Switch #1: Marshall -> Vox (fading = Marshall).
+        bank.process(AmpModel::Vox, x, &b, load);
+        // Switch #2, one sample later: Vox -> Fender (fading = Vox).
+        bank.process(AmpModel::Fender, x, &c, load);
+        assert_eq!(
+            bank.fading_knobs, b,
+            "the fading-out Vox must use Vox's knobs, not Marshall's"
         );
     }
 

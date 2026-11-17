@@ -41,6 +41,7 @@ pub struct Rotary {
     speed_d: f32,
     #[cfg(test)]
     pub(crate) clear_count: usize,
+    #[cfg(test)]
     last_horn_delay: f32,
     mix: SmoothedGain,
 }
@@ -61,6 +62,7 @@ impl Rotary {
             speed_d: SLOW_DRUM_HZ,
             #[cfg(test)]
             clear_count: 0,
+            #[cfg(test)]
             last_horn_delay: 0.0,
             mix: SmoothedGain::with_ms(1.0, 8.0, sr),
         }
@@ -147,7 +149,10 @@ impl Rotary {
         let drum_sweep = sweep * DRUM_SWEEP_SCALE;
         let drum_dl = base + drum_sweep * (0.5 - 0.5 * cd);
         let drum_dr = base + drum_sweep * (0.5 + 0.5 * cd);
-        self.last_horn_delay = horn_dl;
+        #[cfg(test)]
+        {
+            self.last_horn_delay = horn_dl;
+        }
 
         let hl = read_cubic(&self.horn, self.write, horn_dl);
         let hr = read_cubic(&self.horn, self.write, horn_dr);

@@ -167,8 +167,6 @@ impl SpringReverb {
         self.last_damp = damp;
     }
 
-    /// `decay` 0–1, `damp` 0–1. Mono in, mono wet out; the caller sets dry/wet.
-    #[inline]
     /// Zero the tank and its filters, so a model that is re-entered after a
     /// switch does not replay the tail it was ringing when it was left.
     pub fn clear(&mut self) {
@@ -183,6 +181,8 @@ impl SpringReverb {
         self.out_lp.clear();
     }
 
+    /// `decay` 0–1, `damp` 0–1. Mono in, mono wet out; the caller sets dry/wet.
+    #[inline]
     pub fn process(&mut self, input: f32, decay: f32, damp: f32) -> f32 {
         if param_changed(decay, self.last_decay) || param_changed(damp, self.last_damp) {
             self.update_params(decay, damp);

@@ -256,7 +256,6 @@ pub struct LoadedPlugin {
     // Kept purely to own the plugin's lifetime on this (non-audio) thread.
     #[allow(dead_code)]
     entry: PluginEntry,
-    #[allow(dead_code)]
     instance: PluginInstance<RaHost>,
 }
 
@@ -542,16 +541,24 @@ impl ClapInsert {
                 ),
             }]);
 
-            // If the plugin errors, leave out_buf as-is (it was zero-initialised /
-            // holds the previous block); we still advance steady time below.
-            let _ = self.processor.process(
-                &ins,
-                &mut outs,
-                &self.events.as_input(),
-                &mut OutputEvents::void(),
-                Some(self.steady),
-                None,
-            );
+            // Mirror the AU host: on process failure leave left/right untouched
+            // (dry passthrough) instead of replaying the previous block that is
+            // still sitting in out_buf.
+            if self
+                .processor
+                .process(
+                    &ins,
+                    &mut outs,
+                    &self.events.as_input(),
+                    &mut OutputEvents::void(),
+                    Some(self.steady),
+                    None,
+                )
+                .is_err()
+            {
+                self.steady += m as u64;
+                return;
+            }
         }
 
         self.steady += m as u64;

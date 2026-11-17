@@ -214,10 +214,6 @@ impl CabModel {
             Self::Tweed => (96.0, 0.90),
         }
     }
-    ///
-    /// The two Greenback cabinets sharing a row is the point, not a copy-paste: a
-    /// JCM800 and an Orange PPC412 differ in *amp*, not in what is bolted to the back
-    /// panel, and they should now sound like it.
     pub fn from_u8(v: u8) -> Self {
         match v {
             1 => Self::Marshall,

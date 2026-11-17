@@ -103,11 +103,6 @@ impl<const N: usize> Oversampler<N> {
         }
     }
 
-    /// Run a per-sample nonlinearity at the `N`× rate: upsample one base-rate
-    /// sample, apply `f` to each of the `N` high-rate samples, then band-limit and
-    /// decimate back down. This is the canonical "oversample a clipper" loop, so
-    /// the drive pedals share it instead of each repeating the up/map/down dance.
-    #[inline]
     /// Zero both mirrored histories, so the interpolator and decimator start from
     /// silence instead of replaying whatever passed through before.
     pub fn reset(&mut self) {
@@ -117,6 +112,11 @@ impl<const N: usize> Oversampler<N> {
         self.dn_pos = 0;
     }
 
+    /// Run a per-sample nonlinearity at the `N`× rate: upsample one base-rate
+    /// sample, apply `f` to each of the `N` high-rate samples, then band-limit and
+    /// decimate back down. This is the canonical "oversample a clipper" loop, so
+    /// the drive pedals share it instead of each repeating the up/map/down dance.
+    #[inline]
     pub fn process<F: FnMut(f32) -> f32>(&mut self, x: f32, mut f: F) -> f32 {
         let up = self.upsample(x);
         let mut down = [0.0f32; N];

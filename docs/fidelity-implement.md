@@ -2688,3 +2688,23 @@ signal topology:
   to five (`acdc_back_in_black`, `eagles_hotel_california_solo`,
   `led_zeppelin_stairway_solo`, `pink_floyd_comfortably_numb_solo_2`,
   `pink_floyd_time_solo`). The fidelity baseline covers all five.
+
+---
+
+## Measured negative: Vox / Hiwatt / Fender ripple (2026-11-16)
+
+Three `#[ignore]`d tests in `src/dsp/amp/mod.rs` used to assert that supply
+ripple grows ghost sidebands under load for the Vox AC30, Hiwatt DR103 and
+Fender Twin. They were permanently disabled because the measurement is a
+**negative result**, and were removed in the 2026-11-16 audit remediation.
+The finding is preserved here:
+
+- `sagged_rail` cancels the supply exactly in the linear zone, so a clean
+  power stage cannot imprint ripple at sane depths (Vox runs ~18% of rail,
+  Hiwatt is stiff and clean, Fender carries a ~3e-4 bias-trem texture floor
+  that dwarfs ripple).
+- Wiring was verified correct by a scaling probe (10× depth → exactly 10×
+  sidebands) and reverted. 120 Hz sidebands need f0=200/WIN=24000 bins;
+  225 Hz/30720 is never integer-cycle at that offset.
+- Audible ghosting would need a power-drive re-voice or ear-set depths ~10×
+  higher. Do not "fix" this by tuning the ripple depth.

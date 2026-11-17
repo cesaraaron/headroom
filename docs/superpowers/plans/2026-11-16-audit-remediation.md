@@ -139,16 +139,16 @@
 - Modify: `src/dsp/amp/mod.rs:1077,1134-1142,1143-1171,2061-2150`, `src/dsp/oversample.rs:106-120`, `src/dsp/effects/spring.rs:170-186`, `src/dsp/mod.rs:217-221`, `src/dsp/effects/rotary.rs:44,150`, `src/dsp/cab/mod.rs:359-363`, `src/host/clap_host.rs:257-260,545-566`
 - Test: `src/dsp/amp/mod.rs`, `src/dsp/cab/mod.rs` `#[cfg(test)]` modules
 
-- [ ] **Step 1:** RED — `rapid_amp_switch_uses_the_outgoing_models_knobs`: drive `AmpBank::process` with a switch A→B→C inside the 6 ms ramp and assert the fade output does not jump to A's gain curve (compare against a reference render with B's knobs). Run → FAIL.
-- [ ] **Step 2:** Add `fading_knobs: [f32; AMP_MAX]` to `AmpBank`, set it from the outgoing model's knobs at every switch, and use it for `process_model(old, …)`; keep `prev_knobs: [f32; AMP_MAX]` for the settled case.
-- [ ] **Step 3:** GREEN — `cargo test --lib dsp::amp::tests` → PASS.
-- [ ] **Step 4:** `dsp/amp/mod.rs:1077`: use `crate::dsp::BYPASS_DECLICK_SECS` instead of `0.006`. Add `last_load: Option<(f32, f32)>` to `AmpBank` and push `set_load` to the nine models only when `load` changed (finding 51); `CabModel::speaker_load()` returns `(f32, f32)`.
-- [ ] **Step 5:** `oversample.rs` / `spring.rs`: move the doc comment and `#[inline]` from `reset`/`clear` onto `process`; give `reset`/`clear` their own one-line docs. `dsp/mod.rs:217-221`: rehome the orphaned Greenback paragraph.
-- [ ] **Step 6:** `rotary.rs`: `#[cfg(test)]`-gate `last_horn_delay` and its per-sample write. `cab/mod.rs`: drop `d_side`/`d_diag` and recompute them from `taps` in the test. `clap_host.rs:257-260`: remove the redundant `#[allow(dead_code)]` on `instance`.
-- [ ] **Step 7:** `clap_host.rs:545-566`: on `processor.process()` `Err`, return without copying `out_buf` into `left/right` (mirror the AU host). Add `clap_insert_passes_dry_on_process_error` if a mock processor is available; otherwise pin by the existing `host::clap_host::tests` plus static review. **Ruling recorded in ledger if no mock exists.**
-- [ ] **Step 8:** Delete the three permanently-ignored ripple tests (`amp/mod.rs:2061-2150`) and add a "Measured negative (Vox/Hiwatt/Fender ripple)" note to `docs/fidelity-implement.md` recording the finding; update `roadmap-next.md`'s "tests #[ignore]d" wording.
-- [ ] **Step 9:** `cargo test --lib dsp::` + fmt + clippy; record the new test counts.
-- [ ] **Step 10:** Commit: `fix(dsp): rapid-switch knobs, IR/host error paths, inline hints and dead state`.
+- [x] **Step 1:** RED — `rapid_amp_switch_uses_the_outgoing_models_knobs`: drive `AmpBank::process` with a switch A→B→C inside the 6 ms ramp and assert the fade output does not jump to A's gain curve (compare against a reference render with B's knobs). Run → FAIL.
+- [x] **Step 2:** Add `fading_knobs: [f32; AMP_MAX]` to `AmpBank`, set it from the outgoing model's knobs at every switch, and use it for `process_model(old, …)`; keep `prev_knobs: [f32; AMP_MAX]` for the settled case.
+- [x] **Step 3:** GREEN — `cargo test --lib dsp::amp::tests` → PASS.
+- [x] **Step 4:** `dsp/amp/mod.rs:1077`: use `crate::dsp::BYPASS_DECLICK_SECS` instead of `0.006`. Add `last_load: Option<(f32, f32)>` to `AmpBank` and push `set_load` to the nine models only when `load` changed (finding 51); `CabModel::speaker_load()` returns `(f32, f32)`.
+- [x] **Step 5:** `oversample.rs` / `spring.rs`: move the doc comment and `#[inline]` from `reset`/`clear` onto `process`; give `reset`/`clear` their own one-line docs. `dsp/mod.rs:217-221`: rehome the orphaned Greenback paragraph.
+- [x] **Step 6:** `rotary.rs`: `#[cfg(test)]`-gate `last_horn_delay` and its per-sample write. `cab/mod.rs`: drop `d_side`/`d_diag` and recompute them from `taps` in the test. `clap_host.rs:257-260`: remove the redundant `#[allow(dead_code)]` on `instance`.
+- [x] **Step 7:** `clap_host.rs:545-566`: on `processor.process()` `Err`, return without copying `out_buf` into `left/right` (mirror the AU host). Add `clap_insert_passes_dry_on_process_error` if a mock processor is available; otherwise pin by the existing `host::clap_host::tests` plus static review. **Ruling recorded in ledger if no mock exists.**
+- [x] **Step 8:** Delete the three permanently-ignored ripple tests (`amp/mod.rs:2061-2150`) and add a "Measured negative (Vox/Hiwatt/Fender ripple)" note to `docs/fidelity-implement.md` recording the finding; update `roadmap-next.md`'s "tests #[ignore]d" wording.
+- [x] **Step 9:** `cargo test --lib dsp::` + fmt + clippy; record the new test counts.
+- [x] **Step 10:** Commit: `fix(dsp): rapid-switch knobs, IR/host error paths, inline hints and dead state`.
 
 ### Task 8: Audio-thread disposal safety
 
