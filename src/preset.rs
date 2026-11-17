@@ -19,6 +19,7 @@ pub enum PresetSource {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Preset {
     pub name: String,
     pub description: Option<String>,
@@ -73,6 +74,7 @@ pub struct Preset {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct NgSection {
     pub enabled: Option<bool>,
     pub threshold: f32,
@@ -80,6 +82,7 @@ pub struct NgSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct CmpSection {
     pub enabled: Option<bool>,
     pub sustain: f32,
@@ -95,6 +98,7 @@ fn cmp_voice_default() -> f32 {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PitchSection {
     pub enabled: Option<bool>,
     pub pitch: f32,
@@ -103,6 +107,7 @@ pub struct PitchSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct WahSection {
     pub enabled: Option<bool>,
     pub freq: f32,
@@ -126,6 +131,7 @@ fn wah_position_default() -> f32 {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PeqSection {
     pub enabled: Option<bool>,
     pub low: f32,
@@ -136,6 +142,7 @@ pub struct PeqSection {
 /// Uni-Vibe — a front-of-amp four-stage all-pass "vibe". `mode` blends chorus
 /// (0, dry + phase) to vibrato (1, phase only).
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct UniVibeSection {
     pub enabled: Option<bool>,
     pub rate: f32,
@@ -145,6 +152,7 @@ pub struct UniVibeSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct FuzzSection {
     pub enabled: Option<bool>,
     pub fuzz: f32,
@@ -177,6 +185,7 @@ fn fuzz_guitar_default() -> f32 {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct TsSection {
     pub enabled: Option<bool>,
     pub drive: f32,
@@ -185,6 +194,7 @@ pub struct TsSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct DsSection {
     pub enabled: Option<bool>,
     pub drive: f32,
@@ -193,6 +203,7 @@ pub struct DsSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct MlSection {
     pub enabled: Option<bool>,
     pub dist: f32,
@@ -202,6 +213,7 @@ pub struct MlSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct RatSection {
     pub enabled: Option<bool>,
     pub dist: f32,
@@ -210,6 +222,7 @@ pub struct RatSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct TubeDriverSection {
     pub enabled: Option<bool>,
     pub drive: f32,
@@ -219,6 +232,7 @@ pub struct TubeDriverSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct RotarySection {
     pub enabled: Option<bool>,
     pub speed: f32,
@@ -229,6 +243,7 @@ pub struct RotarySection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct BoostSection {
     pub enabled: Option<bool>,
     pub gain: f32,
@@ -237,6 +252,7 @@ pub struct BoostSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AmpSection {
     /// "marshall" | "mesa" | "randall" | "vox" | "hiwatt" | "plexi" | "fender" | "supro" | "tweed"
     pub model: Option<String>,
@@ -262,6 +278,7 @@ pub struct AmpSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct CabSection {
     /// "mesa" (default) | "marshall" | "orange" | "wem" | "vox" | "fender" |
     /// "supro" | "tweed"
@@ -292,6 +309,7 @@ fn mic_room_default() -> f32 {
 /// Boss GE-7 graphic EQ: seven band faders (low → high) plus an output level,
 /// all 0–1 with 0.5 = flat/unity.
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct GraphicEqSection {
     pub enabled: Option<bool>,
     pub band1: f32,
@@ -305,6 +323,7 @@ pub struct GraphicEqSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct EqSection {
     pub enabled: Option<bool>,
     pub low: f32,
@@ -313,6 +332,7 @@ pub struct EqSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct DelaySection {
     pub enabled: Option<bool>,
     pub time: f32,
@@ -329,6 +349,7 @@ fn delay_type_default() -> f32 {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct FlangerSection {
     pub enabled: Option<bool>,
     pub rate: f32,
@@ -345,6 +366,7 @@ fn flanger_type_default() -> f32 {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChorusSection {
     pub enabled: Option<bool>,
     pub rate: f32,
@@ -353,6 +375,7 @@ pub struct ChorusSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PhaserSection {
     pub enabled: Option<bool>,
     pub rate: f32,
@@ -371,6 +394,7 @@ fn phaser_type_default() -> f32 {
 /// Tremolo / Vibrato: one LFO, blended between amplitude (tremolo) and pitch
 /// (vibrato) modulation. All fields 0.0–1.0.
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct TremoloSection {
     pub enabled: Option<bool>,
     pub rate: f32,
@@ -380,6 +404,7 @@ pub struct TremoloSection {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReverbSection {
     pub enabled: Option<bool>,
     pub room: f32,
@@ -392,6 +417,7 @@ pub struct ReverbSection {
 /// studio-wide toggle). Optional — omitting `[master]` resets the width to the
 /// default, `DEFAULT_MASTER_WIDTH = 1.0`.
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct MasterSection {
     pub width: f32,
     /// Rig master output, normalized 0.0-1.0 with unity at 0.5 (+/-6 dB).
@@ -410,6 +436,7 @@ pub struct MasterSection {
 /// hand-edited or older file can never build a half chain. Legacy `"ampcab"`
 /// expands to `"amp"`, `"cab"`.
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChainSection {
     pub order: Vec<String>,
 }
@@ -1377,6 +1404,21 @@ pub(crate) fn rig_revision(p: &Params) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A typo in an optional field must be a parse error, not a silent default.
+    /// `all_bundled_presets_parse` can only make that claim if unknown keys are
+    /// rejected by serde.
+    #[test]
+    fn preset_rejects_unknown_fields() {
+        let mut text =
+            std::fs::read_to_string("presets/acdc_back_in_black.toml").expect("bundled preset");
+        text.insert_str(0, "tyop = 1\n");
+        let parsed = toml::from_str::<Preset>(&text);
+        assert!(
+            parsed.is_err(),
+            "a typo'd preset key must not deserialize silently"
+        );
+    }
 
     /// Every bundled preset must deserialize against the current schema — guards
     /// against a typo or a renamed field silently breaking a shipped preset.

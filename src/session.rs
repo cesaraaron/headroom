@@ -151,17 +151,25 @@ pub struct Session {
 impl Session {
     /// A new, empty session whose time base is `project_sample_rate`.
     pub fn new(project_sample_rate: u32) -> Self {
-        let secs = std::time::SystemTime::now()
+        let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+            .unwrap_or_default();
+        // Two "New session" presses in the same second used to share a recovery
+        // directory and overwrite each other's take-1.wav. Nanoseconds + PID make
+        // the id unique across processes too.
+        let temp_id = format!(
+            "{}-{}-{}",
+            now.as_secs(),
+            now.subsec_nanos(),
+            std::process::id()
+        );
         Self {
             project_sample_rate: project_sample_rate.max(1),
             tracks: Vec::new(),
             selected: None,
             seek_seconds: DEFAULT_SEEK_STEP,
             next_id: 1,
-            temp_id: format!("{secs}"),
+            temp_id,
             name: "Untitled".to_owned(),
             saved_dir: None,
         }
@@ -220,6 +228,24 @@ impl Session {
             mix(&mut h, t.muted as u64);
             for byte in t.name.as_bytes() {
                 mix(&mut h, *byte as u64);
+            }
+            // `TrackSection` persists these three too; leaving them out made a
+            // re-pointed asset or a re-calibrated take invisible to autosave.
+            mix(&mut h, t.asset.is_some() as u64);
+            if let Some(a) = &t.asset {
+                for byte in a.path.to_string_lossy().as_bytes() {
+                    mix(&mut h, *byte as u64);
+                }
+                mix(&mut h, a.source_sample_rate as u64);
+                mix(&mut h, a.source_channels as u64);
+            }
+            mix(&mut h, t.input_trim_db.is_some() as u64);
+            if let Some(v) = t.input_trim_db {
+                mix(&mut h, v.to_bits() as u64);
+            }
+            mix(&mut h, t.calibration_ref.is_some() as u64);
+            if let Some(v) = t.calibration_ref {
+                mix(&mut h, v as u64);
             }
         }
         h
@@ -430,6 +456,56 @@ pub fn frames_to_ticks(frames: usize, project_rate: u32, out_rate: f32) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sessions_created_in_the_same_second_do_not_collide() {
+        let a = Session::new(48_000);
+        let b = Session::new(48_000);
+        assert_ne!(
+            a.temp_id(),
+            b.temp_id(),
+            "two sessions in one second must not share a recovery directory"
+        );
+    }
+
+    #[test]
+    fn revision_tracks_persisted_track_metadata() {
+        let mut s = Session::new(48_000);
+        s.push(
+            1,
+            "t".into(),
+            TrackKind::RawTake,
+            None,
+            0,
+            100,
+            TrackLifecycle::Ready,
+        );
+        let base = s.revision();
+        s.track_mut(1).unwrap().asset = Some(AssetRef {
+            path: std::path::PathBuf::from("audio/take-1.wav"),
+            source_sample_rate: 48_000,
+            source_channels: 1,
+        });
+        assert_ne!(
+            s.revision(),
+            base,
+            "re-pointing an asset must dirty the session"
+        );
+        let after_asset = s.revision();
+        s.track_mut(1).unwrap().input_trim_db = Some(6.0);
+        assert_ne!(
+            s.revision(),
+            after_asset,
+            "a trim change must dirty the session"
+        );
+        let after_trim = s.revision();
+        s.track_mut(1).unwrap().calibration_ref = Some(3);
+        assert_ne!(
+            s.revision(),
+            after_trim,
+            "a calibration change must dirty the session"
+        );
+    }
 
     fn track(id: TrackId, start: u64, len: u64) -> Track {
         Track {

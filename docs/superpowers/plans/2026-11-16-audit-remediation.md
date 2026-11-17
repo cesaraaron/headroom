@@ -103,17 +103,17 @@
 - Modify: `src/midi.rs:454-486`, `src/preset.rs:21` + all section structs, `src/session.rs:154-164,195-226`
 - Test: `src/midi.rs`, `src/preset.rs`, `src/session.rs` `#[cfg(test)]` modules
 
-- [ ] **Step 1:** RED — add `midi_conf_strips_inline_comments` asserting `parse_midi_conf("enabled = true\ncc = 11   # wah\n20 = delay_mix\n")` yields a `WahPosition` binding on CC 11; add `midi_conf_booleans_are_case_insensitive`. Run `cargo test --lib midi::tests` → FAIL.
-- [ ] **Step 2:** `parse_midi_conf`: strip from the first `#` before `split_once('=')`; compare booleans case-insensitively via `eq_ignore_ascii_case` against `false/0/no/off`.
-- [ ] **Step 3:** GREEN — `cargo test --lib midi::tests` → PASS.
-- [ ] **Step 4:** RED — add `preset_rejects_unknown_fields` asserting `toml::from_str::<Preset>` of a minimal valid preset with `[delay] typee = "digital"` returns `Err`. Run → FAIL (serde currently ignores it).
-- [ ] **Step 5:** Add `#[serde(deny_unknown_fields)]` to `Preset` and every `*Section` struct in `src/preset.rs` (mechanical, script-assisted); ensure no `#[serde(flatten)]` conflicts.
-- [ ] **Step 6:** GREEN — run `cargo test --lib preset::tests` and `cargo test --test bundled_presets` → PASS; confirm all 5 bundled presets still parse.
-- [ ] **Step 7:** RED — add `sessions_created_in_the_same_second_do_not_collide` asserting two `Session::new(48_000)` calls have different `temp_id()`; add `revision_tracks_persisted_track_metadata` asserting mutating `asset`/`input_trim_db`/`calibration_ref` changes `revision()`. Run → FAIL.
-- [ ] **Step 8:** `session.rs`: seed `temp_id` with seconds + nanoseconds + PID (no allocation in DSP path — this is control-thread only); hash `asset`, `input_trim_db`, `calibration_ref` in `revision()`.
-- [ ] **Step 9:** GREEN — `cargo test --lib session::tests` → PASS.
-- [ ] **Step 10:** `cargo fmt --all -- --check` + `cargo clippy --all-targets --all-features -- -D warnings`.
-- [ ] **Step 11:** Commit: `fix: stop silently dropping midi bindings, preset typos, recovery collisions and dirty state`.
+- [x] **Step 1:** RED — add `midi_conf_strips_inline_comments` asserting `parse_midi_conf("enabled = true\ncc = 11   # wah\n20 = delay_mix\n")` yields a `WahPosition` binding on CC 11; add `midi_conf_booleans_are_case_insensitive`. Run `cargo test --lib midi::tests` → FAIL.
+- [x] **Step 2:** `parse_midi_conf`: strip from the first `#` before `split_once('=')`; compare booleans case-insensitively via `eq_ignore_ascii_case` against `false/0/no/off`.
+- [x] **Step 3:** GREEN — `cargo test --lib midi::tests` → PASS.
+- [x] **Step 4:** RED — add `preset_rejects_unknown_fields` asserting `toml::from_str::<Preset>` of a minimal valid preset with `[delay] typee = "digital"` returns `Err`. Run → FAIL (serde currently ignores it).
+- [x] **Step 5:** Add `#[serde(deny_unknown_fields)]` to `Preset` and every `*Section` struct in `src/preset.rs` (mechanical, script-assisted); ensure no `#[serde(flatten)]` conflicts.
+- [x] **Step 6:** GREEN — run `cargo test --lib preset::tests` and `cargo test --test bundled_presets` → PASS; confirm all 5 bundled presets still parse.
+- [x] **Step 7:** RED — add `sessions_created_in_the_same_second_do_not_collide` asserting two `Session::new(48_000)` calls have different `temp_id()`; add `revision_tracks_persisted_track_metadata` asserting mutating `asset`/`input_trim_db`/`calibration_ref` changes `revision()`. Run → FAIL.
+- [x] **Step 8:** `session.rs`: seed `temp_id` with seconds + nanoseconds + PID (no allocation in DSP path — this is control-thread only); hash `asset`, `input_trim_db`, `calibration_ref` in `revision()`.
+- [x] **Step 9:** GREEN — `cargo test --lib session::tests` → PASS.
+- [x] **Step 10:** `cargo fmt --all -- --check` + `cargo clippy --all-targets --all-features -- -D warnings`.
+- [x] **Step 11:** Commit: `fix: stop silently dropping midi bindings, preset typos, recovery collisions and dirty state`.
 
 ### Task 6: Project/export robustness and IR loading
 

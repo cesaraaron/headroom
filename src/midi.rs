@@ -452,18 +452,28 @@ pub fn cc_to_unit(value: u8) -> f32 {
 /// (CC 11 → wah) is applied by [`midi_config`], so a file the bind screen has
 /// emptied stays empty.
 fn parse_midi_conf(text: &str) -> (bool, Vec<(u8, MidiTarget)>, bool) {
+    fn is_off(value: &str) -> bool {
+        ["false", "0", "no", "off"]
+            .iter()
+            .any(|off| value.eq_ignore_ascii_case(off))
+    }
     let mut enabled = true;
     let mut clock = false;
     let mut bindings: Vec<(u8, MidiTarget)> = Vec::new();
     for line in text.lines() {
-        let line = line.trim();
+        // The shipped example documents inline `#` comments; a copied
+        // `cc = 11   # wah` must keep its binding instead of failing to parse.
+        let line = line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
         let Some((key, value)) = line.split_once('=') else {
             continue;
         };
         let (key, value) = (key.trim(), value.trim());
         match key {
-            "enabled" => enabled = !matches!(value, "false" | "0" | "no" | "off"),
-            "clock" => clock = !matches!(value, "false" | "0" | "no" | "off"),
+            "enabled" => enabled = !is_off(value),
+            "clock" => clock = !is_off(value),
             // Legacy shorthand: `cc = <number>` binds the wah treadle.
             "cc" => {
                 if let Ok(cc) = value.parse::<u8>()
@@ -584,6 +594,33 @@ pub fn connect(state: &Arc<MidiState>, params: Arc<Params>) -> Option<MidiHandle
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The shipped `midi.conf` example uses inline `#` comments; copying it must
+    /// not silently drop the primary wah binding.
+    #[test]
+    fn midi_conf_strips_inline_comments() {
+        let (en, b, clk) = parse_midi_conf(
+            "enabled = true\n\
+             clock = true            # follow MIDI clock, delay TIME\n\
+             cc = 11                 # wah treadle (legacy shorthand)\n\
+             20 = delay_mix\n",
+        );
+        assert!(en, "enabled must stay on");
+        assert!(clk, "clock must be honoured");
+        assert_eq!(
+            b,
+            vec![(11, MidiTarget::WahPosition), (20, MidiTarget::DelayMix)],
+            "the commented wah binding must survive"
+        );
+    }
+
+    #[test]
+    fn midi_conf_booleans_are_case_insensitive() {
+        assert!(!parse_midi_conf("enabled = FALSE\n").0, "FALSE disables");
+        assert!(!parse_midi_conf("enabled = No\n").0, "No disables");
+        assert!(!parse_midi_conf("clock = Off\n").2, "Off disables clock");
+        assert!(parse_midi_conf("clock = TRUE\n").2, "TRUE enables clock");
+    }
 
     #[test]
     fn parses_control_change_only() {
